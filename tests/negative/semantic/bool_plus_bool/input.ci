@@ -1,0 +1,4 @@
+void main() {
+    bool x = true + false;
+    print(toString(x) + "\n");
+}

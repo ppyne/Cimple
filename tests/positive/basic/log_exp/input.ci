@@ -1,0 +1,4 @@
+void main() {
+    print(toString(log2(8.0)) + "\n");
+    print(toString(exp(log(8.0))) + "\n");
+}

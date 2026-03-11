@@ -1,0 +1,1 @@
+Protects glyphAt on a UTF-8 middle codepoint.

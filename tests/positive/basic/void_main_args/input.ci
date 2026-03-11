@@ -1,0 +1,5 @@
+void main(string[] args) {
+    print(toString(count(args)) + "\n");
+    print(args[0] + "\n");
+    print(args[1] + "\n");
+}

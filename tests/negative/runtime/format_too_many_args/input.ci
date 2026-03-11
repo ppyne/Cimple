@@ -1,0 +1,3 @@
+void main() {
+    print(format("{}", ["a", "b"]) + "\n");
+}
