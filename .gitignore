@@ -18,6 +18,7 @@ _deps/
 # Third-party tools fetched at build time (not committed)
 tools/lemon.c
 tools/lempar.c
+tools/lemon_host
 
 # Compiled object files
 *.o
