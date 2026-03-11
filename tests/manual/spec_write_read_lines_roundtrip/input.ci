@@ -1,0 +1,5 @@
+void main() {
+    writeLines("colors.txt", ["red", "green", "blue"]);
+    string[] lines = readLines("colors.txt");
+    print(join(lines, ",") + "\n");
+}

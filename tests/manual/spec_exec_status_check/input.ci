@@ -1,0 +1,8 @@
+void main() {
+    ExecResult r = exec(["/bin/sh", "-c", "printf ok"], []);
+    if (execStatus(r) == 0) {
+        print(execStdout(r) + "\n");
+    } else {
+        print("bad\n");
+    }
+}

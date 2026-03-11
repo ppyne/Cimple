@@ -1,0 +1,5 @@
+void main() {
+    print(toString(abs(-3.5)) + "\n");
+    print(toString(min(4.5, 2.0)) + "\n");
+    print(toString(max(4.5, 2.0)) + "\n");
+}

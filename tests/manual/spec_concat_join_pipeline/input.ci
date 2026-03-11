@@ -1,0 +1,5 @@
+void main() {
+    string[] parts = split("a,b,c", ",");
+    print(join(parts, "-") + "\n");
+    print(concat(parts) + "\n");
+}

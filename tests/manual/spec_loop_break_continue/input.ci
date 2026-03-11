@@ -1,0 +1,10 @@
+void main() {
+    int i = 0;
+    while (i < 6) {
+        i++;
+        if (i == 2) continue;
+        if (i == 5) break;
+        print(toString(i));
+    }
+    print("\n");
+}
