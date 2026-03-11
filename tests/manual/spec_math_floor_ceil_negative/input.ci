@@ -1,0 +1,4 @@
+void main() {
+    print(toString(floor(-1.5)) + "\n");
+    print(toString(ceil(-1.5)) + "\n");
+}

@@ -1,0 +1,1 @@
+Manual coverage for join on a single-element array.
