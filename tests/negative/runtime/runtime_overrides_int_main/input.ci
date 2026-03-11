@@ -1,0 +1,5 @@
+int main() {
+    int[] values = [1];
+    print(toString(values[1]) + "\n");
+    return 42;
+}

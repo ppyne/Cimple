@@ -1,0 +1,1 @@
+Specification example for iterating over a string array with for.

@@ -1,0 +1,8 @@
+int main(string[] args) {
+    if (count(args) < 1) {
+        print("Usage : prog <nom>\n");
+        return 1;
+    }
+    print("Bonjour " + args[0] + "\n");
+    return 0;
+}

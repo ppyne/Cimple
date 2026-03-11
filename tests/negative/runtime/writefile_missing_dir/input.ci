@@ -1,0 +1,3 @@
+void main() {
+    writeFile("no/such/dir/file.txt", "x");
+}

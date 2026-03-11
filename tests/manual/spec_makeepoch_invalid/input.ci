@@ -1,0 +1,6 @@
+void main() {
+    int debut = makeEpoch(2025, 1, 1, 0, 0, 0);
+    print(formatDate(debut, "YYYY-MM-DD") + "\n");
+    int mauvais = makeEpoch(2025, 13, 1, 0, 0, 0);
+    print(toString(mauvais) + "\n");
+}

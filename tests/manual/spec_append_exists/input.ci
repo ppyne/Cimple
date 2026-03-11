@@ -1,0 +1,8 @@
+void main() {
+    writeFile("hello.txt", "Bonjour Cimple\n");
+    appendFile("hello.txt", "Deuxième ligne\n");
+    if (fileExists("hello.txt")) {
+        print("fichier présent\n");
+    }
+    print(readFile("hello.txt"));
+}

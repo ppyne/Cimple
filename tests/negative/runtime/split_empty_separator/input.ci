@@ -1,0 +1,4 @@
+void main() {
+    string[] parts = split("abc", "");
+    print(toString(count(parts)) + "\n");
+}
