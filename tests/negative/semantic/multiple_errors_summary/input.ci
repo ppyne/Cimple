@@ -1,0 +1,7 @@
+int f() {
+    int x = "bad";
+    y = 1;
+    return "oops";
+}
+
+void main() {}

@@ -32,6 +32,7 @@ typedef struct {
 typedef struct {
     const char *filename;          /* source file path (for messages)  */
     int         semantic_count;    /* number of accumulated errors       */
+    int         semantic_truncated;/* reached MAX_ACCUMULATED_ERRORS     */
     Error       semantic[MAX_ACCUMULATED_ERRORS];
     int         had_fatal;         /* non-zero if a fatal error occurred */
 } ErrorCtx;

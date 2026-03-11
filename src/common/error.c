@@ -19,6 +19,7 @@ static const char *kind_label(ErrorKind k) {
 void error_init(const char *filename) {
     g_error_ctx.filename       = filename ? filename : "<unknown>";
     g_error_ctx.semantic_count = 0;
+    g_error_ctx.semantic_truncated = 0;
     g_error_ctx.had_fatal      = 0;
     memset(g_error_ctx.semantic, 0, sizeof(g_error_ctx.semantic));
 }
@@ -54,8 +55,10 @@ void error_syntax(int line, int col, const char *fmt, ...) {
 }
 
 void error_semantic(int line, int col, const char *fmt, ...) {
-    if (g_error_ctx.semantic_count >= MAX_ACCUMULATED_ERRORS)
+    if (g_error_ctx.semantic_count >= MAX_ACCUMULATED_ERRORS) {
+        g_error_ctx.semantic_truncated = 1;
         return;
+    }
     char buf[512];
     va_list ap;
     va_start(ap, fmt);
@@ -85,6 +88,13 @@ int error_flush_semantic(void) {
     for (int i = 0; i < g_error_ctx.semantic_count; i++) {
         Error *e = &g_error_ctx.semantic[i];
         error_print(e->kind, e->line, e->col, e->msg, e->hint);
+    }
+    if (g_error_ctx.semantic_truncated) {
+        fprintf(stderr, "%d semantic errors found. Further analysis aborted.\n",
+                MAX_ACCUMULATED_ERRORS);
+    } else {
+        fprintf(stderr, "%d semantic error(s) found.\n",
+                g_error_ctx.semantic_count);
     }
     return 1;
 }

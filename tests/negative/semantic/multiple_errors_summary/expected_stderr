@@ -1,0 +1,4 @@
+cannot initialise 'x' (type 'int') with 'string'
+undefined variable 'y'
+return type mismatch: expected 'int', got 'string'
+3 semantic error(s) found.

@@ -1,0 +1,15 @@
+int f() {
+    int a = "x";
+    y = 1;
+    print();
+    string s = 1;
+    z = true;
+    bool b = 42;
+    foo();
+    int p = false;
+    q = "q";
+    r = 9;
+    return "bad";
+}
+
+void main() {}
