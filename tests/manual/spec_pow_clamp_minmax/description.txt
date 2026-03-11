@@ -1,0 +1,1 @@
+Manual coverage for pow/min/max/clamp on floats.

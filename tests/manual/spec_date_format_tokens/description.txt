@@ -1,0 +1,1 @@
+Manual coverage for current formatDate passthrough behaviour on unsupported percent tokens.

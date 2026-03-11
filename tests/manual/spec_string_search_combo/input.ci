@@ -1,0 +1,7 @@
+void main() {
+    string s = "banane";
+    print(toString(indexOf(s, "na")) + "\n");
+    print(toString(contains(s, "ana")) + "\n");
+    print(toString(startsWith(s, "ba")) + "\n");
+    print(toString(endsWith(s, "ne")) + "\n");
+}

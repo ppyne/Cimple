@@ -1,0 +1,8 @@
+void main() {
+    bool[] flags = [true];
+    arrayPush(flags, false);
+    arrayPush(flags, true);
+    arrayRemove(flags, 1);
+    print(toString(count(flags)) + "\n");
+    print(toString(flags[0]) + "," + toString(flags[1]) + "\n");
+}
