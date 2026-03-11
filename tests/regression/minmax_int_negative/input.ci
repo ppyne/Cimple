@@ -1,0 +1,4 @@
+void main() {
+    print(toString(minInt(-4, -9)) + "\n");
+    print(toString(maxInt(-4, -9)) + "\n");
+}

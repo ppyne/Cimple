@@ -1,0 +1,1 @@
+Protects exact-base logarithm helpers on exact powers.

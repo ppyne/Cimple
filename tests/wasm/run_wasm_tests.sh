@@ -5,7 +5,6 @@ CIMPLE_NATIVE="${CIMPLE_BIN:-cimple}"
 CIMPLE_WASM="${CIMPLE_WASM:-build-wasm/cimple.js}"
 TESTS_DIR="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 WASM_DRIVER="$TESTS_DIR/wasm/run_cimple_wasm.js"
-TMP_NATIVE_ERR="${TMPDIR:-/tmp}/cimple_native_stderr_$$"
 TMP_WASM_ERR="${TMPDIR:-/tmp}/cimple_wasm_stderr_$$"
 TMP_LIST="${TMPDIR:-/tmp}/cimple_wasm_tests_$$"
 . "$TESTS_DIR/lib/assert.sh"
@@ -25,11 +24,17 @@ node --version >/dev/null 2>&1 || {
     exit 1
 }
 
-run_compare() {
-    src="$1"
-    name="${src#$TESTS_DIR/}"
-    dir="$(dirname "$src")"
-    tmp_run_dir="${TMPDIR:-/tmp}/cimple_wasm_run_$$"
+run_wasm_case() {
+    dir="$1"
+    name="${dir#$TESTS_DIR/}"
+    src="$dir/input.ci"
+    expected_exit=$(cat "$dir/expected_exit" 2>/dev/null || printf '0')
+    expected_stdout="$dir/expected_stdout"
+    expected_stderr="$dir/expected_stderr"
+    require_empty_stdout="$dir/require_empty_stdout"
+    forbidden_stderr="$dir/forbidden_stderr"
+    stderr_counts="$dir/stderr_counts"
+    tmp_wasm_dir="${TMPDIR:-/tmp}/cimple_wasm_run_$$"
 
     [ -f "$dir/skip_wasm" ] && return
 
@@ -40,39 +45,58 @@ run_compare() {
         done < "$dir/args"
     fi
 
-    rm -rf "$tmp_run_dir"
-    mkdir -p "$tmp_run_dir"
+    rm -rf "$tmp_wasm_dir"
+    mkdir -p "$tmp_wasm_dir"
 
-    if native_stdout=$(cd "$tmp_run_dir" && "$CIMPLE_NATIVE" run "$src" "$@" 2>"$TMP_NATIVE_ERR"); then
-        native_exit=0
-    else
-        native_exit=$?
-    fi
-
-    if wasm_stdout=$(cd "$tmp_run_dir" && node "$WASM_DRIVER" "$CIMPLE_WASM" run "$src" "$@" 2>"$TMP_WASM_ERR"); then
+    if wasm_stdout=$(cd "$tmp_wasm_dir" && node "$WASM_DRIVER" "$CIMPLE_WASM" run "$src" "$@" 2>"$TMP_WASM_ERR"); then
         wasm_exit=0
     else
         wasm_exit=$?
     fi
+    wasm_stderr=$(cat "$TMP_WASM_ERR" 2>/dev/null || true)
 
-    assert_exit "$native_exit" "$wasm_exit" "wasm:$name:exit"
+    assert_exit "$expected_exit" "$wasm_exit" "wasm:$name:exit"
 
-    if [ "$native_stdout" = "$wasm_stdout" ]; then
-        PASS=$((PASS + 1))
-    else
-        FAIL=$((FAIL + 1))
-        ERRORS="$ERRORS\nFAIL [wasm:$name] stdout differs"
+    if [ -f "$expected_stdout" ]; then
+        assert_stdout "$expected_stdout" "$wasm_stdout" "wasm:$name"
+    elif [ -f "$require_empty_stdout" ]; then
+        assert_empty_stdout "$wasm_stdout" "wasm:$name"
     fi
 
-    rm -f "$TMP_NATIVE_ERR" "$TMP_WASM_ERR"
-    rm -rf "$tmp_run_dir"
+    if [ -f "$expected_stderr" ]; then
+        while IFS= read -r fragment || [ -n "$fragment" ]; do
+            [ -z "$fragment" ] && continue
+            assert_stderr_contains "$fragment" "$wasm_stderr" "wasm:$name"
+        done < "$expected_stderr"
+    fi
+
+    if [ -f "$forbidden_stderr" ]; then
+        while IFS= read -r fragment || [ -n "$fragment" ]; do
+            [ -z "$fragment" ] && continue
+            assert_stderr_not_contains "$fragment" "$wasm_stderr" "wasm:$name"
+        done < "$forbidden_stderr"
+    fi
+
+    if [ -f "$stderr_counts" ]; then
+        while IFS='|' read -r fragment expected_count || [ -n "$fragment" ]; do
+            [ -z "$fragment" ] && continue
+            assert_stderr_count "$fragment" "$expected_count" "$wasm_stderr" "wasm:$name"
+        done < "$stderr_counts"
+    fi
+
+    if [ -f "$require_empty_stdout" ] && [ ! -f "$expected_stdout" ]; then
+        :
+    fi
+
+    rm -f "$TMP_WASM_ERR"
+    rm -rf "$tmp_wasm_dir"
 }
 
-for root in positive manual; do
+for root in positive negative regression manual; do
     [ -d "$TESTS_DIR/$root" ] || continue
     find "$TESTS_DIR/$root" -name input.ci | sort > "$TMP_LIST"
     while IFS= read -r src; do
-        run_compare "$src"
+        run_wasm_case "$(dirname "$src")"
     done < "$TMP_LIST"
 done
 

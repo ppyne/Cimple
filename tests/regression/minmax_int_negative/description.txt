@@ -1,0 +1,1 @@
+Protects minInt and maxInt on negative inputs.

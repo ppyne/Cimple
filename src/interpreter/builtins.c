@@ -8,6 +8,7 @@
 #include <time.h>
 #include <errno.h>
 #include <stdint.h>
+#include <sys/stat.h>
 
 /* Platform-specific includes */
 #ifdef _WIN32
@@ -84,6 +85,9 @@ static char *utf8_codepoint_at(const char *s, int index, int line, int col) {
  * File helpers
  * ----------------------------------------------------------------------- */
 static char *read_file_str(const char *path, int line, int col) {
+    struct stat st;
+    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode))
+        error_runtime(line, col, "Cannot read file: '%s'", path);
     FILE *f = fopen(path, "rb");
     if (!f) error_runtime(line, col, "Cannot read file: '%s': %s",
                           path, strerror(errno));
@@ -480,6 +484,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     if (strcmp(name, "print") == 0) {
         REQUIRE(1);
         fputs(args[0].u.s, stdout);
+        fflush(stdout);
         return val_void();
     }
 

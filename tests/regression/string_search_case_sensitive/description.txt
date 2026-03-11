@@ -1,0 +1,1 @@
+Protects case-sensitive string search helpers.

@@ -1,0 +1,1 @@
+Protects toInt on a negative string.

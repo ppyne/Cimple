@@ -1,0 +1,4 @@
+void main() {
+    int[] xs = [1];
+    arraySet(xs, 0);
+}

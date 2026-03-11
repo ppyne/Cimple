@@ -1,0 +1,4 @@
+void main() {
+    string[] xs = ["alpha", "beta", "gamma"];
+    print(arrayGet(xs, 1) + "\n");
+}

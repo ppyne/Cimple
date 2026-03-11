@@ -1,0 +1,4 @@
+void main() {
+    int ts = makeEpoch(2025, 3, 11, 14, 32, 7);
+    print(formatDate(ts, "DD/MM/YYYY") + "\n");
+}

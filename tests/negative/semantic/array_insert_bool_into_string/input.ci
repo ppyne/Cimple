@@ -1,0 +1,4 @@
+void main() {
+    string[] xs = ["a"];
+    arrayInsert(xs, 0, true);
+}
