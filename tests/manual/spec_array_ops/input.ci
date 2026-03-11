@@ -1,0 +1,12 @@
+void main() {
+    int[] scores = [10, 20, 30];
+    scores[1] = 99;
+    print(toString(scores[1]) + "\n");
+    arrayPush(scores, 40);
+    print(toString(count(scores)) + "\n");
+    int last = arrayPop(scores);
+    print(toString(last) + "\n");
+    arrayInsert(scores, 1, 15);
+    arrayRemove(scores, 2);
+    print(toString(scores[0]) + "," + toString(scores[1]) + "," + toString(scores[2]) + "\n");
+}

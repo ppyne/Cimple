@@ -1,0 +1,1 @@
+Specification example for writeFile/readFile round-trip.

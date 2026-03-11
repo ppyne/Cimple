@@ -1,0 +1,1 @@
+Specification example for byte-based string indexing.

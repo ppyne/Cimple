@@ -1,0 +1,7 @@
+void main() {
+    int[] scores = [10, 20, 30];
+    print(toString(count(scores)) + "\n");
+    arrayPush(scores, 40);
+    print(toString(scores[0]) + "\n");
+    print(toString(scores[3]) + "\n");
+}

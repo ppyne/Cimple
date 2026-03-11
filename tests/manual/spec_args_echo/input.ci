@@ -1,0 +1,11 @@
+void main(string[] args) {
+    if (count(args) == 0) {
+        print("Aucun argument.\n");
+        return;
+    }
+    int i = 0;
+    while (i < count(args)) {
+        print("arg[" + toString(i) + "] = " + args[i] + "\n");
+        i++;
+    }
+}

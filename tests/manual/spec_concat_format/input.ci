@@ -1,0 +1,11 @@
+void main() {
+    string[] parts = ["x", "=", "42"];
+    print(concat(parts) + "\n");
+    print(join(parts, "") + "\n");
+
+    string s = "le chat est un chat";
+    print(replace(s, "chat", "chien") + "\n");
+
+    string msg = format("Nom: {}, Age: {}", ["Alice", toString(30)]);
+    print(msg + "\n");
+}

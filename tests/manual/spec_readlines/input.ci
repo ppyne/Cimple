@@ -1,0 +1,7 @@
+void main() {
+    writeLines("noms.txt", ["Alice", "Bob", "Charlie"]);
+    string[] lines = readLines("noms.txt");
+    for (int i = 0; i < count(lines); i++) {
+        print(toString(i + 1) + ". " + lines[i] + "\n");
+    }
+}

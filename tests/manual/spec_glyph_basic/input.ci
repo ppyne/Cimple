@@ -1,0 +1,8 @@
+void main() {
+    string s = "élan";
+    print(toString(len(s)) + "\n");
+    print(toString(glyphLen(s)) + "\n");
+    for (int i = 0; i < glyphLen(s); i++) {
+        print(glyphAt(s, i) + "\n");
+    }
+}

@@ -13,6 +13,15 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n);
 static void  exec_stmt(Interp *ip, Scope *scope, AstNode *n);
 static Value call_func(Interp *ip, const char *name, Value *args, int nargs,
                         int line, int col);
+static AstNode *find_func_decl(Interp *ip, const char *name);
+
+static int is_mutating_array_builtin(const char *name) {
+    return strcmp(name, "arrayPush") == 0 ||
+           strcmp(name, "arrayPop") == 0 ||
+           strcmp(name, "arrayInsert") == 0 ||
+           strcmp(name, "arrayRemove") == 0 ||
+           strcmp(name, "arraySet") == 0;
+}
 
 /* -----------------------------------------------------------------------
  * Predefined constants
@@ -226,12 +235,34 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         const char *fname = n->u.call.name;
         NodeList   *args  = &n->u.call.args;
         Value       arg_vals[32];
+        int         borrowed[32] = {0};
+        AstNode    *user_func = find_func_decl(ip, fname);
         int nargs = args->count;
         if (nargs > 32) nargs = 32;
-        for (int i = 0; i < nargs; i++)
-            arg_vals[i] = eval_expr(ip, scope, args->items[i]);
+        for (int i = 0; i < nargs; i++) {
+            int borrow_array_arg =
+                args->items[i]->kind == NODE_IDENT &&
+                ((i == 0 && is_mutating_array_builtin(fname)) ||
+                 (user_func &&
+                  i < user_func->u.func_decl.params.count &&
+                  type_is_array(user_func->u.func_decl.params.items[i]->u.param.type)));
+
+            if (borrow_array_arg) {
+                Symbol *sym = scope_lookup(scope, args->items[i]->u.ident.name);
+                if (!sym) {
+                    error_runtime(n->line, n->col,
+                                  "undefined variable '%s'", args->items[i]->u.ident.name);
+                }
+                arg_vals[i] = sym->val;
+                borrowed[i] = 1;
+            } else {
+                arg_vals[i] = eval_expr(ip, scope, args->items[i]);
+            }
+        }
         Value result = call_func(ip, fname, arg_vals, nargs, n->line, n->col);
-        for (int i = 0; i < nargs; i++) value_free(&arg_vals[i]);
+        for (int i = 0; i < nargs; i++) {
+            if (!borrowed[i]) value_free(&arg_vals[i]);
+        }
         return result;
     }
 
@@ -439,6 +470,8 @@ static Value call_user_func(Interp *ip, AstNode *f, Value *args, int nargs,
 
     /* Create function scope (child of global) */
     Scope *fn_scope = scope_new(ip->global, 1);
+    Symbol *bound_params[32] = {0};
+    int borrowed_params[32] = {0};
 
     /* Bind parameters */
     NodeList *params = &f->u.func_decl.params;
@@ -446,7 +479,16 @@ static Value call_user_func(Interp *ip, AstNode *f, Value *args, int nargs,
         AstNode *p   = params->items[i];
         Symbol  *sym = scope_define(fn_scope, p->u.param.name,
                                     p->u.param.type, p->line, p->col);
-        if (sym) sym->val = value_copy(args[i]);
+        if (sym) {
+            if (type_is_array(p->u.param.type) && type_is_array(args[i].type)) {
+                value_free(&sym->val);
+                sym->val = args[i];
+                borrowed_params[i] = 1;
+            } else {
+                sym->val = value_copy(args[i]);
+            }
+            bound_params[i] = sym;
+        }
     }
 
     /* Save signal state */
@@ -464,6 +506,12 @@ static Value call_user_func(Interp *ip, AstNode *f, Value *args, int nargs,
     Value ret = ip->ret_val;
     ip->signal  = saved_sig;
     ip->ret_val = saved_ret;
+
+    for (int i = 0; i < params->count && i < nargs; i++) {
+        if (borrowed_params[i] && bound_params[i]) {
+            bound_params[i]->val = val_void();
+        }
+    }
 
     scope_free(fn_scope);
     return ret;

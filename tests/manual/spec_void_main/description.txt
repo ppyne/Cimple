@@ -1,0 +1,1 @@
+Specification example confirming void main() exits with code 0.

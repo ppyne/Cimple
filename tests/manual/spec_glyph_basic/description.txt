@@ -1,0 +1,1 @@
+Specification example for glyphLen and glyphAt on UTF-8 text.
