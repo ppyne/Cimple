@@ -1,0 +1,4 @@
+void main() {
+    print(toString(42) + "\n");
+    print(toString(3.5) + "\n");
+}

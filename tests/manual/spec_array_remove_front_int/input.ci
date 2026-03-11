@@ -1,0 +1,6 @@
+void main() {
+    int[] xs = [1, 2, 3];
+    arrayRemove(xs, 0);
+    print(toString(count(xs)) + "\n");
+    print(toString(xs[0]) + "," + toString(xs[1]) + "\n");
+}

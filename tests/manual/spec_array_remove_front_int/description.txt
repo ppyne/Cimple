@@ -1,0 +1,1 @@
+Manual coverage for arrayRemove at the front of an int array.
