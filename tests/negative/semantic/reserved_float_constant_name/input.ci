@@ -1,0 +1,3 @@
+void main() {
+    int M_PI = 1;
+}

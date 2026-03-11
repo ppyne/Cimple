@@ -1,0 +1,1 @@
+Protects insertion at the front of a string array.

@@ -1,0 +1,6 @@
+void main() {
+    writeLines("rt.txt", ["a", "b"]);
+    string[] xs = readLines("rt.txt");
+    print(toString(count(xs)) + "\n");
+    print(xs[0] + "," + xs[1] + "\n");
+}

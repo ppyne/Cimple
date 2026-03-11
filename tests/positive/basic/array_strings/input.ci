@@ -1,0 +1,6 @@
+void main() {
+    string[] xs = ["red", "green"];
+    arrayInsert(xs, 1, "blue");
+    print(toString(count(xs)) + "\n");
+    print(xs[0] + "," + xs[1] + "," + xs[2] + "\n");
+}

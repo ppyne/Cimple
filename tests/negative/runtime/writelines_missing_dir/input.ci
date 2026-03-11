@@ -1,0 +1,3 @@
+void main() {
+    writeLines("missing/out.txt", ["a"]);
+}

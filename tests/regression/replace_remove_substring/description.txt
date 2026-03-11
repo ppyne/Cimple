@@ -1,0 +1,1 @@
+Protects replace when the replacement string is empty.

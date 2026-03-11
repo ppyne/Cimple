@@ -1,0 +1,7 @@
+void main() {
+    writeLines("tmp.txt", ["one", "two"]);
+    print(toString(fileExists("tmp.txt")) + "\n");
+    string[] lines = readLines("tmp.txt");
+    print(lines[0] + "\n");
+    print(lines[1] + "\n");
+}

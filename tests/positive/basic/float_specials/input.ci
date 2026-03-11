@@ -1,0 +1,5 @@
+void main() {
+    print(toString(isNaN(toFloat("bad"))) + "\n");
+    print(toString(isFinite(1.5)) + "\n");
+    print(toString(isInfinite(1.0 / 0.0)) + "\n");
+}

@@ -1,0 +1,4 @@
+void main() {
+    string[] lines = readLines("missing.txt");
+    print(toString(count(lines)) + "\n");
+}

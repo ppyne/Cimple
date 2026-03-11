@@ -1,0 +1,7 @@
+void main() {
+    print(toString(absInt(-5)) + "\n");
+    print(toString(minInt(3, 7)) + "\n");
+    print(toString(maxInt(3, 7)) + "\n");
+    print(toString(isEven(8)) + "\n");
+    print(toString(isOdd(7)) + "\n");
+}

@@ -1,0 +1,5 @@
+void main() {
+    print(join(["alpha", "beta"], "-") + "\n");
+    print(replace("foobar", "o", "X") + "\n");
+    print(format("{}:{}", ["L", "R"]) + "\n");
+}
