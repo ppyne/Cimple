@@ -1,0 +1,4 @@
+void main() {
+    int[] values = [1, 2, 3];
+    print(toString(arrayGet(values, 5)) + "\n");
+}

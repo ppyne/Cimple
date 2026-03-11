@@ -126,7 +126,8 @@ Value array_pop(ArrayVal *a, int line, int col) {
 void array_insert(ArrayVal *a, int idx, Value v, int line, int col) {
     if (idx < 0 || idx > a->count)
         error_runtime(line, col,
-                      "arrayInsert: index %d out of range [0, %d]", idx, a->count);
+                      "arrayInsert: index out of bounds (Index: %d   Array size: %d)",
+                      idx, a->count);
     arr_ensure(a, a->count + 1);
     switch (a->elem_type) {
     case TYPE_INT:
@@ -157,7 +158,8 @@ void array_insert(ArrayVal *a, int idx, Value v, int line, int col) {
 void array_remove(ArrayVal *a, int idx, int line, int col) {
     if (idx < 0 || idx >= a->count)
         error_runtime(line, col,
-                      "arrayRemove: index %d out of range, count=%d", idx, a->count);
+                      "arrayRemove: index out of bounds (Index: %d   Array size: %d)",
+                      idx, a->count);
     if (a->elem_type == TYPE_STRING)
         free(a->data.strings[idx]);
     switch (a->elem_type) {
@@ -185,7 +187,8 @@ void array_remove(ArrayVal *a, int idx, int line, int col) {
 Value array_get(ArrayVal *a, int idx, int line, int col) {
     if (idx < 0 || idx >= a->count)
         error_runtime(line, col,
-                      "array index %d out of bounds (count=%d)", idx, a->count);
+                      "Array index out of bounds (Index: %d   Array size: %d)",
+                      idx, a->count);
     switch (a->elem_type) {
     case TYPE_INT:    return val_int(a->data.ints[idx]);
     case TYPE_FLOAT:  return val_float(a->data.floats[idx]);
@@ -198,7 +201,8 @@ Value array_get(ArrayVal *a, int idx, int line, int col) {
 void array_set(ArrayVal *a, int idx, Value v, int line, int col) {
     if (idx < 0 || idx >= a->count)
         error_runtime(line, col,
-                      "array index %d out of bounds (count=%d)", idx, a->count);
+                      "Array index out of bounds (Index: %d   Array size: %d)",
+                      idx, a->count);
     switch (a->elem_type) {
     case TYPE_INT:   a->data.ints[idx]  = v.u.i; break;
     case TYPE_FLOAT: a->data.floats[idx] = v.u.f; break;

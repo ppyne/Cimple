@@ -1,1 +1,1 @@
-writeFile: cannot open
+Cannot write file: 'no/such/dir/file.txt'

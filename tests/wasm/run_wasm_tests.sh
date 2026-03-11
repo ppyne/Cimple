@@ -10,6 +10,16 @@ TMP_WASM_ERR="${TMPDIR:-/tmp}/cimple_wasm_stderr_$$"
 TMP_LIST="${TMPDIR:-/tmp}/cimple_wasm_tests_$$"
 . "$TESTS_DIR/lib/assert.sh"
 
+case "$CIMPLE_NATIVE" in
+    /*) ;;
+    *) CIMPLE_NATIVE="$(pwd)/$CIMPLE_NATIVE" ;;
+esac
+
+case "$CIMPLE_WASM" in
+    /*) ;;
+    *) CIMPLE_WASM="$(pwd)/$CIMPLE_WASM" ;;
+esac
+
 node --version >/dev/null 2>&1 || {
     echo "Node.js required for wasm tests" >&2
     exit 1
@@ -19,6 +29,7 @@ run_compare() {
     src="$1"
     name="${src#$TESTS_DIR/}"
     dir="$(dirname "$src")"
+    tmp_run_dir="${TMPDIR:-/tmp}/cimple_wasm_run_$$"
 
     set --
     if [ -f "$dir/args" ]; then
@@ -27,13 +38,16 @@ run_compare() {
         done < "$dir/args"
     fi
 
-    if native_stdout=$("$CIMPLE_NATIVE" run "$src" "$@" 2>"$TMP_NATIVE_ERR"); then
+    rm -rf "$tmp_run_dir"
+    mkdir -p "$tmp_run_dir"
+
+    if native_stdout=$(cd "$tmp_run_dir" && "$CIMPLE_NATIVE" run "$src" "$@" 2>"$TMP_NATIVE_ERR"); then
         native_exit=0
     else
         native_exit=$?
     fi
 
-    if wasm_stdout=$(node "$WASM_DRIVER" "$CIMPLE_WASM" run "$src" "$@" 2>"$TMP_WASM_ERR"); then
+    if wasm_stdout=$(cd "$tmp_run_dir" && node "$WASM_DRIVER" "$CIMPLE_WASM" run "$src" "$@" 2>"$TMP_WASM_ERR"); then
         wasm_exit=0
     else
         wasm_exit=$?
@@ -49,6 +63,7 @@ run_compare() {
     fi
 
     rm -f "$TMP_NATIVE_ERR" "$TMP_WASM_ERR"
+    rm -rf "$tmp_run_dir"
 }
 
 for root in positive manual; do

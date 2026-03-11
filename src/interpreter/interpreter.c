@@ -137,7 +137,7 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         case OP_DIV:
             if (l.type == TYPE_INT) {
                 if (r.u.i == 0)
-                    error_runtime(n->line, n->col, "integer division by zero");
+                    error_runtime(n->line, n->col, "Integer division by zero");
                 result = val_int(l.u.i / r.u.i);
             } else {
                 result = val_float(l.u.f / r.u.f);
@@ -145,7 +145,7 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
             break;
         case OP_MOD:
             if (r.u.i == 0)
-                error_runtime(n->line, n->col, "integer modulo by zero");
+                error_runtime(n->line, n->col, "Integer modulo by zero");
             result = val_int(l.u.i % r.u.i);
             break;
 

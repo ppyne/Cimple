@@ -1,1 +1,1 @@
-exec: command array is empty
+exec: command array must not be empty

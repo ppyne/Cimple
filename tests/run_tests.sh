@@ -7,6 +7,11 @@ TMP_ERR="${TMPDIR:-/tmp}/cimple_stderr_$$"
 TMP_LIST="${TMPDIR:-/tmp}/cimple_tests_$$"
 . "$TESTS_DIR/lib/assert.sh"
 
+case "$CIMPLE" in
+    /*) ;;
+    *) CIMPLE="$(pwd)/$CIMPLE" ;;
+esac
+
 run_test() {
     dir="$1"
     name="${dir#$TESTS_DIR/}"
@@ -14,6 +19,7 @@ run_test() {
     expected_exit=$(cat "$dir/expected_exit" 2>/dev/null || printf '0')
     expected_stdout="$dir/expected_stdout"
     expected_stderr="$dir/expected_stderr"
+    tmp_run_dir="${TMPDIR:-/tmp}/cimple_test_run_$$"
 
     set --
     if [ -f "$dir/args" ]; then
@@ -22,13 +28,17 @@ run_test() {
         done < "$dir/args"
     fi
 
-    if actual_stdout=$("$CIMPLE" run "$src" "$@" 2>"$TMP_ERR"); then
+    rm -rf "$tmp_run_dir"
+    mkdir -p "$tmp_run_dir"
+
+    if actual_stdout=$(cd "$tmp_run_dir" && "$CIMPLE" run "$src" "$@" 2>"$TMP_ERR"); then
         actual_exit=0
     else
         actual_exit=$?
     fi
     actual_stderr=$(cat "$TMP_ERR" 2>/dev/null || true)
     rm -f "$TMP_ERR"
+    rm -rf "$tmp_run_dir"
 
     assert_exit "$expected_exit" "$actual_exit" "$name"
 

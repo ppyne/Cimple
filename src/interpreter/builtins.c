@@ -56,7 +56,8 @@ static char *utf8_codepoint_at(const char *s, int index, int line, int col) {
     int total = utf8_codepoint_count(s);
     if (index < 0 || index >= total)
         error_runtime(line, col,
-                      "glyphAt: index %d out of bounds (glyphLen=%d)", index, total);
+                      "glyphAt: index out of bounds (Index: %d   Glyph count: %d)",
+                      index, total);
     const char *p = s;
     for (int i = 0; i < index; i++) {
         unsigned char c = (unsigned char)*p;
@@ -84,7 +85,7 @@ static char *utf8_codepoint_at(const char *s, int index, int line, int col) {
  * ----------------------------------------------------------------------- */
 static char *read_file_str(const char *path, int line, int col) {
     FILE *f = fopen(path, "rb");
-    if (!f) error_runtime(line, col, "readFile: cannot open '%s': %s",
+    if (!f) error_runtime(line, col, "Cannot read file: '%s': %s",
                           path, strerror(errno));
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
@@ -93,7 +94,7 @@ static char *read_file_str(const char *path, int line, int col) {
     if ((long)fread(buf, 1, (size_t)size, f) != size) {
         fclose(f);
         free(buf);
-        error_runtime(line, col, "readFile: read error on '%s'", path);
+        error_runtime(line, col, "Cannot read file: '%s'", path);
     }
     buf[size] = '\0';
     fclose(f);
@@ -109,7 +110,7 @@ static Value do_exec(Value *args, int nargs, int line, int col) {
         error_runtime(line, col, "exec: first argument must be string[]");
     ArrayVal *cmd_arr = args[0].u.arr;
     if (cmd_arr->count == 0)
-        error_runtime(line, col, "exec: command array is empty");
+        error_runtime(line, col, "exec: command array must not be empty");
 
     /* Build argv */
     int     argc = cmd_arr->count;
@@ -516,7 +517,8 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         int         idx  = (int)ARG_INT(1);
         if (idx < 0 || idx >= slen)
             error_runtime(line, col,
-                          "byteAt: index %d out of bounds (length=%d)", idx, slen);
+                          "byteAt: index out of bounds (Index: %d   String length: %d bytes)",
+                          idx, slen);
         return val_int((unsigned char)s[idx]);
     }
 
@@ -526,11 +528,10 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         int         slen = (int)strlen(s);
         int         start = (int)ARG_INT(1);
         int         len2  = (int)ARG_INT(2);
-        if (start < 0) error_runtime(line, col, "substr: negative start");
-        if (start > slen) start = slen;
-        int available = slen - start;
-        if (len2 > available) len2 = available;
-        if (len2 < 0) len2 = 0;
+        if (start < 0 || len2 < 0 || start > slen || len2 > slen - start)
+            error_runtime(line, col,
+                          "substr: range out of bounds (start: %d   length: %d   String length: %d bytes)",
+                          start, len2, slen);
         char *out = cimple_strndup(s + start, (size_t)len2);
         return val_string_own(out);
     }
@@ -566,7 +567,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         const char *old = ARG_STR(1);
         const char *repl= ARG_STR(2);
         if (old[0] == '\0')
-            error_runtime(line, col, "replace: old string must not be empty");
+            error_runtime(line, col, "replace: old argument cannot be empty");
         size_t slen    = strlen(s);
         size_t oldlen  = strlen(old);
         size_t repllen = strlen(repl);
@@ -606,7 +607,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
             if (p[0] == '{' && p[1] == '}') ph_count++;
         if (ph_count != arr->count)
             error_runtime(line, col,
-                          "format: %d placeholder(s) but %d argument(s)",
+                          "format: marker count does not match argument count (Markers '{}': %d   Arguments provided: %d)",
                           ph_count, arr->count);
         /* Build result */
         size_t cap = strlen(tmpl) + 1;
@@ -656,7 +657,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         const char *s   = ARG_STR(0);
         const char *sep = ARG_STR(1);
         if (sep[0] == '\0')
-            error_runtime(line, col, "split: separator must not be empty");
+            error_runtime(line, col, "split: separator cannot be empty");
         Value result = val_array(TYPE_STRING);
         if (s[0] == '\0') {
             Value empty_s = val_string("");
@@ -866,7 +867,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     if (strcmp(name, "writeFile") == 0) {
         REQUIRE(2);
         FILE *f = fopen(ARG_STR(0), "wb");
-        if (!f) error_runtime(line, col, "writeFile: cannot open '%s'", ARG_STR(0));
+        if (!f) error_runtime(line, col, "Cannot write file: '%s'", ARG_STR(0));
         fputs(ARG_STR(1), f);
         fclose(f);
         return val_void();
@@ -874,7 +875,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     if (strcmp(name, "appendFile") == 0) {
         REQUIRE(2);
         FILE *f = fopen(ARG_STR(0), "ab");
-        if (!f) error_runtime(line, col, "appendFile: cannot open '%s'", ARG_STR(0));
+        if (!f) error_runtime(line, col, "Cannot write file: '%s'", ARG_STR(0));
         fputs(ARG_STR(1), f);
         fclose(f);
         return val_void();
@@ -924,7 +925,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     if (strcmp(name, "writeLines") == 0) {
         REQUIRE(2);
         FILE *f = fopen(ARG_STR(0), "wb");
-        if (!f) error_runtime(line, col, "writeLines: cannot open '%s'", ARG_STR(0));
+        if (!f) error_runtime(line, col, "Cannot write file: '%s'", ARG_STR(0));
         ArrayVal *arr = ARG_ARR(1);
         for (int i = 0; i < arr->count; i++) {
             fputs(arr->data.strings[i], f);
