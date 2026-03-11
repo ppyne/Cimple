@@ -168,12 +168,7 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         /* Arithmetic */
         case OP_ADD:
             if (l.type == TYPE_STRING && r.type == TYPE_STRING) {
-                size_t ll = strlen(l.u.s), rl = strlen(r.u.s);
-                char *s = (char *)cimple_malloc(ll + rl + 1);
-                memcpy(s, l.u.s, ll);
-                memcpy(s + ll, r.u.s, rl);
-                s[ll + rl] = '\0';
-                result = val_string_own(s);
+                result = val_string_own(cimple_strconcat(l.u.s, r.u.s));
             } else if (l.type == TYPE_INT) {
                 result = val_int(l.u.i + r.u.i);
             } else {

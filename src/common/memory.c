@@ -47,3 +47,13 @@ char *cimple_strndup(const char *s, size_t n) {
     p[len] = '\0';
     return p;
 }
+
+char *cimple_strconcat(const char *left, const char *right) {
+    size_t left_len = strlen(left);
+    size_t right_len = strlen(right);
+    char *out = (char *)cimple_malloc(left_len + right_len + 1);
+    memcpy(out, left, left_len);
+    memcpy(out + left_len, right, right_len);
+    out[left_len + right_len] = '\0';
+    return out;
+}

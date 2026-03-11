@@ -9,6 +9,7 @@ void *cimple_calloc(size_t n, size_t size);
 void *cimple_realloc(void *ptr, size_t size);
 char *cimple_strdup(const char *s);
 char *cimple_strndup(const char *s, size_t n);
+char *cimple_strconcat(const char *left, const char *right);
 
 /* Convenience macro for typed allocation. */
 #define ALLOC(type)        ((type *)cimple_malloc(sizeof(type)))
