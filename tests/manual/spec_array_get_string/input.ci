@@ -1,0 +1,4 @@
+void main() {
+    string[] words = ["alpha", "beta", "gamma"];
+    print(arrayGet(words, 1) + "\n");
+}

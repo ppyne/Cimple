@@ -1,0 +1,3 @@
+void main() {
+    print(toString(tan(0.0)) + "\n");
+}
