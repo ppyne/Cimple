@@ -1,0 +1,21 @@
+void main() {
+    int i = 1;
+    i++;
+    i++;
+    i--;
+    print(toString(i) + "\n");
+
+    int k = 0;
+    while (k < 6) {
+        k++;
+        if (k == 2) continue;
+        if (k == 5) break;
+        print(toString(k));
+    }
+    print("\n");
+
+    for (int j = 0; j < 3; j++) {
+        print(toString(j));
+    }
+    print("\n");
+}

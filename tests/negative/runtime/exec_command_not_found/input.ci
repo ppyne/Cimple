@@ -1,0 +1,4 @@
+void main() {
+    ExecResult r = exec(["no_such_cmd_xyz"], []);
+    print(toString(execStatus(r)) + "\n");
+}

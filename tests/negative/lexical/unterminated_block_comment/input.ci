@@ -1,0 +1,4 @@
+/* unterminated
+void main() {
+    print("x\n");
+}

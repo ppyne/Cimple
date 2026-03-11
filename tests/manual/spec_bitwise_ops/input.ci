@@ -1,0 +1,8 @@
+void main() {
+    print(toString(1 << 3) + "\n");
+    print(toString(20 >> 2) + "\n");
+    print(toString(6 & 3) + "\n");
+    print(toString(6 | 3) + "\n");
+    print(toString(6 ^ 3) + "\n");
+    print(toString(~0) + "\n");
+}

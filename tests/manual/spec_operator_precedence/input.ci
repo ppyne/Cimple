@@ -1,0 +1,6 @@
+void main() {
+    print(toString(2 + 3 * 4) + "\n");
+    print(toString((2 + 3) * 4) + "\n");
+    print(toString(1 + 2 << 3) + "\n");
+    print(toString(true || false && false) + "\n");
+}

@@ -18,6 +18,7 @@
 #  include <spawn.h>
 #  include <sys/wait.h>
 #  include <fcntl.h>
+#  include <sys/types.h>
 extern char **environ;
 #endif
 
@@ -220,11 +221,23 @@ static Value do_exec(Value *args, int nargs, int line, int col) {
     err_str = err_buf;
 #else
     int out_pipe[2], err_pipe[2];
+    int exec_err_pipe[2];
     if (pipe(out_pipe) != 0 || pipe(err_pipe) != 0)
         error_runtime(line, col, "exec: pipe() failed");
+    if (pipe(exec_err_pipe) != 0) {
+        close(out_pipe[0]); close(out_pipe[1]);
+        close(err_pipe[0]); close(err_pipe[1]);
+        error_runtime(line, col, "exec: pipe() failed");
+    }
+    (void)fcntl(exec_err_pipe[1], F_SETFD, FD_CLOEXEC);
 
     pid_t pid = fork();
-    if (pid < 0) error_runtime(line, col, "exec: fork() failed");
+    if (pid < 0) {
+        close(out_pipe[0]); close(out_pipe[1]);
+        close(err_pipe[0]); close(err_pipe[1]);
+        close(exec_err_pipe[0]); close(exec_err_pipe[1]);
+        error_runtime(line, col, "exec: fork() failed");
+    }
 
     if (pid == 0) {
         /* child */
@@ -232,11 +245,18 @@ static Value do_exec(Value *args, int nargs, int line, int col) {
         dup2(err_pipe[1], STDERR_FILENO);
         close(out_pipe[0]); close(out_pipe[1]);
         close(err_pipe[0]); close(err_pipe[1]);
+        close(exec_err_pipe[0]);
         if (envp) execve(argv[0], argv, envp);
         else      execvp(argv[0], argv);
+        {
+            int exec_errno = errno;
+            (void)write(exec_err_pipe[1], &exec_errno, sizeof(exec_errno));
+        }
+        close(exec_err_pipe[1]);
         _exit(127);
     }
     close(out_pipe[1]); close(err_pipe[1]);
+    close(exec_err_pipe[1]);
 
     /* Read stdout */
     size_t out_sz = 0, err_sz = 0;
@@ -265,6 +285,20 @@ static Value do_exec(Value *args, int nargs, int line, int col) {
     int wstatus;
     waitpid(pid, &wstatus, 0);
     status = WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : -1;
+    {
+        int exec_errno = 0;
+        ssize_t n = read(exec_err_pipe[0], &exec_errno, sizeof(exec_errno));
+        close(exec_err_pipe[0]);
+        if (n == (ssize_t)sizeof(exec_errno)) {
+            free(out_str);
+            free(err_str);
+            if (exec_errno == ENOENT) {
+                error_runtime(line, col, "exec: command not found: '%s'", argv[0]);
+            }
+            error_runtime(line, col, "exec: failed to start '%s': %s",
+                          argv[0], strerror(exec_errno));
+        }
+    }
 #endif
 
     if (envp) free(envp);

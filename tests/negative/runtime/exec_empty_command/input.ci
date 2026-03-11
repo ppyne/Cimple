@@ -1,0 +1,4 @@
+void main() {
+    ExecResult r = exec([], []);
+    print(toString(execStatus(r)) + "\n");
+}

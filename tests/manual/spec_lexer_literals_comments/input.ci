@@ -1,0 +1,11 @@
+/* block comment before the program */
+void main() {
+    // integer bases
+    print(toString(0x10) + "\n");
+    print(toString(0b1010) + "\n");
+    print(toString(010) + "\n");
+
+    /* scientific float */
+    print(toString(1.5e2) + "\n");
+    print("A:\u00E9\n");
+}

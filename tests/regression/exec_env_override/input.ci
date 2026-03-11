@@ -1,0 +1,6 @@
+void main() {
+    ExecResult r = exec(["/usr/bin/printenv", "GREETING"], ["GREETING=bonjour"]);
+    print(toString(execStatus(r)) + "\n");
+    print(execStdout(r) + "\n");
+    print(execStderr(r) + "\n");
+}
