@@ -1,0 +1,1 @@
+Protects arrayGet on bool arrays.

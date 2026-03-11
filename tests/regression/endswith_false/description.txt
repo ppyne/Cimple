@@ -1,0 +1,1 @@
+Protects endsWith false cases.

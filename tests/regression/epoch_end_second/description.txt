@@ -1,0 +1,1 @@
+Protects extraction of the last second in a minute.

@@ -1,0 +1,4 @@
+void main() {
+    int ts = makeEpoch(2025, 12, 31, 23, 59, 59);
+    print(toString(epochToSecond(ts)) + "\n");
+}

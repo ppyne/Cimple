@@ -1,0 +1,1 @@
+Protects glyphAt on ASCII strings.

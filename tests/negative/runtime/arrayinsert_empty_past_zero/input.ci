@@ -1,0 +1,4 @@
+void main() {
+    int[] xs = [];
+    arrayInsert(xs, 1, 3);
+}
