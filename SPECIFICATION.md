@@ -1,3 +1,7 @@
+<img src="logo_cimple_full.svg" height="150" title="Cimple" alt="Cimple" />
+
+---
+
 # Cimple — spécification version 1.0
 
 > **Version : 1.0**

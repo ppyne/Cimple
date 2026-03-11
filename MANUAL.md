@@ -1,3 +1,7 @@
+<img src="logo_cimple_full.svg" height="150" title="Cimple" alt="Cimple" />
+
+---
+
 # Cimple — Language Manual
 
 Cimple is a small, statically typed, imperative language with C-like syntax. It is designed
