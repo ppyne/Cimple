@@ -1,0 +1,6 @@
+void main() {
+    print(toString(approxEqual(log(M_E), 1.0, 0.0001)) + "\n");
+    print(toString(approxEqual(log2(8.0), 3.0, 0.0001)) + "\n");
+    print(toString(approxEqual(log10(1000.0), 3.0, 0.0001)) + "\n");
+    print(toString(approxEqual(exp(0.0), 1.0, 0.0001)) + "\n");
+}

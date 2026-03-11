@@ -1,0 +1,6 @@
+void main() {
+    string path = getEnv("PATH", "");
+    ExecResult r = exec(["/usr/bin/printenv", "PATH"], ["PATH=" + path]);
+    print(toString(execStatus(r) == 0) + "\n");
+    print(toString(len(execStdout(r)) > 0) + "\n");
+}

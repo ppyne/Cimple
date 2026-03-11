@@ -1,0 +1,1 @@
+Manual coverage for readLines combined with fileExists and conditional creation.

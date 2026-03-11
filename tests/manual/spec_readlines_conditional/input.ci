@@ -1,0 +1,8 @@
+void main() {
+    if (!fileExists("list.txt")) {
+        writeLines("list.txt", ["red", "green", "blue"]);
+    }
+    string[] lines = readLines("list.txt");
+    print(toString(count(lines)) + "\n");
+    print(lines[0] + "," + lines[2] + "\n");
+}

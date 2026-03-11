@@ -1,0 +1,1 @@
+Manual coverage for mutating a bool array through a function call.

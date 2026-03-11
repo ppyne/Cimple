@@ -1,0 +1,11 @@
+void flipAll(bool[] flags) {
+    for (int i = 0; i < count(flags); i++) {
+        flags[i] = !flags[i];
+    }
+}
+
+void main() {
+    bool[] flags = [true, false, true];
+    flipAll(flags);
+    print(toString(flags[0]) + "," + toString(flags[1]) + "," + toString(flags[2]) + "\n");
+}
