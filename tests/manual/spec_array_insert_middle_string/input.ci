@@ -1,0 +1,5 @@
+void main() {
+    string[] xs = ["a", "c"];
+    arrayInsert(xs, 1, "b");
+    print(join(xs, ",") + "\n");
+}

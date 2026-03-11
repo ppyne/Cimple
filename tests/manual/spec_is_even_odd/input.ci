@@ -1,0 +1,6 @@
+void main() {
+    print(toString(isEven(4)) + "\n");
+    print(toString(isEven(5)) + "\n");
+    print(toString(isOdd(4)) + "\n");
+    print(toString(isOdd(5)) + "\n");
+}

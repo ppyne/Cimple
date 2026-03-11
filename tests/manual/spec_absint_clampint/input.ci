@@ -1,0 +1,5 @@
+void main() {
+    print(toString(absInt(-12)) + "\n");
+    print(toString(clampInt(-2, 0, 10)) + "\n");
+    print(toString(clampInt(7, 0, 10)) + "\n");
+}
