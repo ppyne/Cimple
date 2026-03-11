@@ -5,5 +5,5 @@ int answer() {
 int value = 3;
 
 void main() {
-    print(toString(answer() + value) + "\\n");
+    print(toString(answer() + value) + "\n");
 }

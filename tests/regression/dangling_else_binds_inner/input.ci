@@ -1,7 +1,7 @@
 void main() {
     if (true)
         if (false)
-            print("bad\\n");
+            print("bad\n");
         else
-            print("ok\\n");
+            print("ok\n");
 }
