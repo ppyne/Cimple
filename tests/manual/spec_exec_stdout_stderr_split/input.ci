@@ -1,0 +1,5 @@
+void main() {
+    ExecResult r = exec(["/bin/sh", "-c", "printf 'out'; printf 'err' >&2"], []);
+    print(execStdout(r) + "\n");
+    print(execStderr(r) + "\n");
+}
