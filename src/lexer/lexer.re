@@ -50,7 +50,7 @@ static char *decode_string(Lexer *l, const char *start, const char *end) {
             if (*p == '\n' || *p == '\r') {
                 free(buf);
                 error_lexical(l->line, l->tok_col,
-                              "newline inside string literal (use \\n)");
+                              "Unterminated string literal");
             }
             *out++ = *p++;
             continue;
@@ -72,7 +72,7 @@ static char *decode_string(Lexer *l, const char *start, const char *end) {
                 hex_digit(p[3]) < 0 || hex_digit(p[4]) < 0) {
                 free(buf);
                 error_lexical(l->line, l->tok_col,
-                              "malformed \\uXXXX escape sequence");
+                              "Malformed Unicode escape");
             }
             uint32_t cp = (uint32_t)(hex_digit(p[1]) << 12 | hex_digit(p[2]) << 8 |
                                      hex_digit(p[3]) << 4  | hex_digit(p[4]));
@@ -93,7 +93,7 @@ static char *decode_string(Lexer *l, const char *start, const char *end) {
         default:
             free(buf);
             error_lexical(l->line, l->tok_col,
-                          "unknown escape sequence '\\%c'", *p);
+                          "Unknown escape sequence: '\\%c'", *p);
         }
     }
     *out = '\0';
@@ -253,7 +253,7 @@ yybegin:
                                   "unterminated string literal");
                 if (*l->cur == '\n' || *l->cur == '\r')
                     error_lexical(l->line, l->tok_col,
-                                  "newline inside string literal (use \\n)");
+                                  "Unterminated string literal");
                 if (*l->cur == '\\') { l->cur++; l->col++; }
                 if (*l->cur == '"')  {
                     l->cur++; l->col++;
@@ -315,8 +315,8 @@ yybegin:
         }
 
         /* Invalid 0x/0b prefix without digits */
-        "0" [xX] { error_lexical(l->line, l->tok_col, "'0x' without any hex digits"); }
-        "0" [bB] { error_lexical(l->line, l->tok_col, "'0b' without any binary digits"); }
+        "0" [xX] { error_lexical(l->line, l->tok_col, "Invalid hexadecimal literal"); }
+        "0" [bB] { error_lexical(l->line, l->tok_col, "Invalid binary literal"); }
 
         /* Keywords and identifiers */
         "true"          { tok.type = TOK_TRUE;          goto kw_done; }
@@ -391,8 +391,8 @@ yybegin:
         /* Unknown character */
         [^]    {
             error_lexical(l->line, l->tok_col,
-                          "unknown character '%c' (0x%02X)",
-                          (unsigned char)*l->tok, (unsigned char)*l->tok);
+                          "Unexpected character: '%c'",
+                          (unsigned char)*l->tok);
         }
     */
 
