@@ -1,0 +1,1 @@
+Covers top-level parsing where function declarations and global variables share the same type-prefixed syntax.

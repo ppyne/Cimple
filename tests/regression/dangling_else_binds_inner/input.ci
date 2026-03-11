@@ -1,0 +1,7 @@
+void main() {
+    if (true)
+        if (false)
+            print("bad\\n");
+        else
+            print("ok\\n");
+}

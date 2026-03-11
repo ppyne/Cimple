@@ -42,9 +42,9 @@ cmake --build .
 ### Run
 
 ```sh
-./cimple run examples/hello.cim
-./cimple run examples/fibonacci.cim 15
-./cimple check myprogram.cim
+./cimple run examples/hello.ci
+./cimple run examples/fibonacci.ci 15
+./cimple check myprogram.ci
 ```
 
 ## Language overview
@@ -98,14 +98,14 @@ cimple/
 │   ├── fetch_lemon.sh           # Download lemon.c + lempar.c
 │   ├── lemon.c                  # (to be fetched — not committed)
 │   └── lempar.c                 # (to be fetched — not committed)
-├── examples/                    # Example .cim programs
+├── examples/                    # Example .ci programs
 └── tests/                       # Test suite
 ```
 
 ## Pipeline
 
 ```
-Source (.cim)
+Source (.ci)
     │
     ▼ re2c
 Lexer → Tokens
@@ -127,7 +127,7 @@ cd tools/ && ./fetch_lemon.sh
 mkdir build-wasm && cd build-wasm
 cmake .. -DCMAKE_TOOLCHAIN_FILE=../toolchain-emscripten.cmake
 emmake cmake --build .
-node cimple.js run ../examples/hello.cim
+node cimple.js run ../examples/hello.ci
 ```
 
 ## License

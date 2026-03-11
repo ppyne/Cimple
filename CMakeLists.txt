@@ -45,10 +45,11 @@ set(PARSER_C  "${GENERATED_DIR}/parser.c")
 set(PARSER_H  "${GENERATED_DIR}/parser.h")
 add_custom_command(
     OUTPUT  "${PARSER_C}" "${PARSER_H}"
-    COMMAND "${LEMON_EXECUTABLE}" -d"${GENERATED_DIR}" "${PARSER_Y}"
+    COMMAND "${LEMON_EXECUTABLE}" "-d${GENERATED_DIR}" "${PARSER_Y}"
     DEPENDS "${PARSER_Y}"
             $<$<BOOL:${LEMON_BUILT_HERE}>:lemon_tool>
     COMMENT "Generating parser from ${PARSER_Y}"
+    WORKING_DIRECTORY "${GENERATED_DIR}"
     VERBATIM
 )
 # Copy lempar.c template so lemon can find it at generation time
@@ -74,6 +75,8 @@ set(CIMPLE_SOURCES
 add_executable(cimple ${CIMPLE_SOURCES})
 target_include_directories(cimple PRIVATE
     "${SRC_DIR}"
+    "${SRC_DIR}/lexer"
+    "${SRC_DIR}/parser"
     "${GENERATED_DIR}"
 )
 

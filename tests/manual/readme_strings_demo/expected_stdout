@@ -1,0 +1,12 @@
+Original:    Hello, Cimple!
+Length:      14 bytes
+GlyphLen:    14 code points
+Upper first: H
+IndexOf ',': 5
+Contains 'e': true
+Starts 'Hello': true
+Ends '!': true
+Replace:     Hello, World!
+Split count: 2
+Join:        Hello | Cimple!
+Lang: Cimple v1.0

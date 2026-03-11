@@ -1,0 +1,9 @@
+int answer() {
+    return 42;
+}
+
+int value = 3;
+
+void main() {
+    print(toString(answer() + value) + "\\n");
+}

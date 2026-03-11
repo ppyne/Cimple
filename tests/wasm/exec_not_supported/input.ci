@@ -1,0 +1,4 @@
+void main() {
+    ExecResult r = exec(["echo", "hello"], []);
+    print(execStdout(r));
+}

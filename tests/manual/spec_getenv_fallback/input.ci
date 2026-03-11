@@ -1,0 +1,3 @@
+void main() {
+    print(getEnv("CIMPLE_SHOULD_NOT_EXIST_123", "fallback") + "\n");
+}

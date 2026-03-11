@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+void *ParseAlloc(void *(*mallocProc)(size_t));
+void Parse(void *parser, int tokenType, Token token, ParseState *ps);
+void ParseFree(void *parser, void (*freeProc)(void *));
+
 /* -----------------------------------------------------------------------
  * Parse driver
  * Feeds tokens produced by the lexer into the Lemon-generated parser.
@@ -19,14 +23,15 @@ AstNode *parse_program(const char *source) {
 
     for (;;) {
         Token tok = lexer_next(&lex);
+
+        if (tok.type == TOK_ERROR)
+            break;
+
         Parse(parser, tok.type, tok, &ps);
 
         if (tok.type == TOK_EOF) {
-            Parse(parser, 0, tok, &ps);
             break;
         }
-        if (tok.type == TOK_ERROR)
-            break;
     }
 
     ParseFree(parser, free);

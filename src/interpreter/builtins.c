@@ -285,8 +285,8 @@ static Value do_exec(Value *args, int nargs, int line, int col) {
  * ----------------------------------------------------------------------- */
 static int64_t get_now_ms(void) {
 #ifdef __EMSCRIPTEN__
-    extern double emscripten_get_now(void);
-    return (int64_t)(emscripten_get_now());
+    extern double emscripten_date_now(void);
+    return (int64_t)(emscripten_date_now());
 #elif defined(_WIN32)
     FILETIME ft;
     GetSystemTimeAsFileTime(&ft);
@@ -303,10 +303,54 @@ static int64_t get_now_ms(void) {
 /* -----------------------------------------------------------------------
  * Date helpers (UTC)
  * ----------------------------------------------------------------------- */
+static int64_t days_from_civil(int year, int month, int day) {
+    year -= month <= 2;
+    const int era = (year >= 0 ? year : year - 399) / 400;
+    const unsigned yoe = (unsigned)(year - era * 400);
+    const unsigned doy = (153U * (unsigned)(month + (month > 2 ? -3 : 9)) + 2U) / 5U + (unsigned)day - 1U;
+    const unsigned doe = yoe * 365U + yoe / 4U - yoe / 100U + doy;
+    return (int64_t)era * 146097 + (int64_t)doe - 719468;
+}
+
+static void civil_from_days(int64_t z, int *year, int *month, int *day) {
+    z += 719468;
+    const int era = (int)(z >= 0 ? z : z - 146096) / 146097;
+    const unsigned doe = (unsigned)(z - (int64_t)era * 146097);
+    const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const int y = (int)yoe + era * 400;
+    const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const unsigned mp = (5 * doy + 2) / 153;
+    const unsigned d = doy - (153 * mp + 2) / 5 + 1;
+    const unsigned m = mp + (mp < 10 ? 3 : -9);
+    *year = y + (m <= 2);
+    *month = (int)m;
+    *day = (int)d;
+}
+
+static int64_t make_epoch_utc_ms(int year, int month, int day, int hour, int minute, int second) {
+    if (month < 1 || month > 12 || day < 1 || hour < 0 || hour > 23 ||
+        minute < 0 || minute > 59 || second < 0 || second > 59) {
+        return -1;
+    }
+
+    int64_t days = days_from_civil(year, month, day);
+    int check_year, check_month, check_day;
+    civil_from_days(days, &check_year, &check_month, &check_day);
+    if (check_year != year || check_month != month || check_day != day) {
+        return -1;
+    }
+
+    return (((days * 24 + hour) * 60 + minute) * 60 + second) * 1000;
+}
+
 static void epoch_to_tm(int64_t epochMs, struct tm *out) {
     time_t t = (time_t)(epochMs / 1000);
 #ifdef _WIN32
     gmtime_s(out, &t);
+#elif defined(__EMSCRIPTEN__)
+    struct tm *tmp = gmtime(&t);
+    if (!tmp) memset(out, 0, sizeof(*out));
+    else *out = *tmp;
 #else
     gmtime_r(&t, out);
 #endif
@@ -382,11 +426,11 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
 
 #define REQUIRE(n) do { if (nargs < (n)) \
     error_runtime(line, col, "%s: expected %d argument(s)", name, (n)); } while(0)
-#define ARG_STR(i)   args[i].u.s
-#define ARG_INT(i)   args[i].u.i
-#define ARG_FLOAT(i) args[i].u.f
-#define ARG_BOOL(i)  args[i].u.b
-#define ARG_ARR(i)   args[i].u.arr
+#define ARG_STR(idx)   args[(idx)].u.s
+#define ARG_INT(idx)   args[(idx)].u.i
+#define ARG_FLOAT(idx) args[(idx)].u.f
+#define ARG_BOOL(idx)  args[(idx)].u.b
+#define ARG_ARR(idx)   args[(idx)].u.arr
 
     /* ---- I/O ---- */
     if (strcmp(name, "print") == 0) {
@@ -503,7 +547,11 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         p = s;
         while (*p) {
             const char *found = strstr(p, old);
-            if (!found) { strcpy(dst, p); break; }
+            if (!found) {
+                strcpy(dst, p);
+                dst += strlen(p);
+                break;
+            }
             memcpy(dst, p, (size_t)(found - p));
             dst += found - p;
             memcpy(dst, repl, repllen);
@@ -895,21 +943,9 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
 
     if (strcmp(name, "makeEpoch") == 0) {
         REQUIRE(6);
-        struct tm t = {0};
-        t.tm_year  = (int)ARG_INT(0) - 1900;
-        t.tm_mon   = (int)ARG_INT(1) - 1;
-        t.tm_mday  = (int)ARG_INT(2);
-        t.tm_hour  = (int)ARG_INT(3);
-        t.tm_min   = (int)ARG_INT(4);
-        t.tm_sec   = (int)ARG_INT(5);
-        t.tm_isdst = 0;
-#ifdef _WIN32
-        time_t ts = _mkgmtime(&t);
-#else
-        time_t ts = timegm(&t);
-#endif
-        if (ts == (time_t)-1) return val_int(-1);
-        return val_int((int64_t)ts * 1000);
+        int64_t ts = make_epoch_utc_ms((int)ARG_INT(0), (int)ARG_INT(1), (int)ARG_INT(2),
+                                       (int)ARG_INT(3), (int)ARG_INT(4), (int)ARG_INT(5));
+        return val_int(ts);
     }
 
     if (strcmp(name, "formatDate") == 0) {

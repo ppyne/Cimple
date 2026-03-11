@@ -53,8 +53,8 @@ static void normalise_newlines(char *s) {
 static void usage(const char *prog) {
     fprintf(stderr,
             "Usage:\n"
-            "  %s run   <file.cim> [args...]\n"
-            "  %s check <file.cim>\n"
+            "  %s run   <file.ci> [args...]\n"
+            "  %s check <file.ci>\n"
             "\n"
             "Commands:\n"
             "  run    Parse, analyse and execute the program.\n"

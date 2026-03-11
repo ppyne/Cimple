@@ -1,0 +1,6 @@
+void main() {
+    string[] words = split("Bonjour tout le monde", " ");
+    print(toString(count(words)) + "\n");
+    print(join(words, "-") + "\n");
+    print(join(words, "") + "\n");
+}

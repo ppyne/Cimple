@@ -2,88 +2,18 @@
 #define CIMPLE_LEXER_H
 
 #include <stdint.h>
+#include "parser.h"
 
 /* -----------------------------------------------------------------------
  * Token types
- * Must be kept in sync with the token IDs expected by the Lemon grammar.
+ * Terminal IDs come from the Lemon-generated parser header.
  * ----------------------------------------------------------------------- */
-typedef enum {
-    /* Literals */
-    TOK_INT_LIT    = 1,
-    TOK_FLOAT_LIT,
-    TOK_STRING_LIT,
-    TOK_TRUE,
-    TOK_FALSE,
+typedef int TokenType;
 
-    /* Types */
-    TOK_KW_INT,
-    TOK_KW_FLOAT,
-    TOK_KW_BOOL,
-    TOK_KW_STRING,
-    TOK_KW_VOID,
-    TOK_KW_EXECRESULT,
-
-    /* Control flow */
-    TOK_IF,
-    TOK_ELSE,
-    TOK_WHILE,
-    TOK_FOR,
-    TOK_BREAK,
-    TOK_CONTINUE,
-    TOK_RETURN,
-
-    /* Identifier */
-    TOK_IDENT,
-
-    /* Arithmetic operators */
-    TOK_PLUS,
-    TOK_MINUS,
-    TOK_STAR,
-    TOK_SLASH,
-    TOK_PERCENT,
-
-    /* Comparison */
-    TOK_EQ,      /* == */
-    TOK_NEQ,     /* != */
-    TOK_LT,
-    TOK_LEQ,
-    TOK_GT,
-    TOK_GEQ,
-
-    /* Logical */
-    TOK_AND,     /* && */
-    TOK_OR,      /* || */
-    TOK_NOT,     /* !  */
-
-    /* Bitwise */
-    TOK_BAND,    /* &  */
-    TOK_BOR,     /* |  */
-    TOK_BXOR,    /* ^  */
-    TOK_BNOT,    /* ~  */
-    TOK_LSHIFT,  /* << */
-    TOK_RSHIFT,  /* >> */
-
-    /* Assignment */
-    TOK_ASSIGN,  /* = */
-
-    /* Increment / decrement */
-    TOK_PLUSPLUS,   /* ++ */
-    TOK_MINUSMINUS, /* -- */
-
-    /* Delimiters */
-    TOK_LPAREN,
-    TOK_RPAREN,
-    TOK_LBRACKET,
-    TOK_RBRACKET,
-    TOK_LBRACE,
-    TOK_RBRACE,
-    TOK_SEMICOLON,
-    TOK_COMMA,
-
-    /* Special */
-    TOK_EOF,
-    TOK_ERROR
-} TokenType;
+enum {
+    TOK_EOF = 0,
+    TOK_ERROR = -1
+};
 
 /* -----------------------------------------------------------------------
  * Token structure
