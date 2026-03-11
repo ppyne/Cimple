@@ -31,6 +31,8 @@ run_compare() {
     dir="$(dirname "$src")"
     tmp_run_dir="${TMPDIR:-/tmp}/cimple_wasm_run_$$"
 
+    [ -f "$dir/skip_wasm" ] && return
+
     set --
     if [ -f "$dir/args" ]; then
         while IFS= read -r arg || [ -n "$arg" ]; do

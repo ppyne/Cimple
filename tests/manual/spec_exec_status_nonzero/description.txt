@@ -1,0 +1,1 @@
+Manual coverage for execStatus on a command that exits non-zero without becoming a Cimple runtime error.

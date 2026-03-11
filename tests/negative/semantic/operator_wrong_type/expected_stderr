@@ -1,0 +1,2 @@
+Operator '&&' cannot be applied to type 'int'
+Operator '&&' requires bool operands.

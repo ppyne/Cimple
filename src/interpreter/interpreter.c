@@ -225,7 +225,8 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         } else if (type_is_array(base.type)) {
             result = array_get(base.u.arr, idx, n->line, n->col);
         } else {
-            error_runtime(n->line, n->col, "indexing non-array/string value");
+            error_runtime(n->line, n->col,
+                          "Operator '[]' cannot be applied to this value at runtime");
             result = val_void();
         }
         value_free(&base);
@@ -533,7 +534,7 @@ static Value call_func(Interp *ip, const char *name, Value *args, int nargs,
     if (f)
         return call_user_func(ip, f, args, nargs, line, col);
 
-    error_runtime(line, col, "unknown function '%s'", name);
+    error_runtime(line, col, "Unknown function: '%s'", name);
     return val_void();
 }
 

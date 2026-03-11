@@ -135,47 +135,68 @@ const BuiltinSig *builtin_lookup(const char *name) {
     return NULL;
 }
 
+/* -----------------------------------------------------------------------
+ * Forward declarations
+ * ----------------------------------------------------------------------- */
+static void check_stmt(SemCtx *ctx, AstNode *n);
+static CimpleType check_expr(SemCtx *ctx, AstNode *n);
+static void error_type_mismatch(int line, int col, const char *context,
+                                CimpleType expected, CimpleType got);
+static void error_operator_type(int line, int col, const char *op,
+                                const char *expected_types, CimpleType got);
+
 /* Resolve intrinsic conversion overloads statically. */
 CimpleType builtin_resolve_intrinsic(const char *name, CimpleType arg_type,
                                       int line, int col) {
     if (strcmp(name, "toString") == 0) {
         if (arg_type == TYPE_INT || arg_type == TYPE_FLOAT || arg_type == TYPE_BOOL)
             return TYPE_STRING;
-        error_semantic(line, col, "toString: unsupported type '%s'", type_name(arg_type));
+        error_operator_type(line, col, "toString()", "int, float or bool", arg_type);
         return TYPE_UNKNOWN;
     }
     if (strcmp(name, "toInt") == 0) {
         if (arg_type == TYPE_FLOAT || arg_type == TYPE_STRING)
             return TYPE_INT;
-        error_semantic(line, col, "toInt: unsupported type '%s'", type_name(arg_type));
+        error_operator_type(line, col, "toInt()", "float or string", arg_type);
         return TYPE_UNKNOWN;
     }
     if (strcmp(name, "toFloat") == 0) {
         if (arg_type == TYPE_INT || arg_type == TYPE_STRING)
             return TYPE_FLOAT;
-        error_semantic(line, col, "toFloat: unsupported type '%s'", type_name(arg_type));
+        error_operator_type(line, col, "toFloat()", "int or string", arg_type);
         return TYPE_UNKNOWN;
     }
     if (strcmp(name, "toBool") == 0) {
         if (arg_type == TYPE_STRING)
             return TYPE_BOOL;
-        error_semantic(line, col, "toBool: unsupported type '%s'", type_name(arg_type));
+        error_operator_type(line, col, "toBool()", "string", arg_type);
         return TYPE_UNKNOWN;
     }
     return TYPE_UNKNOWN;
 }
 
 /* -----------------------------------------------------------------------
- * Forward declarations
- * ----------------------------------------------------------------------- */
-static void check_stmt(SemCtx *ctx, AstNode *n);
-static CimpleType check_expr(SemCtx *ctx, AstNode *n);
-
-/* -----------------------------------------------------------------------
  * Helpers
  * ----------------------------------------------------------------------- */
 static int types_equal(CimpleType a, CimpleType b) {
     return a == b;
+}
+
+static void error_type_mismatch(int line, int col, const char *context,
+                                CimpleType expected, CimpleType got) {
+    char hint[160];
+    snprintf(hint, sizeof(hint), "Expected '%s', got '%s'.",
+             type_name(expected), type_name(got));
+    error_semantic_hint(line, col, hint, "Type mismatch in %s", context);
+}
+
+static void error_operator_type(int line, int col, const char *op,
+                                const char *expected_types, CimpleType got) {
+    char hint[192];
+    snprintf(hint, sizeof(hint), "Operator '%s' requires %s.", op, expected_types);
+    error_semantic_hint(line, col, hint,
+                        "Operator '%s' cannot be applied to type '%s'",
+                        op, type_name(got));
 }
 
 /* Push/pop scope wrappers */
@@ -246,9 +267,11 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         for (int i = 1; i < elems->count; i++) {
             CimpleType t = check_expr(ctx, elems->items[i]);
             if (t != elem_t) {
-                error_semantic(elems->items[i]->line, elems->items[i]->col,
-                               "array literal: mixed types ('%s' and '%s')",
-                               type_name(elem_t), type_name(t));
+                char hint[160];
+                snprintf(hint, sizeof(hint), "Expected '%s', got '%s' at index %d.",
+                         type_name(elem_t), type_name(t), i);
+                error_semantic_hint(elems->items[i]->line, elems->items[i]->col, hint,
+                                    "Array element type mismatch");
             }
         }
         n->u.array_lit.elem_type = elem_t;
@@ -270,13 +293,13 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         /* Logical */
         if (op == OP_AND || op == OP_OR) {
             if (lt != TYPE_BOOL)
-                error_semantic(n->line, n->col,
-                               "'%s' operands must be bool (got '%s')",
-                               op == OP_AND ? "&&" : "||", type_name(lt));
+                error_operator_type(n->line, n->col,
+                                    op == OP_AND ? "&&" : "||",
+                                    "bool operands", lt);
             if (rt != TYPE_BOOL)
-                error_semantic(n->line, n->col,
-                               "'%s' operands must be bool (got '%s')",
-                               op == OP_AND ? "&&" : "||", type_name(rt));
+                error_operator_type(n->line, n->col,
+                                    op == OP_AND ? "&&" : "||",
+                                    "bool operands", rt);
             n->type = TYPE_BOOL;
             return TYPE_BOOL;
         }
@@ -285,9 +308,7 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         if (op == OP_EQ || op == OP_NEQ || op == OP_LT ||
             op == OP_LEQ || op == OP_GT || op == OP_GEQ) {
             if (!types_equal(lt, rt))
-                error_semantic(n->line, n->col,
-                               "comparison of incompatible types '%s' and '%s'",
-                               type_name(lt), type_name(rt));
+                error_type_mismatch(n->line, n->col, "comparison", lt, rt);
             n->type = TYPE_BOOL;
             return TYPE_BOOL;
         }
@@ -302,12 +323,10 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                 n->type = TYPE_FLOAT; return TYPE_FLOAT;
             }
             if (op == OP_MOD && (lt != TYPE_INT || rt != TYPE_INT)) {
-                error_semantic(n->line, n->col,
-                               "'%%' operator requires int operands");
+                error_operator_type(n->line, n->col, "%", "int operands",
+                                    lt != TYPE_INT ? lt : rt);
             } else {
-                error_semantic(n->line, n->col,
-                               "arithmetic on incompatible types '%s' and '%s'",
-                               type_name(lt), type_name(rt));
+                error_type_mismatch(n->line, n->col, "arithmetic", lt, rt);
             }
             n->type = TYPE_UNKNOWN;
             return TYPE_UNKNOWN;
@@ -317,8 +336,12 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         if (op == OP_BAND || op == OP_BOR || op == OP_BXOR ||
             op == OP_LSHIFT || op == OP_RSHIFT) {
             if (lt != TYPE_INT || rt != TYPE_INT)
-                error_semantic(n->line, n->col,
-                               "bitwise operator requires int operands");
+                error_operator_type(n->line, n->col,
+                                    op == OP_BAND ? "&" :
+                                    op == OP_BOR ? "|" :
+                                    op == OP_BXOR ? "^" :
+                                    op == OP_LSHIFT ? "<<" : ">>",
+                                    "int operands", lt != TYPE_INT ? lt : rt);
             n->type = TYPE_INT;
             return TYPE_INT;
         }
@@ -332,20 +355,17 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         OpKind op = n->u.unop.op;
         if (op == OP_NOT) {
             if (t != TYPE_BOOL)
-                error_semantic(n->line, n->col,
-                               "'!' requires bool operand (got '%s')", type_name(t));
+                error_operator_type(n->line, n->col, "!", "a bool operand", t);
             n->type = TYPE_BOOL; return TYPE_BOOL;
         }
         if (op == OP_NEG) {
             if (t != TYPE_INT && t != TYPE_FLOAT)
-                error_semantic(n->line, n->col,
-                               "unary '-' requires numeric operand");
+                error_operator_type(n->line, n->col, "-", "a numeric operand", t);
             n->type = t; return t;
         }
         if (op == OP_BNOT) {
             if (t != TYPE_INT)
-                error_semantic(n->line, n->col,
-                               "'~' requires int operand");
+                error_operator_type(n->line, n->col, "~", "an int operand", t);
             n->type = TYPE_INT; return TYPE_INT;
         }
         n->type = TYPE_UNKNOWN; return TYPE_UNKNOWN;
@@ -365,7 +385,8 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         if (strcmp(fname, "toString") == 0 || strcmp(fname, "toInt") == 0 ||
             strcmp(fname, "toFloat")  == 0 || strcmp(fname, "toBool") == 0) {
             if (nargs != 1)
-                error_semantic(n->line, n->col, "%s: expected 1 argument", fname);
+                error_semantic_hint(n->line, n->col, "Expected 1, got 0.",
+                                    "Wrong number of arguments for '%s'", fname);
             CimpleType ret = builtin_resolve_intrinsic(fname,
                                 nargs > 0 ? arg_types[0] : TYPE_UNKNOWN,
                                 n->line, n->col);
@@ -379,12 +400,12 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
             if (sig->polymorphic) {
                 /* Array intrinsics — basic validation */
                 if (nargs < sig->param_count)
-                    error_semantic(n->line, n->col,
-                                   "%s: too few arguments", fname);
+                    error_semantic_hint(n->line, n->col, "Not enough arguments were provided.",
+                                        "Wrong number of arguments for '%s'", fname);
                 else if (nargs > 0 && !type_is_array(arg_types[0]) &&
                          arg_types[0] != TYPE_UNKNOWN)
-                    error_semantic(n->line, n->col,
-                                   "%s: first argument must be an array", fname);
+                    error_operator_type(n->line, n->col, fname,
+                                        "an array as first argument", arg_types[0]);
 
                 /* Determine return type for poly ops */
                 CimpleType ret = sig->ret_type;
@@ -409,10 +430,8 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                     if (expected != TYPE_UNKNOWN &&
                         arg_types[i] != TYPE_UNKNOWN &&
                         !types_equal(arg_types[i], expected)) {
-                        error_semantic(args->items[i]->line, args->items[i]->col,
-                                       "%s: argument %d: expected '%s', got '%s'",
-                                       fname, i + 1,
-                                       type_name(expected), type_name(arg_types[i]));
+                        error_type_mismatch(args->items[i]->line, args->items[i]->col,
+                                            "function call", expected, arg_types[i]);
                     }
                 }
             }
@@ -442,11 +461,8 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         else {
             for (int i = 0; i < nargs; i++) {
                 if (!types_equal(arg_types[i], fsig->params[i].type))
-                    error_semantic(args->items[i]->line, args->items[i]->col,
-                                   "%s: argument %d: expected '%s', got '%s'",
-                                   fname, i + 1,
-                                   type_name(fsig->params[i].type),
-                                   type_name(arg_types[i]));
+                    error_type_mismatch(args->items[i]->line, args->items[i]->col,
+                                        "function call", fsig->params[i].type, arg_types[i]);
             }
         }
         n->type = fsig->ret_type;
@@ -457,8 +473,8 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         CimpleType base_t = check_expr(ctx, n->u.index.base);
         CimpleType idx_t  = check_expr(ctx, n->u.index.index);
         if (idx_t != TYPE_INT && idx_t != TYPE_UNKNOWN)
-            error_semantic(n->u.index.index->line, n->u.index.index->col,
-                           "array/string index must be int");
+            error_type_mismatch(n->u.index.index->line, n->u.index.index->col,
+                                "index expression", TYPE_INT, idx_t);
         if (base_t == TYPE_STRING) {
             n->type = TYPE_STRING;
             return TYPE_STRING;
@@ -469,9 +485,7 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
             return elem;
         }
         if (base_t != TYPE_UNKNOWN)
-            error_semantic(n->line, n->col,
-                           "indexing requires array or string type (got '%s')",
-                           type_name(base_t));
+            error_operator_type(n->line, n->col, "[]", "an array or string", base_t);
         n->type = TYPE_UNKNOWN;
         return TYPE_UNKNOWN;
     }
@@ -589,9 +603,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         }
         /* Disallow whole-array reassignment */
         if (type_is_array(sym->type)) {
-            error_semantic(n->line, n->col,
-                           "cannot reassign array '%s' as a whole; use array functions",
-                           n->u.assign.name);
+            error_operator_type(n->line, n->col, "=",
+                                "a scalar variable on the left-hand side", sym->type);
             break;
         }
         CimpleType vt = check_expr(ctx, n->u.assign.value);
@@ -619,22 +632,20 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
             break;
         }
         if (!type_is_array(sym->type)) {
-            error_semantic(n->line, n->col,
-                           "'%s' is not an array", n->u.index_assign.name);
+            error_operator_type(n->line, n->col, "[]", "an array", sym->type);
             break;
         }
         CimpleType idx_t = check_expr(ctx, n->u.index_assign.index);
         if (idx_t != TYPE_INT && idx_t != TYPE_UNKNOWN)
-            error_semantic(n->u.index_assign.index->line,
-                           n->u.index_assign.index->col,
-                           "array index must be int");
+            error_type_mismatch(n->u.index_assign.index->line,
+                                n->u.index_assign.index->col,
+                                "index expression", TYPE_INT, idx_t);
         CimpleType val_t = check_expr(ctx, n->u.index_assign.value);
         CimpleType elem  = type_elem(sym->type);
         if (val_t != TYPE_UNKNOWN && !types_equal(val_t, elem))
-            error_semantic(n->u.index_assign.value->line,
-                           n->u.index_assign.value->col,
-                           "type mismatch: array element is '%s', got '%s'",
-                           type_name(elem), type_name(val_t));
+            error_type_mismatch(n->u.index_assign.value->line,
+                                n->u.index_assign.value->col,
+                                "array assignment", elem, val_t);
         break;
     }
 
@@ -649,9 +660,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         check_expr(ctx, n->u.if_stmt.cond);
         if (n->u.if_stmt.cond->type != TYPE_BOOL &&
             n->u.if_stmt.cond->type != TYPE_UNKNOWN)
-            error_semantic(n->line, n->col,
-                           "if condition must be bool (got '%s')",
-                           type_name(n->u.if_stmt.cond->type));
+            error_type_mismatch(n->line, n->col, "if condition",
+                                TYPE_BOOL, n->u.if_stmt.cond->type);
         check_stmt(ctx, n->u.if_stmt.then_branch);
         check_stmt(ctx, n->u.if_stmt.else_branch);
         break;
@@ -660,8 +670,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         check_expr(ctx, n->u.while_stmt.cond);
         if (n->u.while_stmt.cond->type != TYPE_BOOL &&
             n->u.while_stmt.cond->type != TYPE_UNKNOWN)
-            error_semantic(n->line, n->col,
-                           "while condition must be bool");
+            error_type_mismatch(n->line, n->col, "while condition",
+                                TYPE_BOOL, n->u.while_stmt.cond->type);
         ctx->in_loop++;
         check_stmt(ctx, n->u.while_stmt.body);
         ctx->in_loop--;
@@ -682,8 +692,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                                    init->u.for_init.name);
                 CimpleType et = check_expr(ctx, init->u.for_init.init_expr);
                 if (et != TYPE_INT && et != TYPE_UNKNOWN)
-                    error_semantic(init->line, init->col,
-                                   "for-loop init must be int");
+                    error_type_mismatch(init->line, init->col,
+                                        "for-loop initialization", TYPE_INT, et);
             }
         }
         /* cond */
@@ -691,8 +701,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         if (n->u.for_stmt.cond &&
             n->u.for_stmt.cond->type != TYPE_BOOL &&
             n->u.for_stmt.cond->type != TYPE_UNKNOWN)
-            error_semantic(n->line, n->col,
-                           "for condition must be bool");
+            error_type_mismatch(n->line, n->col, "for condition",
+                                TYPE_BOOL, n->u.for_stmt.cond->type);
         /* update — just check it */
         check_stmt(ctx, n->u.for_stmt.update);
         /* body */
@@ -707,16 +717,18 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         if (n->u.ret.value) {
             CimpleType vt = check_expr(ctx, n->u.ret.value);
             if (ctx->current_ret == TYPE_VOID)
-                error_semantic(n->line, n->col,
-                               "void function cannot return a value");
+                error_semantic_hint(n->line, n->col,
+                                    "A void function cannot return a value.",
+                                    "Wrong return type");
             else if (vt != TYPE_UNKNOWN && !types_equal(vt, ctx->current_ret))
                 error_semantic_hint(n->line, n->col,
                                     "Expected the function return type here.",
                                     "Wrong return type");
         } else {
             if (ctx->current_ret != TYPE_VOID)
-                error_semantic(n->line, n->col,
-                               "non-void function must return a value");
+                error_semantic_hint(n->line, n->col,
+                                    "Expected the function return type here.",
+                                    "Wrong return type");
         }
         break;
 
@@ -737,8 +749,9 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                                 "The variable must be declared before it can be incremented or decremented.",
                                 "Undefined variable: '%s'", name);
         else if (sym->type != TYPE_INT)
-            error_semantic(n->line, n->col,
-                           "'%s' requires int variable", n->kind == NODE_INCR ? "++" : "--");
+            error_operator_type(n->line, n->col,
+                                n->kind == NODE_INCR ? "++" : "--",
+                                "an int variable", sym->type);
         break;
     }
 

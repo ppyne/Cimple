@@ -1,0 +1,2 @@
+Array element type mismatch
+Expected 'int', got 'string' at index 1.

@@ -1,0 +1,2 @@
+Type mismatch in index expression
+Expected 'int', got 'string'.

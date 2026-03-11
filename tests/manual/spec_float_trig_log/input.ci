@@ -1,0 +1,6 @@
+void main() {
+    print(toString(approxEqual(sin(0.0), 0.0, 0.0001)) + "\n");
+    print(toString(approxEqual(cos(0.0), 1.0, 0.0001)) + "\n");
+    print(toString(approxEqual(log(exp(1.0)), 1.0, 0.0001)) + "\n");
+    print(toString(approxEqual(sqrt(9.0), 3.0, 0.0001)) + "\n");
+}

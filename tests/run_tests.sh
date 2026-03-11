@@ -21,6 +21,7 @@ run_test() {
     expected_stderr="$dir/expected_stderr"
     require_empty_stdout="$dir/require_empty_stdout"
     forbidden_stderr="$dir/forbidden_stderr"
+    stderr_counts="$dir/stderr_counts"
     tmp_run_dir="${TMPDIR:-/tmp}/cimple_test_run_$$"
 
     set --
@@ -62,6 +63,13 @@ run_test() {
             [ -z "$fragment" ] && continue
             assert_stderr_not_contains "$fragment" "$actual_stderr" "$name"
         done < "$forbidden_stderr"
+    fi
+
+    if [ -f "$stderr_counts" ]; then
+        while IFS='|' read -r fragment expected_count || [ -n "$fragment" ]; do
+            [ -z "$fragment" ] && continue
+            assert_stderr_count "$fragment" "$expected_count" "$actual_stderr" "$name"
+        done < "$stderr_counts"
     fi
 }
 

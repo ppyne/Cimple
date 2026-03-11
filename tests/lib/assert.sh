@@ -68,6 +68,20 @@ assert_stderr_not_contains() {
     esac
 }
 
+assert_stderr_count() {
+    fragment="$1"
+    expected_count="$2"
+    actual="$3"
+    test_name="$4"
+    count=$(printf '%s' "$actual" | awk -v pat="$fragment" 'index($0, pat) { c++ } END { print c+0 }')
+    if [ "$count" = "$expected_count" ]; then
+        PASS=$((PASS + 1))
+    else
+        FAIL=$((FAIL + 1))
+        ERRORS="$ERRORS\nFAIL [$test_name] stderr count for '$fragment': expected=$expected_count actual=$count"
+    fi
+}
+
 print_summary() {
     total=$((PASS + FAIL))
     if [ "$FAIL" -ne 0 ]; then

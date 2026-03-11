@@ -1,0 +1,6 @@
+void main() {
+    ExecResult r = exec(["/bin/sh", "-c", "exit 7"], []);
+    print(toString(execStatus(r)) + "\n");
+    print("<" + execStdout(r) + ">\n");
+    print("<" + execStderr(r) + ">\n");
+}

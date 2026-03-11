@@ -1,0 +1,6 @@
+void main() {
+    print(toString(isIntString("42")) + "\n");
+    print(toString(isFloatString("3.5")) + "\n");
+    print(toString(isBoolString("true")) + "\n");
+    print(toString(isBoolString("yes")) + "\n");
+}

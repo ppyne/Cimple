@@ -469,7 +469,7 @@ static char *val_to_string(Value *v, int line, int col) {
 Value builtin_call(const char *name, Value *args, int nargs, int line, int col) {
 
 #define REQUIRE(n) do { if (nargs < (n)) \
-    error_runtime(line, col, "%s: expected %d argument(s)", name, (n)); } while(0)
+    error_runtime(line, col, "Wrong number of arguments for '%s' (expected %d)", name, (n)); } while(0)
 #define ARG_STR(idx)   args[(idx)].u.s
 #define ARG_INT(idx)   args[(idx)].u.i
 #define ARG_FLOAT(idx) args[(idx)].u.f

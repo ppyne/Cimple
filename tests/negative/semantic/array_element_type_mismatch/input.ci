@@ -1,0 +1,3 @@
+void main() {
+    int[] xs = [1, "a"];
+}
