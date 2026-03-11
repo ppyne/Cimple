@@ -1,0 +1,1 @@
+Manual coverage for float parsing from strings and arithmetic.

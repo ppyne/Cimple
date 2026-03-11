@@ -1,0 +1,5 @@
+void main() {
+    print(toString(isBoolString("true")) + "\n");
+    print(toString(isBoolString("false")) + "\n");
+    print(toString(isBoolString("TRUE")) + "\n");
+}

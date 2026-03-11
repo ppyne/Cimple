@@ -1,0 +1,5 @@
+void main() {
+    float x = toFloat("2.5");
+    print(toString(x) + "\n");
+    print(toString(x * 2.0) + "\n");
+}

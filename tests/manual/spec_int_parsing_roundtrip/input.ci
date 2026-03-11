@@ -1,0 +1,5 @@
+void main() {
+    int n = toInt("42");
+    print(toString(n) + "\n");
+    print(toString(n + 8) + "\n");
+}

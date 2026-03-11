@@ -1,0 +1,7 @@
+void main() {
+    string[] names = ["Alice"];
+    arrayPush(names, "Bob");
+    print(toString(count(names)) + "\n");
+    print(arrayPop(names) + "\n");
+    print(names[0] + "\n");
+}
