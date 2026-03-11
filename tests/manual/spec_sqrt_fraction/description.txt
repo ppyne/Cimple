@@ -1,0 +1,1 @@
+Manual coverage for sqrt on a fractional perfect square.

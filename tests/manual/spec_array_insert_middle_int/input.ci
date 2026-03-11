@@ -1,0 +1,5 @@
+void main() {
+    int[] xs = [1, 2, 3];
+    arrayInsert(xs, 1, 9);
+    print(toString(xs[0]) + "," + toString(xs[1]) + "," + toString(xs[2]) + "," + toString(xs[3]) + "\n");
+}

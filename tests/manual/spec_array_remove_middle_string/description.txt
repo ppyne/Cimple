@@ -1,0 +1,1 @@
+Manual coverage for arrayRemove in the middle of a string array.

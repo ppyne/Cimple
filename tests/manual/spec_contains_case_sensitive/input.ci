@@ -1,0 +1,4 @@
+void main() {
+    print(toString(contains("Hello", "he")) + "\n");
+    print(toString(contains("Hello", "ell")) + "\n");
+}

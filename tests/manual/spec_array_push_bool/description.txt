@@ -1,0 +1,1 @@
+Manual coverage for arrayPush on a bool array.

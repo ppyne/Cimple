@@ -1,0 +1,4 @@
+void main() {
+    print(toString(approxEqual(5.0, 5.0, 0.0)) + "\n");
+    print(toString(approxEqual(5.0, 5.0001, 0.0)) + "\n");
+}

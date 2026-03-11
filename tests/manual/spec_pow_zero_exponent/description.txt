@@ -1,0 +1,1 @@
+Manual coverage for pow with a zero exponent.

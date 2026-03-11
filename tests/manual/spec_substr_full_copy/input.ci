@@ -1,0 +1,3 @@
+void main() {
+    print(substr("hello", 0, 5) + "\n");
+}
