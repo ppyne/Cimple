@@ -1,0 +1,1 @@
+Protects join on a singleton array.

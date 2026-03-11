@@ -1,0 +1,1 @@
+Protects pow with exponent one.

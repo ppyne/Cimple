@@ -1,0 +1,1 @@
+Protects replace with same-length substitution.

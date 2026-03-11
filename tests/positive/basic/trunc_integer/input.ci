@@ -1,0 +1,1 @@
+void main() { print(toString(trunc(3.0)) + "\n"); }

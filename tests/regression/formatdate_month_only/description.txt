@@ -1,0 +1,1 @@
+Protects formatDate month token expansion.

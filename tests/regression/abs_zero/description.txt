@@ -1,0 +1,1 @@
+Protects abs on zero.

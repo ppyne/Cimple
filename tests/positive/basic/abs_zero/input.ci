@@ -1,0 +1,1 @@
+void main() { print(toString(abs(0.0)) + "\n"); }

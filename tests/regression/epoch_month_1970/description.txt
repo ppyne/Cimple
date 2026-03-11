@@ -1,0 +1,1 @@
+Protects epochToMonth at the Unix epoch start.

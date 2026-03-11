@@ -1,0 +1,3 @@
+void main() {
+    print(toString(epochToYear()) + "\n");
+}

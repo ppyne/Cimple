@@ -1,0 +1,1 @@
+void main() { print(toString(sqrt(1.0)) + "\n"); }

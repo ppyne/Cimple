@@ -1,0 +1,1 @@
+Protects split on an empty input string.

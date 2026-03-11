@@ -1,0 +1,1 @@
+void main() { print(toString(max(2.0, 2.0)) + "\n"); }

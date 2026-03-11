@@ -1,0 +1,1 @@
+Protects epochToDay at the Unix epoch start.

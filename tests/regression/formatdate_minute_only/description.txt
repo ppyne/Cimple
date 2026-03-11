@@ -1,0 +1,1 @@
+Protects formatDate minute token expansion.

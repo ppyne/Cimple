@@ -1,0 +1,1 @@
+void main() { print(toString(isFinite(0.0)) + "\n"); }

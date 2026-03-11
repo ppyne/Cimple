@@ -1,0 +1,1 @@
+Protects epochToYear at the Unix epoch start.

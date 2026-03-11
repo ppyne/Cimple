@@ -1,0 +1,1 @@
+void main() { print(toString(ceil(3.0)) + "\n"); }

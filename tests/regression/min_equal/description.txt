@@ -1,0 +1,1 @@
+Protects min on equal inputs.

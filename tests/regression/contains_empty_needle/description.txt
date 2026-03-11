@@ -1,0 +1,1 @@
+Protects contains with an empty needle.

@@ -1,0 +1,1 @@
+Protects approxEqual on identical values.

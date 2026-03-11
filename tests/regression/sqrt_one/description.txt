@@ -1,0 +1,1 @@
+Protects sqrt on one.

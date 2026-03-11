@@ -1,0 +1,3 @@
+void main() {
+    print(toString(substr("a", 0)) + "\n");
+}
