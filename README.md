@@ -55,33 +55,50 @@ cmake --build .
 ## Language overview
 
 ```c
-// Variables
-int x = 42;
-float pi = M_PI;
-string name = "Alice";
-bool ok = true;
-
-// Arrays
-int[] nums = [1, 2, 3];
-arrayPush(nums, 4);
-print(toString(count(nums)) + "\n");  // 4
-
-// Functions
 int factorial(int n) {
-    if (n <= 1) { return 1; }
+    if (n <= 1) return 1;
     return n * factorial(n - 1);
 }
 
-// Control flow
-for (int i = 0; i < 10; i++) {
-    if (isEven(i)) { continue; }
-    print(toString(i) + "\n");
-}
-
-// Entry point
 void main(string[] args) {
+    // Variables
+    int x = 42;
+    float pi = M_PI;
+    string name = "Alice";
+    bool ok = true;
+
+    // Arrays
+    int[] nums = [1, 2, 3];
+    arrayPush(nums, 4);
+    print(toString(count(nums)) + "\n");  // 4
+
+    // Control flow
+    for (int i = 0; i < 10; i++) {
+        if (isEven(i)) continue;
+        print(toString(i) + "\n");
+    }
+
+    print(toString(factorial(5)) + "\n");
+    if (count(args) == 0) {
+        print("Usage: pass a name as the first argument.\n");
+        return;
+    }
     print("Hello, " + args[0] + "!\n");
 }
+```
+
+Prints :
+
+```text
+$ build/cimple run ./test.ci world
+4
+1
+3
+5
+7
+9
+120
+Hello, world!
 ```
 
 ## Project structure
@@ -136,5 +153,7 @@ node cimple.js run ../examples/hello.ci
 ```
 
 ## License
+
+BSD 3-Clause License
 
 See [LICENSE](LICENSE).
