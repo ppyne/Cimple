@@ -1,0 +1,5 @@
+void main() {
+    string[] xs = ["red", "green", "blue"];
+    print(arrayPop(xs) + "\n");
+    print(toString(count(xs)) + "\n");
+}

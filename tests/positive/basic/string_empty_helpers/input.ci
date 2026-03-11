@@ -1,0 +1,7 @@
+void main() {
+    print(toString(len("")) + "\n");
+    print(toString(contains("", "")) + "\n");
+    print(toString(startsWith("", "")) + "\n");
+    print(toString(endsWith("", "")) + "\n");
+    print(toString(indexOf("", "")) + "\n");
+}

@@ -1,0 +1,4 @@
+void main() {
+    print(toString(toString(true) == "true") + "\n");
+    print(toString(toString(false) == "false") + "\n");
+}

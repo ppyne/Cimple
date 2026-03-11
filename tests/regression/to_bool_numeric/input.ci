@@ -1,0 +1,5 @@
+void main() {
+    print(toString(toBool("1")) + "\n");
+    print(toString(toBool("0")) + "\n");
+    print(toString(toBool("42")) + "\n");
+}

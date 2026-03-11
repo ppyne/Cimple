@@ -1,0 +1,8 @@
+int f(int x) {
+    int x = 2;
+    return x;
+}
+
+void main() {
+    print(toString(f(1)) + "\n");
+}

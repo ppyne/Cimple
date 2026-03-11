@@ -1,0 +1,1 @@
+Protects byteAt on the second byte of a UTF-8 codepoint.

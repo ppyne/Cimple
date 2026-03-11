@@ -407,6 +407,39 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                     error_operator_type(n->line, n->col, fname,
                                         "an array as first argument", arg_types[0]);
 
+                if (nargs > 0 && type_is_array(arg_types[0])) {
+                    CimpleType elem = type_elem(arg_types[0]);
+
+                    if ((strcmp(fname, "arrayInsert") == 0 ||
+                         strcmp(fname, "arrayGet") == 0 ||
+                         strcmp(fname, "arraySet") == 0 ||
+                         strcmp(fname, "arrayRemove") == 0) &&
+                        nargs > 1 &&
+                        arg_types[1] != TYPE_INT &&
+                        arg_types[1] != TYPE_UNKNOWN) {
+                        error_type_mismatch(args->items[1]->line, args->items[1]->col,
+                                            "index expression", TYPE_INT, arg_types[1]);
+                    }
+
+                    if ((strcmp(fname, "arrayPush") == 0 && nargs > 1) ||
+                        (strcmp(fname, "arrayInsert") == 0 && nargs > 2) ||
+                        (strcmp(fname, "arraySet") == 0 && nargs > 2)) {
+                        int value_index = strcmp(fname, "arrayPush") == 0 ? 1 : 2;
+                        CimpleType value_t = arg_types[value_index];
+                        if (value_t != TYPE_UNKNOWN && !types_equal(value_t, elem)) {
+                            if (strcmp(fname, "arraySet") == 0) {
+                                error_type_mismatch(args->items[value_index]->line,
+                                                    args->items[value_index]->col,
+                                                    "array assignment", elem, value_t);
+                            } else {
+                                error_semantic(args->items[value_index]->line,
+                                               args->items[value_index]->col,
+                                               "Array element type mismatch");
+                            }
+                        }
+                    }
+                }
+
                 /* Determine return type for poly ops */
                 CimpleType ret = sig->ret_type;
                 if (ret == TYPE_UNKNOWN && nargs > 0 && type_is_array(arg_types[0]))

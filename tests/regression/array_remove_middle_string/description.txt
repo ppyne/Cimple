@@ -1,0 +1,1 @@
+Protects removal in the middle of a string array.
