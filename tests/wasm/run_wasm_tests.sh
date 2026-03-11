@@ -35,6 +35,7 @@ run_wasm_case() {
     forbidden_stderr="$dir/forbidden_stderr"
     stderr_counts="$dir/stderr_counts"
     tmp_wasm_dir="${TMPDIR:-/tmp}/cimple_wasm_run_$$"
+    stdin_file="$dir/stdin"
 
     [ -f "$dir/skip_wasm" ] && return
 
@@ -48,7 +49,13 @@ run_wasm_case() {
     rm -rf "$tmp_wasm_dir"
     mkdir -p "$tmp_wasm_dir"
 
-    if wasm_stdout=$(cd "$tmp_wasm_dir" && node "$WASM_DRIVER" "$CIMPLE_WASM" run "$src" "$@" 2>"$TMP_WASM_ERR"); then
+    if [ -f "$stdin_file" ]; then
+        if wasm_stdout=$(cd "$tmp_wasm_dir" && node "$WASM_DRIVER" "$CIMPLE_WASM" run "$src" "$@" < "$stdin_file" 2>"$TMP_WASM_ERR"); then
+            wasm_exit=0
+        else
+            wasm_exit=$?
+        fi
+    elif wasm_stdout=$(cd "$tmp_wasm_dir" && node "$WASM_DRIVER" "$CIMPLE_WASM" run "$src" "$@" 2>"$TMP_WASM_ERR"); then
         wasm_exit=0
     else
         wasm_exit=$?

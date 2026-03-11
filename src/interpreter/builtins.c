@@ -30,6 +30,207 @@ static Value not_a_builtin(void) {
     Value v; v.type = TYPE_UNKNOWN; v.u.i = 0; return v;
 }
 
+typedef enum {
+    BI_NONE = 0,
+    BI_PRINT,
+    BI_INPUT,
+    BI_LEN,
+    BI_GLYPH_LEN,
+    BI_GLYPH_AT,
+    BI_BYTE_AT,
+    BI_SUBSTR,
+    BI_INDEX_OF,
+    BI_CONTAINS,
+    BI_STARTS_WITH,
+    BI_ENDS_WITH,
+    BI_REPLACE,
+    BI_FORMAT,
+    BI_JOIN,
+    BI_SPLIT,
+    BI_CONCAT,
+    BI_TO_STRING,
+    BI_TO_INT,
+    BI_TO_FLOAT,
+    BI_TO_BOOL,
+    BI_IS_INT_STRING,
+    BI_IS_FLOAT_STRING,
+    BI_IS_BOOL_STRING,
+    BI_IS_NAN,
+    BI_IS_INFINITE,
+    BI_IS_FINITE,
+    BI_IS_POSITIVE_INFINITY,
+    BI_IS_NEGATIVE_INFINITY,
+    BI_ABS,
+    BI_MIN,
+    BI_MAX,
+    BI_CLAMP,
+    BI_FLOOR,
+    BI_CEIL,
+    BI_ROUND,
+    BI_TRUNC,
+    BI_FMOD,
+    BI_SQRT,
+    BI_POW,
+    BI_APPROX_EQUAL,
+    BI_SIN,
+    BI_COS,
+    BI_TAN,
+    BI_ASIN,
+    BI_ACOS,
+    BI_ATAN,
+    BI_ATAN2,
+    BI_EXP,
+    BI_LOG,
+    BI_LOG2,
+    BI_LOG10,
+    BI_ABS_INT,
+    BI_MIN_INT,
+    BI_MAX_INT,
+    BI_CLAMP_INT,
+    BI_IS_EVEN,
+    BI_IS_ODD,
+    BI_SAFE_DIV_INT,
+    BI_SAFE_MOD_INT,
+    BI_COUNT,
+    BI_ARRAY_PUSH,
+    BI_ARRAY_POP,
+    BI_ARRAY_INSERT,
+    BI_ARRAY_REMOVE,
+    BI_ARRAY_GET,
+    BI_ARRAY_SET,
+    BI_READ_FILE,
+    BI_WRITE_FILE,
+    BI_APPEND_FILE,
+    BI_FILE_EXISTS,
+    BI_READ_LINES,
+    BI_WRITE_LINES,
+    BI_EXEC,
+    BI_EXEC_STATUS,
+    BI_EXEC_STDOUT,
+    BI_EXEC_STDERR,
+    BI_GET_ENV,
+    BI_NOW,
+    BI_EPOCH_TO_YEAR,
+    BI_EPOCH_TO_MONTH,
+    BI_EPOCH_TO_DAY,
+    BI_EPOCH_TO_HOUR,
+    BI_EPOCH_TO_MINUTE,
+    BI_EPOCH_TO_SECOND,
+    BI_MAKE_EPOCH,
+    BI_FORMAT_DATE
+} BuiltinId;
+
+typedef struct {
+    const char *name;
+    BuiltinId id;
+} BuiltinNameEntry;
+
+static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
+    {"abs", BI_ABS},
+    {"absInt", BI_ABS_INT},
+    {"acos", BI_ACOS},
+    {"appendFile", BI_APPEND_FILE},
+    {"approxEqual", BI_APPROX_EQUAL},
+    {"arrayGet", BI_ARRAY_GET},
+    {"arrayInsert", BI_ARRAY_INSERT},
+    {"arrayPop", BI_ARRAY_POP},
+    {"arrayPush", BI_ARRAY_PUSH},
+    {"arrayRemove", BI_ARRAY_REMOVE},
+    {"arraySet", BI_ARRAY_SET},
+    {"asin", BI_ASIN},
+    {"atan", BI_ATAN},
+    {"atan2", BI_ATAN2},
+    {"byteAt", BI_BYTE_AT},
+    {"ceil", BI_CEIL},
+    {"clamp", BI_CLAMP},
+    {"clampInt", BI_CLAMP_INT},
+    {"concat", BI_CONCAT},
+    {"contains", BI_CONTAINS},
+    {"cos", BI_COS},
+    {"count", BI_COUNT},
+    {"endsWith", BI_ENDS_WITH},
+    {"epochToDay", BI_EPOCH_TO_DAY},
+    {"epochToHour", BI_EPOCH_TO_HOUR},
+    {"epochToMinute", BI_EPOCH_TO_MINUTE},
+    {"epochToMonth", BI_EPOCH_TO_MONTH},
+    {"epochToSecond", BI_EPOCH_TO_SECOND},
+    {"epochToYear", BI_EPOCH_TO_YEAR},
+    {"exec", BI_EXEC},
+    {"execStatus", BI_EXEC_STATUS},
+    {"execStderr", BI_EXEC_STDERR},
+    {"execStdout", BI_EXEC_STDOUT},
+    {"exp", BI_EXP},
+    {"fileExists", BI_FILE_EXISTS},
+    {"floor", BI_FLOOR},
+    {"fmod", BI_FMOD},
+    {"format", BI_FORMAT},
+    {"formatDate", BI_FORMAT_DATE},
+    {"getEnv", BI_GET_ENV},
+    {"glyphAt", BI_GLYPH_AT},
+    {"glyphLen", BI_GLYPH_LEN},
+    {"indexOf", BI_INDEX_OF},
+    {"input", BI_INPUT},
+    {"isBoolString", BI_IS_BOOL_STRING},
+    {"isEven", BI_IS_EVEN},
+    {"isFinite", BI_IS_FINITE},
+    {"isFloatString", BI_IS_FLOAT_STRING},
+    {"isInfinite", BI_IS_INFINITE},
+    {"isIntString", BI_IS_INT_STRING},
+    {"isNaN", BI_IS_NAN},
+    {"isNegativeInfinity", BI_IS_NEGATIVE_INFINITY},
+    {"isOdd", BI_IS_ODD},
+    {"isPositiveInfinity", BI_IS_POSITIVE_INFINITY},
+    {"join", BI_JOIN},
+    {"len", BI_LEN},
+    {"log", BI_LOG},
+    {"log10", BI_LOG10},
+    {"log2", BI_LOG2},
+    {"makeEpoch", BI_MAKE_EPOCH},
+    {"max", BI_MAX},
+    {"maxInt", BI_MAX_INT},
+    {"min", BI_MIN},
+    {"minInt", BI_MIN_INT},
+    {"now", BI_NOW},
+    {"pow", BI_POW},
+    {"print", BI_PRINT},
+    {"readFile", BI_READ_FILE},
+    {"readLines", BI_READ_LINES},
+    {"replace", BI_REPLACE},
+    {"round", BI_ROUND},
+    {"safeDivInt", BI_SAFE_DIV_INT},
+    {"safeModInt", BI_SAFE_MOD_INT},
+    {"sin", BI_SIN},
+    {"split", BI_SPLIT},
+    {"sqrt", BI_SQRT},
+    {"startsWith", BI_STARTS_WITH},
+    {"substr", BI_SUBSTR},
+    {"tan", BI_TAN},
+    {"toBool", BI_TO_BOOL},
+    {"toFloat", BI_TO_FLOAT},
+    {"toInt", BI_TO_INT},
+    {"toString", BI_TO_STRING},
+    {"trunc", BI_TRUNC},
+    {"writeFile", BI_WRITE_FILE},
+    {"writeLines", BI_WRITE_LINES}
+};
+
+static int builtin_name_entry_cmp(const void *lhs, const void *rhs) {
+    const BuiltinNameEntry *a = (const BuiltinNameEntry *)lhs;
+    const BuiltinNameEntry *b = (const BuiltinNameEntry *)rhs;
+    return strcmp(a->name, b->name);
+}
+
+static BuiltinId builtin_lookup_id(const char *name) {
+    BuiltinNameEntry key = { name, BI_NONE };
+    const BuiltinNameEntry *entry = bsearch(
+        &key,
+        BUILTIN_NAME_TABLE,
+        sizeof(BUILTIN_NAME_TABLE) / sizeof(BUILTIN_NAME_TABLE[0]),
+        sizeof(BUILTIN_NAME_TABLE[0]),
+        builtin_name_entry_cmp);
+    return entry ? entry->id : BI_NONE;
+}
+
 /* -----------------------------------------------------------------------
  * NFC normalisation via utf8proc (JuliaStrings/utf8proc v2.9.0, MIT licence)
  * glyphLen and glyphAt normalise to NFC before counting / indexing, so that
@@ -489,6 +690,9 @@ static char *val_to_string(Value *v, int line, int col) {
  * Main dispatch function
  * ----------------------------------------------------------------------- */
 Value builtin_call(const char *name, Value *args, int nargs, int line, int col) {
+    BuiltinId id = builtin_lookup_id(name);
+    if (id == BI_NONE) return not_a_builtin();
+
 
 #define REQUIRE(n) do { if (nargs < (n)) \
     error_runtime(line, col, "Wrong number of arguments for '%s' (expected %d)", name, (n)); } while(0)
@@ -499,14 +703,14 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
 #define ARG_ARR(idx)   args[(idx)].u.arr
 
     /* ---- I/O ---- */
-    if (strcmp(name, "print") == 0) {
+    if (id == BI_PRINT) {
         REQUIRE(1);
         fputs(args[0].u.s, stdout);
         fflush(stdout);
         return val_void();
     }
 
-    if (strcmp(name, "input") == 0) {
+    if (id == BI_INPUT) {
         /* Read a line from stdin, strip trailing newline */
         size_t cap = 256;
         char  *buf = (char *)cimple_malloc(cap);
@@ -526,23 +730,23 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
 
     /* ---- String ---- */
-    if (strcmp(name, "len") == 0) {
+    if (id == BI_LEN) {
         REQUIRE(1);
         return val_int((int64_t)strlen(ARG_STR(0)));
     }
 
-    if (strcmp(name, "glyphLen") == 0) {
+    if (id == BI_GLYPH_LEN) {
         REQUIRE(1);
         return val_int(utf8_codepoint_count(ARG_STR(0)));
     }
 
-    if (strcmp(name, "glyphAt") == 0) {
+    if (id == BI_GLYPH_AT) {
         REQUIRE(2);
         char *s = utf8_codepoint_at(ARG_STR(0), (int)ARG_INT(1), line, col);
         return val_string_own(s);
     }
 
-    if (strcmp(name, "byteAt") == 0) {
+    if (id == BI_BYTE_AT) {
         REQUIRE(2);
         const char *s = ARG_STR(0);
         int         slen = (int)strlen(s);
@@ -554,7 +758,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         return val_int((unsigned char)s[idx]);
     }
 
-    if (strcmp(name, "substr") == 0) {
+    if (id == BI_SUBSTR) {
         REQUIRE(3);
         const char *s    = ARG_STR(0);
         int         slen = (int)strlen(s);
@@ -568,24 +772,24 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         return val_string_own(out);
     }
 
-    if (strcmp(name, "indexOf") == 0) {
+    if (id == BI_INDEX_OF) {
         REQUIRE(2);
         const char *found = strstr(ARG_STR(0), ARG_STR(1));
         return val_int(found ? (int64_t)(found - ARG_STR(0)) : -1);
     }
 
-    if (strcmp(name, "contains") == 0) {
+    if (id == BI_CONTAINS) {
         REQUIRE(2);
         return val_bool(strstr(ARG_STR(0), ARG_STR(1)) != NULL);
     }
 
-    if (strcmp(name, "startsWith") == 0) {
+    if (id == BI_STARTS_WITH) {
         REQUIRE(2);
         size_t plen = strlen(ARG_STR(1));
         return val_bool(strncmp(ARG_STR(0), ARG_STR(1), plen) == 0);
     }
 
-    if (strcmp(name, "endsWith") == 0) {
+    if (id == BI_ENDS_WITH) {
         REQUIRE(2);
         size_t slen = strlen(ARG_STR(0));
         size_t plen = strlen(ARG_STR(1));
@@ -593,7 +797,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         return val_bool(strcmp(ARG_STR(0) + slen - plen, ARG_STR(1)) == 0);
     }
 
-    if (strcmp(name, "replace") == 0) {
+    if (id == BI_REPLACE) {
         REQUIRE(3);
         const char *s   = ARG_STR(0);
         const char *old = ARG_STR(1);
@@ -629,7 +833,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         return val_string_own(out);
     }
 
-    if (strcmp(name, "format") == 0) {
+    if (id == BI_FORMAT) {
         REQUIRE(2);
         const char *tmpl = ARG_STR(0);
         ArrayVal   *arr  = ARG_ARR(1);
@@ -663,7 +867,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         return val_string_own(out);
     }
 
-    if (strcmp(name, "join") == 0) {
+    if (id == BI_JOIN) {
         REQUIRE(2);
         ArrayVal *arr = ARG_ARR(0);
         const char *sep = ARG_STR(1);
@@ -684,7 +888,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         return val_string_own(out);
     }
 
-    if (strcmp(name, "split") == 0) {
+    if (id == BI_SPLIT) {
         REQUIRE(2);
         const char *s   = ARG_STR(0);
         const char *sep = ARG_STR(1);
@@ -716,7 +920,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         return result;
     }
 
-    if (strcmp(name, "concat") == 0) {
+    if (id == BI_CONCAT) {
         REQUIRE(1);
         ArrayVal *arr = ARG_ARR(0);
         size_t total = 0;
@@ -733,13 +937,13 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
 
     /* ---- Conversions ---- */
-    if (strcmp(name, "toString") == 0) {
+    if (id == BI_TO_STRING) {
         REQUIRE(1);
         char *s = val_to_string(&args[0], line, col);
         return val_string_own(s);
     }
 
-    if (strcmp(name, "toInt") == 0) {
+    if (id == BI_TO_INT) {
         REQUIRE(1);
         if (args[0].type == TYPE_FLOAT)
             return val_int((int64_t)args[0].u.f);
@@ -753,7 +957,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         return val_int(0);
     }
 
-    if (strcmp(name, "toFloat") == 0) {
+    if (id == BI_TO_FLOAT) {
         REQUIRE(1);
         if (args[0].type == TYPE_INT)
             return val_float((double)args[0].u.i);
@@ -767,7 +971,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         return val_float(0.0);
     }
 
-    if (strcmp(name, "toBool") == 0) {
+    if (id == BI_TO_BOOL) {
         REQUIRE(1);
         const char *s = args[0].u.s;
         if (strcmp(s, "true") == 0 || strcmp(s, "1") == 0) return val_bool(1);
@@ -776,21 +980,21 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
 
     /* ---- String validation ---- */
-    if (strcmp(name, "isIntString") == 0) {
+    if (id == BI_IS_INT_STRING) {
         REQUIRE(1);
         const char *s = ARG_STR(0);
         if (!s || !*s) return val_bool(0);
         char *end; strtoll(s, &end, 10);
         return val_bool(*end == '\0');
     }
-    if (strcmp(name, "isFloatString") == 0) {
+    if (id == BI_IS_FLOAT_STRING) {
         REQUIRE(1);
         const char *s = ARG_STR(0);
         if (!s || !*s) return val_bool(0);
         char *end; strtod(s, &end);
         return val_bool(*end == '\0');
     }
-    if (strcmp(name, "isBoolString") == 0) {
+    if (id == BI_IS_BOOL_STRING) {
         REQUIRE(1);
         const char *s = ARG_STR(0);
         return val_bool(strcmp(s,"true")==0 || strcmp(s,"false")==0 ||
@@ -798,105 +1002,105 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
 
     /* ---- Float math ---- */
-    if (strcmp(name, "isNaN")              == 0) { REQUIRE(1); return val_bool(isnan(ARG_FLOAT(0))); }
-    if (strcmp(name, "isInfinite")         == 0) { REQUIRE(1); return val_bool(isinf(ARG_FLOAT(0))); }
-    if (strcmp(name, "isFinite")           == 0) { REQUIRE(1); return val_bool(isfinite(ARG_FLOAT(0))); }
-    if (strcmp(name, "isPositiveInfinity") == 0) { REQUIRE(1); return val_bool(isinf(ARG_FLOAT(0)) && ARG_FLOAT(0) > 0); }
-    if (strcmp(name, "isNegativeInfinity") == 0) { REQUIRE(1); return val_bool(isinf(ARG_FLOAT(0)) && ARG_FLOAT(0) < 0); }
-    if (strcmp(name, "abs")   == 0) { REQUIRE(1); return val_float(fabs(ARG_FLOAT(0))); }
-    if (strcmp(name, "min")   == 0) { REQUIRE(2); return val_float(ARG_FLOAT(0) < ARG_FLOAT(1) ? ARG_FLOAT(0) : ARG_FLOAT(1)); }
-    if (strcmp(name, "max")   == 0) { REQUIRE(2); return val_float(ARG_FLOAT(0) > ARG_FLOAT(1) ? ARG_FLOAT(0) : ARG_FLOAT(1)); }
-    if (strcmp(name, "clamp") == 0) {
+    if (id == BI_IS_NAN) { REQUIRE(1); return val_bool(isnan(ARG_FLOAT(0))); }
+    if (id == BI_IS_INFINITE) { REQUIRE(1); return val_bool(isinf(ARG_FLOAT(0))); }
+    if (id == BI_IS_FINITE) { REQUIRE(1); return val_bool(isfinite(ARG_FLOAT(0))); }
+    if (id == BI_IS_POSITIVE_INFINITY) { REQUIRE(1); return val_bool(isinf(ARG_FLOAT(0)) && ARG_FLOAT(0) > 0); }
+    if (id == BI_IS_NEGATIVE_INFINITY) { REQUIRE(1); return val_bool(isinf(ARG_FLOAT(0)) && ARG_FLOAT(0) < 0); }
+    if (id == BI_ABS) { REQUIRE(1); return val_float(fabs(ARG_FLOAT(0))); }
+    if (id == BI_MIN) { REQUIRE(2); return val_float(ARG_FLOAT(0) < ARG_FLOAT(1) ? ARG_FLOAT(0) : ARG_FLOAT(1)); }
+    if (id == BI_MAX) { REQUIRE(2); return val_float(ARG_FLOAT(0) > ARG_FLOAT(1) ? ARG_FLOAT(0) : ARG_FLOAT(1)); }
+    if (id == BI_CLAMP) {
         REQUIRE(3);
         double v = ARG_FLOAT(0), lo = ARG_FLOAT(1), hi = ARG_FLOAT(2);
         return val_float(v < lo ? lo : v > hi ? hi : v);
     }
-    if (strcmp(name, "floor")      == 0) { REQUIRE(1); return val_float(floor(ARG_FLOAT(0))); }
-    if (strcmp(name, "ceil")       == 0) { REQUIRE(1); return val_float(ceil(ARG_FLOAT(0))); }
-    if (strcmp(name, "round")      == 0) { REQUIRE(1); return val_float(round(ARG_FLOAT(0))); }
-    if (strcmp(name, "trunc")      == 0) { REQUIRE(1); return val_float(trunc(ARG_FLOAT(0))); }
-    if (strcmp(name, "fmod")       == 0) { REQUIRE(2); return val_float(fmod(ARG_FLOAT(0), ARG_FLOAT(1))); }
-    if (strcmp(name, "sqrt")       == 0) { REQUIRE(1); return val_float(sqrt(ARG_FLOAT(0))); }
-    if (strcmp(name, "pow")        == 0) { REQUIRE(2); return val_float(pow(ARG_FLOAT(0), ARG_FLOAT(1))); }
-    if (strcmp(name, "approxEqual")== 0) {
+    if (id == BI_FLOOR) { REQUIRE(1); return val_float(floor(ARG_FLOAT(0))); }
+    if (id == BI_CEIL) { REQUIRE(1); return val_float(ceil(ARG_FLOAT(0))); }
+    if (id == BI_ROUND) { REQUIRE(1); return val_float(round(ARG_FLOAT(0))); }
+    if (id == BI_TRUNC) { REQUIRE(1); return val_float(trunc(ARG_FLOAT(0))); }
+    if (id == BI_FMOD) { REQUIRE(2); return val_float(fmod(ARG_FLOAT(0), ARG_FLOAT(1))); }
+    if (id == BI_SQRT) { REQUIRE(1); return val_float(sqrt(ARG_FLOAT(0))); }
+    if (id == BI_POW) { REQUIRE(2); return val_float(pow(ARG_FLOAT(0), ARG_FLOAT(1))); }
+    if (id == BI_APPROX_EQUAL) {
         REQUIRE(3);
         return val_bool(fabs(ARG_FLOAT(0) - ARG_FLOAT(1)) <= ARG_FLOAT(2));
     }
-    if (strcmp(name, "sin")  == 0) { REQUIRE(1); return val_float(sin(ARG_FLOAT(0))); }
-    if (strcmp(name, "cos")  == 0) { REQUIRE(1); return val_float(cos(ARG_FLOAT(0))); }
-    if (strcmp(name, "tan")  == 0) { REQUIRE(1); return val_float(tan(ARG_FLOAT(0))); }
-    if (strcmp(name, "asin") == 0) { REQUIRE(1); return val_float(asin(ARG_FLOAT(0))); }
-    if (strcmp(name, "acos") == 0) { REQUIRE(1); return val_float(acos(ARG_FLOAT(0))); }
-    if (strcmp(name, "atan") == 0) { REQUIRE(1); return val_float(atan(ARG_FLOAT(0))); }
-    if (strcmp(name, "atan2")== 0) { REQUIRE(2); return val_float(atan2(ARG_FLOAT(0), ARG_FLOAT(1))); }
-    if (strcmp(name, "exp")  == 0) { REQUIRE(1); return val_float(exp(ARG_FLOAT(0))); }
-    if (strcmp(name, "log")  == 0) { REQUIRE(1); return val_float(log(ARG_FLOAT(0))); }
-    if (strcmp(name, "log2") == 0) { REQUIRE(1); return val_float(log2(ARG_FLOAT(0))); }
-    if (strcmp(name, "log10")== 0) { REQUIRE(1); return val_float(log10(ARG_FLOAT(0))); }
+    if (id == BI_SIN) { REQUIRE(1); return val_float(sin(ARG_FLOAT(0))); }
+    if (id == BI_COS) { REQUIRE(1); return val_float(cos(ARG_FLOAT(0))); }
+    if (id == BI_TAN) { REQUIRE(1); return val_float(tan(ARG_FLOAT(0))); }
+    if (id == BI_ASIN) { REQUIRE(1); return val_float(asin(ARG_FLOAT(0))); }
+    if (id == BI_ACOS) { REQUIRE(1); return val_float(acos(ARG_FLOAT(0))); }
+    if (id == BI_ATAN) { REQUIRE(1); return val_float(atan(ARG_FLOAT(0))); }
+    if (id == BI_ATAN2) { REQUIRE(2); return val_float(atan2(ARG_FLOAT(0), ARG_FLOAT(1))); }
+    if (id == BI_EXP) { REQUIRE(1); return val_float(exp(ARG_FLOAT(0))); }
+    if (id == BI_LOG) { REQUIRE(1); return val_float(log(ARG_FLOAT(0))); }
+    if (id == BI_LOG2) { REQUIRE(1); return val_float(log2(ARG_FLOAT(0))); }
+    if (id == BI_LOG10) { REQUIRE(1); return val_float(log10(ARG_FLOAT(0))); }
 
     /* ---- Integer math ---- */
-    if (strcmp(name, "absInt")  == 0) { REQUIRE(1); int64_t v = ARG_INT(0); return val_int(v < 0 ? -v : v); }
-    if (strcmp(name, "minInt")  == 0) { REQUIRE(2); return val_int(ARG_INT(0) < ARG_INT(1) ? ARG_INT(0) : ARG_INT(1)); }
-    if (strcmp(name, "maxInt")  == 0) { REQUIRE(2); return val_int(ARG_INT(0) > ARG_INT(1) ? ARG_INT(0) : ARG_INT(1)); }
-    if (strcmp(name, "clampInt")== 0) {
+    if (id == BI_ABS_INT) { REQUIRE(1); int64_t v = ARG_INT(0); return val_int(v < 0 ? -v : v); }
+    if (id == BI_MIN_INT) { REQUIRE(2); return val_int(ARG_INT(0) < ARG_INT(1) ? ARG_INT(0) : ARG_INT(1)); }
+    if (id == BI_MAX_INT) { REQUIRE(2); return val_int(ARG_INT(0) > ARG_INT(1) ? ARG_INT(0) : ARG_INT(1)); }
+    if (id == BI_CLAMP_INT) {
         REQUIRE(3);
         int64_t v = ARG_INT(0), lo = ARG_INT(1), hi = ARG_INT(2);
         return val_int(v < lo ? lo : v > hi ? hi : v);
     }
-    if (strcmp(name, "isEven") == 0) { REQUIRE(1); return val_bool(ARG_INT(0) % 2 == 0); }
-    if (strcmp(name, "isOdd")  == 0) { REQUIRE(1); return val_bool(ARG_INT(0) % 2 != 0); }
-    if (strcmp(name, "safeDivInt") == 0) {
+    if (id == BI_IS_EVEN) { REQUIRE(1); return val_bool(ARG_INT(0) % 2 == 0); }
+    if (id == BI_IS_ODD) { REQUIRE(1); return val_bool(ARG_INT(0) % 2 != 0); }
+    if (id == BI_SAFE_DIV_INT) {
         REQUIRE(3);
         if (ARG_INT(1) == 0) return val_int(ARG_INT(2));
         return val_int(ARG_INT(0) / ARG_INT(1));
     }
-    if (strcmp(name, "safeModInt") == 0) {
+    if (id == BI_SAFE_MOD_INT) {
         REQUIRE(3);
         if (ARG_INT(1) == 0) return val_int(ARG_INT(2));
         return val_int(ARG_INT(0) % ARG_INT(1));
     }
 
     /* ---- Array intrinsics ---- */
-    if (strcmp(name, "count") == 0) {
+    if (id == BI_COUNT) {
         REQUIRE(1);
         return val_int(ARG_ARR(0)->count);
     }
-    if (strcmp(name, "arrayPush") == 0) {
+    if (id == BI_ARRAY_PUSH) {
         REQUIRE(2);
         array_push(ARG_ARR(0), args[1]);
         return val_void();
     }
-    if (strcmp(name, "arrayPop") == 0) {
+    if (id == BI_ARRAY_POP) {
         REQUIRE(1);
         return array_pop(ARG_ARR(0), line, col);
     }
-    if (strcmp(name, "arrayInsert") == 0) {
+    if (id == BI_ARRAY_INSERT) {
         REQUIRE(3);
         array_insert(ARG_ARR(0), (int)ARG_INT(1), args[2], line, col);
         return val_void();
     }
-    if (strcmp(name, "arrayRemove") == 0) {
+    if (id == BI_ARRAY_REMOVE) {
         REQUIRE(2);
         array_remove(ARG_ARR(0), (int)ARG_INT(1), line, col);
         return val_void();
     }
-    if (strcmp(name, "arrayGet") == 0) {
+    if (id == BI_ARRAY_GET) {
         REQUIRE(2);
         return array_get(ARG_ARR(0), (int)ARG_INT(1), line, col);
     }
-    if (strcmp(name, "arraySet") == 0) {
+    if (id == BI_ARRAY_SET) {
         REQUIRE(3);
         array_set(ARG_ARR(0), (int)ARG_INT(1), args[2], line, col);
         return val_void();
     }
 
     /* ---- File I/O ---- */
-    if (strcmp(name, "readFile") == 0) {
+    if (id == BI_READ_FILE) {
         REQUIRE(1);
         char *content = read_file_str(ARG_STR(0), line, col);
         return val_string_own(content);
     }
-    if (strcmp(name, "writeFile") == 0) {
+    if (id == BI_WRITE_FILE) {
         REQUIRE(2);
         FILE *f = fopen(ARG_STR(0), "wb");
         if (!f) error_runtime(line, col, "Cannot write file: '%s'", ARG_STR(0));
@@ -904,7 +1108,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         fclose(f);
         return val_void();
     }
-    if (strcmp(name, "appendFile") == 0) {
+    if (id == BI_APPEND_FILE) {
         REQUIRE(2);
         FILE *f = fopen(ARG_STR(0), "ab");
         if (!f) error_runtime(line, col, "Cannot write file: '%s'", ARG_STR(0));
@@ -912,13 +1116,13 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         fclose(f);
         return val_void();
     }
-    if (strcmp(name, "fileExists") == 0) {
+    if (id == BI_FILE_EXISTS) {
         REQUIRE(1);
         struct stat st;
         if (stat(ARG_STR(0), &st) != 0) return val_bool(0);
         return val_bool(S_ISREG(st.st_mode) ? 1 : 0);
     }
-    if (strcmp(name, "readLines") == 0) {
+    if (id == BI_READ_LINES) {
         REQUIRE(1);
         char *content = read_file_str(ARG_STR(0), line, col);
         Value result  = val_array(TYPE_STRING);
@@ -954,7 +1158,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         free(content);
         return result;
     }
-    if (strcmp(name, "writeLines") == 0) {
+    if (id == BI_WRITE_LINES) {
         REQUIRE(2);
         FILE *f = fopen(ARG_STR(0), "wb");
         if (!f) error_runtime(line, col, "Cannot write file: '%s'", ARG_STR(0));
@@ -968,25 +1172,25 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
 
     /* ---- exec ---- */
-    if (strcmp(name, "exec") == 0) {
+    if (id == BI_EXEC) {
         REQUIRE(1);
         return do_exec(args, nargs, line, col);
     }
-    if (strcmp(name, "execStatus") == 0) {
+    if (id == BI_EXEC_STATUS) {
         REQUIRE(1);
         return val_int(args[0].u.exec.status);
     }
-    if (strcmp(name, "execStdout") == 0) {
+    if (id == BI_EXEC_STDOUT) {
         REQUIRE(1);
         return val_string(args[0].u.exec.out ? args[0].u.exec.out : "");
     }
-    if (strcmp(name, "execStderr") == 0) {
+    if (id == BI_EXEC_STDERR) {
         REQUIRE(1);
         return val_string(args[0].u.exec.err ? args[0].u.exec.err : "");
     }
 
     /* ---- Environment ---- */
-    if (strcmp(name, "getEnv") == 0) {
+    if (id == BI_GET_ENV) {
         REQUIRE(2);
 #ifdef __EMSCRIPTEN__
         return val_string(ARG_STR(1));
@@ -998,24 +1202,24 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
 
     /* ---- Time ---- */
-    if (strcmp(name, "now") == 0) {
+    if (id == BI_NOW) {
         return val_int(get_now_ms());
     }
-    if (strcmp(name, "epochToYear")  == 0) { REQUIRE(1); struct tm t; epoch_to_tm(ARG_INT(0), &t); return val_int(t.tm_year + 1900); }
-    if (strcmp(name, "epochToMonth") == 0) { REQUIRE(1); struct tm t; epoch_to_tm(ARG_INT(0), &t); return val_int(t.tm_mon + 1); }
-    if (strcmp(name, "epochToDay")   == 0) { REQUIRE(1); struct tm t; epoch_to_tm(ARG_INT(0), &t); return val_int(t.tm_mday); }
-    if (strcmp(name, "epochToHour")  == 0) { REQUIRE(1); struct tm t; epoch_to_tm(ARG_INT(0), &t); return val_int(t.tm_hour); }
-    if (strcmp(name, "epochToMinute")== 0) { REQUIRE(1); struct tm t; epoch_to_tm(ARG_INT(0), &t); return val_int(t.tm_min); }
-    if (strcmp(name, "epochToSecond")== 0) { REQUIRE(1); struct tm t; epoch_to_tm(ARG_INT(0), &t); return val_int(t.tm_sec); }
+    if (id == BI_EPOCH_TO_YEAR) { REQUIRE(1); struct tm t; epoch_to_tm(ARG_INT(0), &t); return val_int(t.tm_year + 1900); }
+    if (id == BI_EPOCH_TO_MONTH) { REQUIRE(1); struct tm t; epoch_to_tm(ARG_INT(0), &t); return val_int(t.tm_mon + 1); }
+    if (id == BI_EPOCH_TO_DAY) { REQUIRE(1); struct tm t; epoch_to_tm(ARG_INT(0), &t); return val_int(t.tm_mday); }
+    if (id == BI_EPOCH_TO_HOUR) { REQUIRE(1); struct tm t; epoch_to_tm(ARG_INT(0), &t); return val_int(t.tm_hour); }
+    if (id == BI_EPOCH_TO_MINUTE) { REQUIRE(1); struct tm t; epoch_to_tm(ARG_INT(0), &t); return val_int(t.tm_min); }
+    if (id == BI_EPOCH_TO_SECOND) { REQUIRE(1); struct tm t; epoch_to_tm(ARG_INT(0), &t); return val_int(t.tm_sec); }
 
-    if (strcmp(name, "makeEpoch") == 0) {
+    if (id == BI_MAKE_EPOCH) {
         REQUIRE(6);
         int64_t ts = make_epoch_utc_ms((int)ARG_INT(0), (int)ARG_INT(1), (int)ARG_INT(2),
                                        (int)ARG_INT(3), (int)ARG_INT(4), (int)ARG_INT(5));
         return val_int(ts);
     }
 
-    if (strcmp(name, "formatDate") == 0) {
+    if (id == BI_FORMAT_DATE) {
         REQUIRE(2);
         char *s = format_date(ARG_INT(0), ARG_STR(1));
         return val_string_own(s);

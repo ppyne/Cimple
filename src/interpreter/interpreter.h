@@ -15,6 +15,17 @@ typedef enum {
     SIGNAL_CONTINUE = 3
 } Signal;
 
+typedef struct FuncDeclEntry {
+    const char *name;
+    AstNode *decl;
+    struct FuncDeclEntry *next;
+} FuncDeclEntry;
+
+typedef struct {
+    FuncDeclEntry **buckets;
+    int bucket_count;
+} FuncDeclTable;
+
 /* -----------------------------------------------------------------------
  * Interpreter context
  * ----------------------------------------------------------------------- */
@@ -22,6 +33,7 @@ typedef struct {
     AstNode    *program;
     Scope      *global;
     FuncTable  *funcs;      /* user-defined function table */
+    FuncDeclTable *func_decls;
 
     /* Current execution state */
     Signal      signal;

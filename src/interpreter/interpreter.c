@@ -14,6 +14,8 @@ static void  exec_stmt(Interp *ip, Scope *scope, AstNode *n);
 static Value call_func(Interp *ip, const char *name, Value *args, int nargs,
                         int line, int col);
 static AstNode *find_func_decl(Interp *ip, const char *name);
+static FuncDeclTable *func_decl_table_build(AstNode *program);
+static void func_decl_table_free(FuncDeclTable *table);
 
 static int is_mutating_array_builtin(const char *name) {
     return strcmp(name, "arrayPush") == 0 ||
@@ -21,6 +23,59 @@ static int is_mutating_array_builtin(const char *name) {
            strcmp(name, "arrayInsert") == 0 ||
            strcmp(name, "arrayRemove") == 0 ||
            strcmp(name, "arraySet") == 0;
+}
+
+static uint64_t hash_name(const char *name) {
+    uint64_t hash = UINT64_C(1469598103934665603);
+    while (*name) {
+        hash ^= (unsigned char)*name++;
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash;
+}
+
+static FuncDeclTable *func_decl_table_build(AstNode *program) {
+    NodeList *decls = &program->u.program.decls;
+    int func_count = 0;
+    for (int i = 0; i < decls->count; i++) {
+        if (decls->items[i]->kind == NODE_FUNC_DECL) func_count++;
+    }
+
+    int bucket_count = 32;
+    while (bucket_count < func_count * 2) bucket_count <<= 1;
+
+    FuncDeclTable *table = ALLOC(FuncDeclTable);
+    table->bucket_count = bucket_count;
+    table->buckets = ALLOC_N(FuncDeclEntry *, (size_t)bucket_count);
+
+    for (int i = 0; i < decls->count; i++) {
+        AstNode *decl = decls->items[i];
+        if (decl->kind != NODE_FUNC_DECL) continue;
+
+        uint64_t hash = hash_name(decl->u.func_decl.name);
+        int bucket = (int)(hash & (unsigned long)(bucket_count - 1));
+        FuncDeclEntry *entry = ALLOC(FuncDeclEntry);
+        entry->name = decl->u.func_decl.name;
+        entry->decl = decl;
+        entry->next = table->buckets[bucket];
+        table->buckets[bucket] = entry;
+    }
+
+    return table;
+}
+
+static void func_decl_table_free(FuncDeclTable *table) {
+    if (!table) return;
+    for (int i = 0; i < table->bucket_count; i++) {
+        FuncDeclEntry *entry = table->buckets[i];
+        while (entry) {
+            FuncDeclEntry *next = entry->next;
+            free(entry);
+            entry = next;
+        }
+    }
+    free(table->buckets);
+    free(table);
 }
 
 /* -----------------------------------------------------------------------
@@ -456,12 +511,11 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
  * User function call
  * ----------------------------------------------------------------------- */
 static AstNode *find_func_decl(Interp *ip, const char *name) {
-    NodeList *decls = &ip->program->u.program.decls;
-    for (int i = 0; i < decls->count; i++) {
-        AstNode *d = decls->items[i];
-        if (d->kind == NODE_FUNC_DECL &&
-            strcmp(d->u.func_decl.name, name) == 0)
-            return d;
+    if (!ip->func_decls) return NULL;
+    uint64_t hash = hash_name(name);
+    int bucket = (int)(hash & (unsigned long)(ip->func_decls->bucket_count - 1));
+    for (FuncDeclEntry *entry = ip->func_decls->buckets[bucket]; entry; entry = entry->next) {
+        if (strcmp(entry->name, name) == 0) return entry->decl;
     }
     return NULL;
 }
@@ -546,6 +600,7 @@ int interp_run(AstNode *program, int argc, char **argv) {
     ip.program = program;
     ip.global  = scope_new(NULL, 0);
     ip.funcs   = NULL;
+    ip.func_decls = func_decl_table_build(program);
     ip.signal  = SIGNAL_NONE;
     ip.ret_val = val_void();
 
@@ -586,6 +641,7 @@ int interp_run(AstNode *program, int argc, char **argv) {
     value_free(&ret);
     if (nargs >= 1) value_free(&args[0]);
     value_free(&ip.ret_val);
+    func_decl_table_free(ip.func_decls);
     scope_free(ip.global);
 
     return exit_code;
