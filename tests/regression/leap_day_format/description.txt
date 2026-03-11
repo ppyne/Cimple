@@ -1,0 +1,1 @@
+Protects leap-day formatting in UTC.

@@ -1,0 +1,1 @@
+Protects fileExists on a missing file.

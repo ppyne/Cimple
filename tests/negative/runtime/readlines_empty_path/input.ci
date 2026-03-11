@@ -1,0 +1,4 @@
+void main() {
+    string[] xs = readLines("");
+    print(toString(count(xs)) + "\n");
+}

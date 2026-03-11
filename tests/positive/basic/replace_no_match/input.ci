@@ -1,0 +1,3 @@
+void main() {
+    print(replace("alpha", "z", "X") + "\n");
+}

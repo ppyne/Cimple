@@ -1,0 +1,4 @@
+void main() {
+    writeFile("empty.txt", "");
+    print("<" + readFile("empty.txt") + ">\n");
+}

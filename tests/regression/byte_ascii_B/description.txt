@@ -1,0 +1,1 @@
+Protects byteAt on ASCII B.

@@ -1,0 +1,1 @@
+Protects arrayInsert on bool arrays.

@@ -1,0 +1,4 @@
+void main() {
+    bool[] xs = [true];
+    arrayInsert(xs, 0, 1);
+}

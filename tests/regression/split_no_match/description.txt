@@ -1,0 +1,1 @@
+Protects split when the separator does not occur.
