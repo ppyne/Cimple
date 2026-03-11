@@ -1,0 +1,5 @@
+void main() {
+    print(toString(byteAt("é", 0)) + "\n");
+    print(toString(byteAt("é", 1)) + "\n");
+    print(glyphAt("é", 0) + "\n");
+}

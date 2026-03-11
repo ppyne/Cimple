@@ -1,0 +1,6 @@
+void main() {
+    print(toString(approxEqual(asin(1.0), M_PI / 2.0, 0.0001)) + "\n");
+    print(toString(approxEqual(acos(0.0), M_PI / 2.0, 0.0001)) + "\n");
+    print(toString(approxEqual(atan(1.0), M_PI / 4.0, 0.0001)) + "\n");
+    print(toString(approxEqual(atan2(1.0, 1.0), M_PI / 4.0, 0.0001)) + "\n");
+}

@@ -1,0 +1,1 @@
+Manual coverage for exec stdout capture and split processing.

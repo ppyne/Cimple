@@ -1,0 +1,1 @@
+Manual coverage for byteAt over multi-byte UTF-8.

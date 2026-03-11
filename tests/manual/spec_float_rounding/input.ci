@@ -1,0 +1,8 @@
+void main() {
+    print(toString(floor(2.9)) + "\n");
+    print(toString(ceil(2.1)) + "\n");
+    print(toString(round(2.5)) + "\n");
+    print(toString(trunc(-2.9)) + "\n");
+    print(toString(fmod(7.5, 2.0)) + "\n");
+    print(toString(fmod(-7.5, 2.0)) + "\n");
+}

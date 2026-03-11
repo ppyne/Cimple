@@ -1,0 +1,7 @@
+void main() {
+    ExecResult r = exec(["/bin/sh", "-c", "printf 'a\\nb\\n'"] , []);
+    string[] lines = split(execStdout(r), "\n");
+    print(toString(execStatus(r)) + "\n");
+    print(toString(count(lines)) + "\n");
+    print(lines[0] + ":" + lines[1] + ":" + lines[2] + "\n");
+}

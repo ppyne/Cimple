@@ -1,0 +1,10 @@
+void main() {
+    if (fileExists("data.txt")) {
+        print("bad\n");
+    } else {
+        writeFile("data.txt", "ok\n");
+    }
+    if (fileExists("data.txt")) {
+        print(readFile("data.txt"));
+    }
+}

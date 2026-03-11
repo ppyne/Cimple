@@ -1,0 +1,10 @@
+void main() {
+    float pinf = 1.0 / 0.0;
+    float ninf = -1.0 / 0.0;
+    float nanv = sqrt(-1.0);
+    print(toString(isInfinite(pinf)) + "\n");
+    print(toString(isPositiveInfinity(pinf)) + "\n");
+    print(toString(isNegativeInfinity(ninf)) + "\n");
+    print(toString(isNaN(nanv)) + "\n");
+    print(toString(isFinite(FLOAT_MAX)) + "\n");
+}
