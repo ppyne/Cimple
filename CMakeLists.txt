@@ -69,6 +69,7 @@ set(CIMPLE_SOURCES
     "${LEXER_C}"
     "${PARSER_C}"
     "${SRC_DIR}/main.c"
+    "${TOOLS_DIR}/utf8proc.c"
 )
 
 # --- Executable ---
@@ -78,6 +79,7 @@ target_include_directories(cimple PRIVATE
     "${SRC_DIR}/lexer"
     "${SRC_DIR}/parser"
     "${GENERATED_DIR}"
+    "${TOOLS_DIR}"
 )
 
 # --- Portable compiler flags ---

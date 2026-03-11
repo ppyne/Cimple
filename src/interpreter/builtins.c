@@ -31,53 +31,71 @@ static Value not_a_builtin(void) {
 }
 
 /* -----------------------------------------------------------------------
- * NFC normalisation stubs (minimal — full implementation would use ICU/libunicode)
- * For the purposes of this implementation we provide UTF-8 code-point counting
- * without full NFC normalisation.  A production implementation should link
- * against a Unicode library.
+ * NFC normalisation via utf8proc (JuliaStrings/utf8proc v2.9.0, MIT licence)
+ * glyphLen and glyphAt normalise to NFC before counting / indexing, so that
+ * e.g. NFD "e\u0301" (2 code points) is treated as NFC "é" (1 glyph).
  * ----------------------------------------------------------------------- */
+#include "utf8proc.h"
 
-/* Count UTF-8 code points (no normalisation) */
+/* Return a freshly-malloc'd NFC form of s (caller must free). */
+static char *nfc_normalize(const char *s) {
+    uint8_t *out = NULL;
+    utf8proc_map((const utf8proc_uint8_t *)s, 0, &out,
+                 UTF8PROC_NULLTERM | UTF8PROC_STABLE | UTF8PROC_COMPOSE);
+    if (out) return (char *)out;
+    /* fallback: return a plain copy on error */
+    size_t n = strlen(s) + 1;
+    char *cp = (char *)cimple_malloc(n);
+    memcpy(cp, s, n);
+    return cp;
+}
+
+/* Count NFC code points in s. */
 static int utf8_codepoint_count(const char *s) {
+    char *n = nfc_normalize(s);
+    utf8proc_ssize_t len = (utf8proc_ssize_t)strlen(n);
     int count = 0;
-    while (*s) {
-        unsigned char c = (unsigned char)*s;
-        if      ((c & 0x80) == 0x00) s += 1;
-        else if ((c & 0xE0) == 0xC0) s += 2;
-        else if ((c & 0xF0) == 0xE0) s += 3;
-        else if ((c & 0xF8) == 0xF0) s += 4;
-        else s += 1;
-        count++;
+    utf8proc_ssize_t pos = 0;
+    utf8proc_int32_t cp;
+    while (pos < len) {
+        utf8proc_ssize_t r = utf8proc_iterate(
+            (const utf8proc_uint8_t *)n + pos, len - pos, &cp);
+        if (r <= 0) break;
+        pos += r; count++;
     }
+    free(n);
     return count;
 }
 
-/* Return the code point string at index (UTF-8 multi-byte safe) */
+/* Return the NFC code-point string at index (caller must free). */
 static char *utf8_codepoint_at(const char *s, int index, int line, int col) {
-    int total = utf8_codepoint_count(s);
-    if (index < 0 || index >= total)
+    char *n = nfc_normalize(s);
+    utf8proc_ssize_t len = (utf8proc_ssize_t)strlen(n);
+    int total = utf8_codepoint_count(n);   /* count on already-NFC string */
+    if (index < 0 || index >= total) {
+        free(n);
         error_runtime(line, col,
                       "glyphAt: index out of bounds (Index: %d   Glyph count: %d)",
                       index, total);
-    const char *p = s;
-    for (int i = 0; i < index; i++) {
-        unsigned char c = (unsigned char)*p;
-        if      ((c & 0x80) == 0x00) p += 1;
-        else if ((c & 0xE0) == 0xC0) p += 2;
-        else if ((c & 0xF0) == 0xE0) p += 3;
-        else if ((c & 0xF8) == 0xF0) p += 4;
-        else p += 1;
     }
-    unsigned char c = (unsigned char)*p;
-    int cplen;
-    if      ((c & 0x80) == 0x00) cplen = 1;
-    else if ((c & 0xE0) == 0xC0) cplen = 2;
-    else if ((c & 0xF0) == 0xE0) cplen = 3;
-    else if ((c & 0xF8) == 0xF0) cplen = 4;
-    else cplen = 1;
+    /* advance to the requested code point */
+    utf8proc_ssize_t pos = 0;
+    for (int i = 0; i < index; i++) {
+        utf8proc_int32_t cp;
+        utf8proc_ssize_t r = utf8proc_iterate(
+            (const utf8proc_uint8_t *)n + pos, len - pos, &cp);
+        if (r <= 0) break;
+        pos += r;
+    }
+    /* measure the code point at pos */
+    utf8proc_int32_t cp;
+    utf8proc_ssize_t cplen = utf8proc_iterate(
+        (const utf8proc_uint8_t *)n + pos, len - pos, &cp);
+    if (cplen <= 0) cplen = 1;
     char *result = (char *)cimple_malloc((size_t)cplen + 1);
-    memcpy(result, p, (size_t)cplen);
+    memcpy(result, n + pos, (size_t)cplen);
     result[cplen] = '\0';
+    free(n);
     return result;
 }
 

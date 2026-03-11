@@ -1,0 +1,3 @@
+glyphLen normalises NFD input to NFC before counting (spec §9.1).
+"e\u0301" (NFD: 'e' + combining acute) is 1 glyph after NFC normalisation.
+"re\u0301sume\u0301" is 6 glyphs (NFC: "résumé").

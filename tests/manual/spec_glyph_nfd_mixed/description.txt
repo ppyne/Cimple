@@ -1,0 +1,3 @@
+glyphLen and glyphAt handle mixed NFC and NFD input correctly (spec §9.1).
+NFC "café" has 4 glyphs. NFD "naïve" (i + combining diaeresis U+0308) has 5
+glyphs after normalisation, and glyphAt index 2 returns NFC "ï" (U+00EF).

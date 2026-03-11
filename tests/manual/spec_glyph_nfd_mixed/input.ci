@@ -1,0 +1,7 @@
+void main() {
+    string a = "caf\u00e9";
+    string b = "na\u0069\u0308ve";
+    print(toString(glyphLen(a)) + "\n");
+    print(toString(glyphLen(b)) + "\n");
+    print(glyphAt(b, 2) + "\n");
+}
