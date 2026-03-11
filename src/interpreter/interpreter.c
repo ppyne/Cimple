@@ -136,8 +136,7 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         Value arr = val_array(elem_t);
         for (int i = 0; i < elems->count; i++) {
             Value v = eval_expr(ip, scope, elems->items[i]);
-            array_push(arr.u.arr, v);
-            value_free(&v);
+            array_push_owned(arr.u.arr, &v);
         }
         return arr;
     }
@@ -384,7 +383,7 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
         Value idx_v = eval_expr(ip, scope, n->u.index_assign.index);
         Value val   = eval_expr(ip, scope, n->u.index_assign.value);
         int   idx   = (int)idx_v.u.i;
-        array_set(sym->val.u.arr, idx, val, n->line, n->col);
+        array_set_owned(sym->val.u.arr, idx, &val, n->line, n->col);
         value_free(&idx_v);
         value_free(&val);
         break;
@@ -626,8 +625,7 @@ int interp_run(AstNode *program, int argc, char **argv) {
         args[0] = val_array(TYPE_STRING);
         for (int i = 0; i < argc; i++) {
             Value s = val_string(argv[i]);
-            array_push(args[0].u.arr, s);
-            value_free(&s);
+            array_push_owned(args[0].u.arr, &s);
         }
     }
 

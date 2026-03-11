@@ -231,6 +231,45 @@ static BuiltinId builtin_lookup_id(const char *name) {
     return entry ? entry->id : BI_NONE;
 }
 
+typedef struct {
+    char *data;
+    size_t len;
+    size_t cap;
+} StringBuilder;
+
+static void sb_init(StringBuilder *sb, size_t initial_cap) {
+    sb->cap = initial_cap ? initial_cap : 32;
+    sb->len = 0;
+    sb->data = (char *)cimple_malloc(sb->cap);
+    sb->data[0] = '\0';
+}
+
+static void sb_reserve(StringBuilder *sb, size_t extra) {
+    size_t needed = sb->len + extra + 1;
+    if (needed <= sb->cap) return;
+    while (sb->cap < needed) sb->cap *= 2;
+    sb->data = (char *)cimple_realloc(sb->data, sb->cap);
+}
+
+static void sb_append_mem(StringBuilder *sb, const char *data, size_t len) {
+    sb_reserve(sb, len);
+    memcpy(sb->data + sb->len, data, len);
+    sb->len += len;
+    sb->data[sb->len] = '\0';
+}
+
+static void sb_append_cstr(StringBuilder *sb, const char *s) {
+    sb_append_mem(sb, s, strlen(s));
+}
+
+static char *sb_take(StringBuilder *sb) {
+    char *out = sb->data;
+    sb->data = NULL;
+    sb->len = 0;
+    sb->cap = 0;
+    return out;
+}
+
 /* -----------------------------------------------------------------------
  * NFC normalisation via utf8proc (JuliaStrings/utf8proc v2.9.0, MIT licence)
  * glyphLen and glyphAt normalise to NFC before counting / indexing, so that
@@ -804,40 +843,28 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         const char *repl= ARG_STR(2);
         if (old[0] == '\0')
             error_runtime(line, col, "replace: old argument cannot be empty");
-        size_t slen    = strlen(s);
-        size_t oldlen  = strlen(old);
-        size_t repllen = strlen(repl);
-        /* Count occurrences */
-        int count = 0;
+        size_t slen = strlen(s);
+        size_t oldlen = strlen(old);
+        StringBuilder sb;
+        sb_init(&sb, slen + 1);
         const char *p = s;
-        while ((p = strstr(p, old))) { count++; p += oldlen; }
-        /* Build result */
-        size_t newlen = slen + (size_t)count * (repllen - oldlen);
-        char *out = (char *)cimple_malloc(newlen + 1);
-        char *dst = out;
-        p = s;
         while (*p) {
             const char *found = strstr(p, old);
             if (!found) {
-                strcpy(dst, p);
-                dst += strlen(p);
+                sb_append_cstr(&sb, p);
                 break;
             }
-            memcpy(dst, p, (size_t)(found - p));
-            dst += found - p;
-            memcpy(dst, repl, repllen);
-            dst += repllen;
+            sb_append_mem(&sb, p, (size_t)(found - p));
+            sb_append_cstr(&sb, repl);
             p = found + oldlen;
         }
-        *dst = '\0';
-        return val_string_own(out);
+        return val_string_own(sb_take(&sb));
     }
 
     if (id == BI_FORMAT) {
         REQUIRE(2);
         const char *tmpl = ARG_STR(0);
         ArrayVal   *arr  = ARG_ARR(1);
-        /* Count {} placeholders */
         int ph_count = 0;
         for (const char *p = tmpl; *p; p++)
             if (p[0] == '{' && p[1] == '}') ph_count++;
@@ -845,26 +872,20 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
             error_runtime(line, col,
                           "format: marker count does not match argument count (Markers '{}': %d   Arguments provided: %d)",
                           ph_count, arr->count);
-        /* Build result */
-        size_t cap = strlen(tmpl) + 1;
-        for (int i = 0; i < arr->count; i++) cap += strlen(arr->data.strings[i]);
-        char *out = (char *)cimple_malloc(cap + 64);
-        char *dst = out;
+        StringBuilder sb;
+        sb_init(&sb, strlen(tmpl) + 1);
         const char *p = tmpl;
         int ai = 0;
         while (*p) {
             if (p[0] == '{' && p[1] == '}') {
-                const char *sub = arr->data.strings[ai++];
-                size_t sl = strlen(sub);
-                memcpy(dst, sub, sl);
-                dst += sl;
+                sb_append_cstr(&sb, arr->data.strings[ai++]);
                 p += 2;
             } else {
-                *dst++ = *p++;
+                sb_append_mem(&sb, p, 1);
+                p++;
             }
         }
-        *dst = '\0';
-        return val_string_own(out);
+        return val_string_own(sb_take(&sb));
     }
 
     if (id == BI_JOIN) {
@@ -873,19 +894,16 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         const char *sep = ARG_STR(1);
         size_t seplen = strlen(sep);
         if (arr->count == 0) return val_string("");
-        size_t total = 0;
+        size_t total = 1;
         for (int i = 0; i < arr->count; i++) total += strlen(arr->data.strings[i]);
         total += (size_t)(arr->count - 1) * seplen;
-        char *out = (char *)cimple_malloc(total + 1);
-        char *dst = out;
+        StringBuilder sb;
+        sb_init(&sb, total);
         for (int i = 0; i < arr->count; i++) {
-            if (i > 0) { memcpy(dst, sep, seplen); dst += seplen; }
-            size_t sl = strlen(arr->data.strings[i]);
-            memcpy(dst, arr->data.strings[i], sl);
-            dst += sl;
+            if (i > 0) sb_append_mem(&sb, sep, seplen);
+            sb_append_cstr(&sb, arr->data.strings[i]);
         }
-        *dst = '\0';
-        return val_string_own(out);
+        return val_string_own(sb_take(&sb));
     }
 
     if (id == BI_SPLIT) {
@@ -897,8 +915,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         Value result = val_array(TYPE_STRING);
         if (s[0] == '\0') {
             Value empty_s = val_string("");
-            array_push(result.u.arr, empty_s);
-            value_free(&empty_s);
+            array_push_owned(result.u.arr, &empty_s);
             return result;
         }
         size_t seplen = strlen(sep);
@@ -907,14 +924,12 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
             const char *found = strstr(p, sep);
             if (!found) {
                 Value part = val_string(p);
-                array_push(result.u.arr, part);
-                value_free(&part);
+                array_push_owned(result.u.arr, &part);
                 break;
             }
             char *part_s = cimple_strndup(p, (size_t)(found - p));
             Value part = val_string_own(part_s);
-            array_push(result.u.arr, part);
-            value_free(&part);
+            array_push_owned(result.u.arr, &part);
             p = found + seplen;
         }
         return result;
@@ -923,17 +938,14 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     if (id == BI_CONCAT) {
         REQUIRE(1);
         ArrayVal *arr = ARG_ARR(0);
-        size_t total = 0;
+        size_t total = 1;
         for (int i = 0; i < arr->count; i++) total += strlen(arr->data.strings[i]);
-        char *out = (char *)cimple_malloc(total + 1);
-        char *dst = out;
+        StringBuilder sb;
+        sb_init(&sb, total);
         for (int i = 0; i < arr->count; i++) {
-            size_t sl = strlen(arr->data.strings[i]);
-            memcpy(dst, arr->data.strings[i], sl);
-            dst += sl;
+            sb_append_cstr(&sb, arr->data.strings[i]);
         }
-        *dst = '\0';
-        return val_string_own(out);
+        return val_string_own(sb_take(&sb));
     }
 
     /* ---- Conversions ---- */
@@ -1133,16 +1145,14 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
                 char *end = p;
                 char *line_s = cimple_strndup(start, (size_t)(end - start));
                 Value lv = val_string_own(line_s);
-                array_push(result.u.arr, lv);
-                value_free(&lv);
+                array_push_owned(result.u.arr, &lv);
                 if (*p == '\r') p++;
                 p++;
                 start = p;
             } else if (*p == '\r') {
                 char *line_s = cimple_strndup(start, (size_t)(p - start));
                 Value lv = val_string_own(line_s);
-                array_push(result.u.arr, lv);
-                value_free(&lv);
+                array_push_owned(result.u.arr, &lv);
                 p++;
                 start = p;
             } else {
@@ -1152,8 +1162,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         if (start != p) {
             char *line_s = cimple_strndup(start, (size_t)(p - start));
             Value lv = val_string_own(line_s);
-            array_push(result.u.arr, lv);
-            value_free(&lv);
+            array_push_owned(result.u.arr, &lv);
         }
         free(content);
         return result;

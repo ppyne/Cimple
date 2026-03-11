@@ -58,11 +58,13 @@ Value  val_exec(int status, char *out, char *err);
  * Array helpers
  * ----------------------------------------------------------------------- */
 void   array_push(ArrayVal *a, Value v);
+void   array_push_owned(ArrayVal *a, Value *v);
 Value  array_pop(ArrayVal *a, int line, int col);
 void   array_insert(ArrayVal *a, int idx, Value v, int line, int col);
 void   array_remove(ArrayVal *a, int idx, int line, int col);
 Value  array_get(ArrayVal *a, int idx, int line, int col);
 void   array_set(ArrayVal *a, int idx, Value v, int line, int col);
+void   array_set_owned(ArrayVal *a, int idx, Value *v, int line, int col);
 
 /* -----------------------------------------------------------------------
  * Value utilities

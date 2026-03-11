@@ -106,6 +106,28 @@ void array_push(ArrayVal *a, Value v) {
     a->count++;
 }
 
+void array_push_owned(ArrayVal *a, Value *v) {
+    arr_ensure(a, a->count + 1);
+    switch (a->elem_type) {
+    case TYPE_INT:
+        a->data.ints[a->count++] = v->u.i;
+        break;
+    case TYPE_FLOAT:
+        a->data.floats[a->count++] = v->u.f;
+        break;
+    case TYPE_BOOL:
+        a->data.bools[a->count++] = v->u.b;
+        break;
+    case TYPE_STRING:
+        a->data.strings[a->count++] = v->u.s;
+        v->u.s = NULL;
+        v->type = TYPE_VOID;
+        break;
+    default:
+        break;
+    }
+}
+
 Value array_pop(ArrayVal *a, int line, int col) {
     if (a->count == 0)
         error_runtime(line, col, "Cannot pop from empty array");
@@ -215,6 +237,32 @@ void array_set(ArrayVal *a, int idx, Value v, int line, int col) {
     }
 }
 
+void array_set_owned(ArrayVal *a, int idx, Value *v, int line, int col) {
+    if (idx < 0 || idx >= a->count)
+        error_runtime(line, col,
+                      "Array index out of bounds (Index: %d   Array size: %d)",
+                      idx, a->count);
+    switch (a->elem_type) {
+    case TYPE_INT:
+        a->data.ints[idx] = v->u.i;
+        break;
+    case TYPE_FLOAT:
+        a->data.floats[idx] = v->u.f;
+        break;
+    case TYPE_BOOL:
+        a->data.bools[idx] = v->u.b;
+        break;
+    case TYPE_STRING:
+        free(a->data.strings[idx]);
+        a->data.strings[idx] = v->u.s;
+        v->u.s = NULL;
+        v->type = TYPE_VOID;
+        break;
+    default:
+        break;
+    }
+}
+
 /* -----------------------------------------------------------------------
  * Deep copy
  * ----------------------------------------------------------------------- */
@@ -224,10 +272,27 @@ Value value_copy(Value v) {
     if (type_is_array(v.type)) {
         ArrayVal *src = v.u.arr;
         Value dst = val_array(src->elem_type);
-        for (int i = 0; i < src->count; i++) {
-            Value elem = array_get(src, i, 0, 0);
-            array_push(dst.u.arr, elem);
-            if (src->elem_type == TYPE_STRING) value_free(&elem);
+        ArrayVal *out = dst.u.arr;
+        arr_ensure(out, src->count);
+        out->count = src->count;
+        switch (src->elem_type) {
+        case TYPE_INT:
+            memcpy(out->data.ints, src->data.ints, (size_t)src->count * sizeof(int64_t));
+            break;
+        case TYPE_FLOAT:
+            memcpy(out->data.floats, src->data.floats, (size_t)src->count * sizeof(double));
+            break;
+        case TYPE_BOOL:
+            memcpy(out->data.bools, src->data.bools, (size_t)src->count * sizeof(int));
+            break;
+        case TYPE_STRING:
+            for (int i = 0; i < src->count; i++) {
+                out->data.strings[i] = cimple_strdup(src->data.strings[i]);
+            }
+            break;
+        default:
+            out->count = 0;
+            break;
         }
         return dst;
     }
