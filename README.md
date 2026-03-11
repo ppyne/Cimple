@@ -8,7 +8,7 @@ This repository contains the reference implementation: a lexer, parser, semantic
 - Statically typed: `int`, `float`, `bool`, `string`, `void`
 - Dynamic homogeneous arrays: `int[]`, `float[]`, `bool[]`, `string[]`
 - Opaque `ExecResult` type for external command execution
-- Full standard library (I/O, strings, maths, file, time, environment)
+- Minimal standard library (I/O, strings, maths, file, time, environment)
 - Predefined constants: `INT_MAX`, `M_PI`, `FLOAT_EPSILON`, …
 - Portable: macOS, Linux, Windows, WebAssembly (Emscripten)
 
@@ -29,7 +29,7 @@ cd tools/
 ./fetch_lemon.sh
 ```
 
-**Install re2c** (macOS: `brew install re2c`, Ubuntu: `apt install re2c`).
+**Install re2c** (macOS: `sudo port install re2c`, Ubuntu: `apt install re2c`).
 
 ### Build
 

@@ -39,7 +39,7 @@ This document is the authoritative user-facing manual for the current reference 
 ### Building
 
 ```sh
-cd tools && ./fetch_lemon.sh   # download lemon.c + lempar.c (once)
+cd tools && ./fetch_lemon.sh && cd ..   # download lemon.c + lempar.c (once)
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
