@@ -1,0 +1,1 @@
+Manual coverage for minInt with negative values.

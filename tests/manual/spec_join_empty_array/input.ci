@@ -1,0 +1,4 @@
+void main() {
+    string[] xs = [];
+    print("<" + join(xs, ",") + ">\n");
+}

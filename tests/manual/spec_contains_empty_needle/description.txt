@@ -1,0 +1,1 @@
+Manual coverage for contains with an empty needle.

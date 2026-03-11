@@ -1,0 +1,1 @@
+Manual coverage for split when the separator is absent.
