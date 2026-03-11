@@ -1,0 +1,8 @@
+bool isAdult(int age) {
+    return age >= 18;
+}
+
+void main() {
+    print(toString(isAdult(17)) + "\n");
+    print(toString(isAdult(18)) + "\n");
+}

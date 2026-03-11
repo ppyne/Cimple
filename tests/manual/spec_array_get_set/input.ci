@@ -1,0 +1,6 @@
+void main() {
+    int[] xs = [10, 20, 30];
+    print(toString(arrayGet(xs, 1)) + "\n");
+    arraySet(xs, 1, 99);
+    print(toString(arrayGet(xs, 1)) + "\n");
+}
