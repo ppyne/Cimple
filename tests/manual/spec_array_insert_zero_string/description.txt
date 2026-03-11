@@ -1,0 +1,1 @@
+Manual coverage for arrayInsert at index zero on a string array.

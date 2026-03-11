@@ -1,0 +1,4 @@
+void main() {
+    int[] xs = [];
+    print(toString(count(xs)) + "\n");
+}

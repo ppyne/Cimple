@@ -1,0 +1,1 @@
+Manual coverage for toInt on zero string.

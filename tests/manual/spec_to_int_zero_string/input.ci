@@ -1,0 +1,3 @@
+void main() {
+    print(toString(toInt("0")) + "\n");
+}

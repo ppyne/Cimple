@@ -1,0 +1,7 @@
+void main() {
+    string[] xs = split(",a,b", ",");
+    print(toString(count(xs)) + "\n");
+    print("<" + xs[0] + ">\n");
+    print(xs[1] + "\n");
+    print(xs[2] + "\n");
+}

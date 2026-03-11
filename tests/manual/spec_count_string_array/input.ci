@@ -1,0 +1,4 @@
+void main() {
+    string[] xs = ["a", "b", "c", "d"];
+    print(toString(count(xs)) + "\n");
+}

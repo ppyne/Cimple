@@ -1,0 +1,1 @@
+Manual coverage for toFloat on a negative string.
