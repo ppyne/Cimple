@@ -1,0 +1,4 @@
+void main() {
+    int[] values = [];
+    print(toString(arrayPop(values)) + "\n");
+}

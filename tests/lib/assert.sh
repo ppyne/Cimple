@@ -29,6 +29,17 @@ assert_stdout() {
     fi
 }
 
+assert_empty_stdout() {
+    actual="$1"
+    test_name="$2"
+    if [ -z "$actual" ]; then
+        PASS=$((PASS + 1))
+    else
+        FAIL=$((FAIL + 1))
+        ERRORS="$ERRORS\nFAIL [$test_name] stdout is not empty"
+    fi
+}
+
 assert_stderr_contains() {
     fragment="$1"
     actual="$2"
@@ -38,6 +49,21 @@ assert_stderr_contains() {
         *)
             FAIL=$((FAIL + 1))
             ERRORS="$ERRORS\nFAIL [$test_name] stderr does not contain: $fragment"
+            ;;
+    esac
+}
+
+assert_stderr_not_contains() {
+    fragment="$1"
+    actual="$2"
+    test_name="$3"
+    case "$actual" in
+        *"$fragment"*)
+            FAIL=$((FAIL + 1))
+            ERRORS="$ERRORS\nFAIL [$test_name] stderr contains forbidden fragment: $fragment"
+            ;;
+        *)
+            PASS=$((PASS + 1))
             ;;
     esac
 }

@@ -1,0 +1,9 @@
+void main() {
+    string s = "bonjour";
+    print(toString(contains(s, "jour")) + "\n");
+    print(toString(indexOf(s, "jour")) + "\n");
+    print(toString(startsWith(s, "bon")) + "\n");
+    print(toString(endsWith(s, "our")) + "\n");
+    print(substr(s, 3, 4) + "\n");
+    print(toString(byteAt("ABC", 1)) + "\n");
+}

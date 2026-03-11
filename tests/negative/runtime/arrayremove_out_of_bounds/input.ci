@@ -1,0 +1,4 @@
+void main() {
+    int[] values = [1, 2, 3];
+    arrayRemove(values, 5);
+}

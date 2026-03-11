@@ -1,0 +1,4 @@
+void main() {
+    ExecResult r = exec(["/usr/bin/true"], ["BROKEN"]);
+    print(toString(execStatus(r)) + "\n");
+}

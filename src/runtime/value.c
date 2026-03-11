@@ -108,7 +108,7 @@ void array_push(ArrayVal *a, Value v) {
 
 Value array_pop(ArrayVal *a, int line, int col) {
     if (a->count == 0)
-        error_runtime(line, col, "arrayPop: array is empty");
+        error_runtime(line, col, "Cannot pop from empty array");
     a->count--;
     switch (a->elem_type) {
     case TYPE_INT:    return val_int(a->data.ints[a->count]);

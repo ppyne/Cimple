@@ -23,8 +23,27 @@
 
 %syntax_error {
     (void)yyminor;
-    error_syntax(TOKEN.line, TOKEN.col,
-                 "unexpected token %s", token_type_name(TOKEN.type));
+    switch (TOKEN.type) {
+    case TOK_RBRACE:
+        error_syntax(TOKEN.line, TOKEN.col, "Missing ';' after statement");
+        break;
+    case TOK_LBRACE:
+        error_syntax(TOKEN.line, TOKEN.col, "Missing ')' to close expression");
+        break;
+    case TOK_EOF:
+        error_syntax(TOKEN.line, TOKEN.col, "Missing '}' to close block");
+        break;
+    case TOK_IDENT:
+        error_syntax(TOKEN.line, TOKEN.col, "Unknown type: '%s'", TOKEN.v.sval);
+        break;
+    case TOK_RPAREN:
+        error_syntax(TOKEN.line, TOKEN.col, "Expected expression");
+        break;
+    default:
+        error_syntax(TOKEN.line, TOKEN.col,
+                     "unexpected token %s", token_type_name(TOKEN.type));
+        break;
+    }
 }
 
 %parse_failure {

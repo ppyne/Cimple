@@ -19,6 +19,8 @@ run_test() {
     expected_exit=$(cat "$dir/expected_exit" 2>/dev/null || printf '0')
     expected_stdout="$dir/expected_stdout"
     expected_stderr="$dir/expected_stderr"
+    require_empty_stdout="$dir/require_empty_stdout"
+    forbidden_stderr="$dir/forbidden_stderr"
     tmp_run_dir="${TMPDIR:-/tmp}/cimple_test_run_$$"
 
     set --
@@ -44,6 +46,8 @@ run_test() {
 
     if [ -f "$expected_stdout" ]; then
         assert_stdout "$expected_stdout" "$actual_stdout" "$name"
+    elif [ -f "$require_empty_stdout" ]; then
+        assert_empty_stdout "$actual_stdout" "$name"
     fi
 
     if [ -f "$expected_stderr" ]; then
@@ -51,6 +55,13 @@ run_test() {
             [ -z "$fragment" ] && continue
             assert_stderr_contains "$fragment" "$actual_stderr" "$name"
         done < "$expected_stderr"
+    fi
+
+    if [ -f "$forbidden_stderr" ]; then
+        while IFS= read -r fragment || [ -n "$fragment" ]; do
+            [ -z "$fragment" ] && continue
+            assert_stderr_not_contains "$fragment" "$actual_stderr" "$name"
+        done < "$forbidden_stderr"
     fi
 }
 

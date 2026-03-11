@@ -218,7 +218,8 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
             int blen = (int)strlen(base.u.s);
             if (idx < 0 || idx >= blen)
                 error_runtime(n->line, n->col,
-                              "string index %d out of bounds (length=%d)", idx, blen);
+                              "String index out of bounds (Index: %d   String length: %d bytes)",
+                              idx, blen);
             char buf[2] = { base.u.s[idx], '\0' };
             result = val_string(buf);
         } else if (type_is_array(base.type)) {

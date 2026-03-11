@@ -124,6 +124,15 @@ static Value do_exec(Value *args, int nargs, int line, int col) {
     if (nargs >= 2 && type_is_array(args[1].type)) {
         ArrayVal *env_arr = args[1].u.arr;
         int ne = env_arr->count;
+        for (int i = 0; i < ne; i++) {
+            const char *entry = env_arr->data.strings[i];
+            const char *eq = strchr(entry, '=');
+            if (!eq || eq == entry) {
+                error_runtime(line, col,
+                              "exec: invalid environment entry: '%s'",
+                              entry);
+            }
+        }
 #ifdef _WIN32
         /* Collect current environment */
         int base_count = 0;
