@@ -1,1 +1,2 @@
-main' parameter must be 'string[]'
+Invalid signature for 'main'
+Valid signatures: void main(), int main(), void main(string[] args), int main(string[] args).

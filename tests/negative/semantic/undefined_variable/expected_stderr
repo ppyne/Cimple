@@ -1,1 +1,2 @@
-undefined variable 'x'
+Undefined variable: 'x'
+must be declared before use

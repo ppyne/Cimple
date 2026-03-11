@@ -1,6 +1,7 @@
 #include "semantic.h"
 #include "../common/error.h"
 #include "../common/memory.h"
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -223,8 +224,11 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
     case NODE_IDENT: {
         Symbol *sym = scope_lookup(ctx->current, n->u.ident.name);
         if (!sym) {
-            error_semantic(n->line, n->col,
-                           "undefined variable '%s'", n->u.ident.name);
+            char hint[160];
+            snprintf(hint, sizeof(hint), "'%s' must be declared before use.",
+                     n->u.ident.name);
+            error_semantic_hint(n->line, n->col, hint,
+                                "Undefined variable: '%s'", n->u.ident.name);
             n->type = TYPE_UNKNOWN;
             return TYPE_UNKNOWN;
         }
@@ -391,10 +395,13 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
             }
 
             /* Regular builtin — check arg count */
-            if (nargs != sig->param_count)
-                error_semantic(n->line, n->col,
-                               "%s: expected %d argument(s), got %d",
-                               fname, sig->param_count, nargs);
+            if (nargs != sig->param_count) {
+                char hint[128];
+                snprintf(hint, sizeof(hint), "Expected %d, got %d.",
+                         sig->param_count, nargs);
+                error_semantic_hint(n->line, n->col, hint,
+                                    "Wrong number of arguments for '%s'", fname);
+            }
             else {
                 /* Check arg types */
                 for (int i = 0; i < nargs && i < sig->param_count; i++) {
@@ -416,14 +423,22 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         /* User function */
         FuncSig *fsig = func_table_lookup(ctx->funcs, fname);
         if (!fsig) {
-            error_semantic(n->line, n->col, "unknown function '%s'", fname);
+            char hint[192];
+            snprintf(hint, sizeof(hint),
+                     "'%s' is not defined in this scope or the standard library.",
+                     fname);
+            error_semantic_hint(n->line, n->col, hint,
+                                "Unknown function: '%s'", fname);
             n->type = TYPE_UNKNOWN;
             return TYPE_UNKNOWN;
         }
-        if (nargs != fsig->param_count)
-            error_semantic(n->line, n->col,
-                           "%s: expected %d argument(s), got %d",
-                           fname, fsig->param_count, nargs);
+        if (nargs != fsig->param_count) {
+            char hint[128];
+            snprintf(hint, sizeof(hint), "Expected %d, got %d.",
+                     fsig->param_count, nargs);
+            error_semantic_hint(n->line, n->col, hint,
+                                "Wrong number of arguments for '%s'", fname);
+        }
         else {
             for (int i = 0; i < nargs; i++) {
                 if (!types_equal(arg_types[i], fsig->params[i].type))
@@ -514,7 +529,7 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         for (int i = 0; reserved_consts[i]; i++) {
             if (strcmp(name, reserved_consts[i]) == 0) {
                 error_semantic(n->line, n->col,
-                               "cannot declare variable with reserved constant name '%s'",
+                               "'%s' is a reserved identifier",
                                name);
                 return;
             }
@@ -523,7 +538,7 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         /* ExecResult must be initialised */
         if (t == TYPE_EXEC_RESULT && !n->u.var_decl.init) {
             error_semantic(n->line, n->col,
-                           "ExecResult variable '%s' must be initialised with exec()",
+                           "'ExecResult' variable must be initialized with exec()",
                            name);
         }
 
@@ -531,9 +546,11 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         Symbol *sym = scope_define(ctx->current, name, t, n->line, n->col);
         if (!sym) {
             Symbol *existing = scope_lookup_local(ctx->current, name);
-            error_semantic(n->line, n->col,
-                           "variable '%s' already declared at line %d",
-                           name, existing ? existing->line : 0);
+            char hint[128];
+            snprintf(hint, sizeof(hint), "First declaration at line %d, column %d.",
+                     existing ? existing->line : 0, existing ? existing->col : 0);
+            error_semantic_hint(n->line, n->col, hint,
+                                "Variable '%s' already declared", name);
             return;
         }
 
@@ -545,9 +562,11 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                 n->u.var_decl.init->u.array_lit.elems.count == 0) {
                 /* ok — typed by declaration */
             } else if (it != TYPE_UNKNOWN && !types_equal(it, t)) {
-                error_semantic(n->line, n->col,
-                               "cannot initialise '%s' (type '%s') with '%s'",
-                               name, type_name(t), type_name(it));
+                char hint[160];
+                snprintf(hint, sizeof(hint),
+                         "Expected '%s', got '%s'.", type_name(t), type_name(it));
+                error_semantic_hint(n->line, n->col, hint,
+                                    "Type mismatch in initialization");
             }
         }
         break;
@@ -556,13 +575,16 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
     case NODE_ASSIGN: {
         Symbol *sym = scope_lookup(ctx->current, n->u.assign.name);
         if (!sym) {
-            error_semantic(n->line, n->col,
-                           "undefined variable '%s'", n->u.assign.name);
+            char hint[160];
+            snprintf(hint, sizeof(hint), "'%s' must be declared before use.",
+                     n->u.assign.name);
+            error_semantic_hint(n->line, n->col, hint,
+                                "Undefined variable: '%s'", n->u.assign.name);
             break;
         }
         if (sym->is_const) {
             error_semantic(n->line, n->col,
-                           "cannot assign to constant '%s'", n->u.assign.name);
+                           "Cannot assign to predefined constant '%s'", n->u.assign.name);
             break;
         }
         /* Disallow whole-array reassignment */
@@ -574,22 +596,26 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         }
         CimpleType vt = check_expr(ctx, n->u.assign.value);
         if (vt != TYPE_UNKNOWN && !types_equal(vt, sym->type))
-            error_semantic(n->line, n->col,
-                           "type mismatch: '%s' is '%s', cannot assign '%s'",
-                           n->u.assign.name, type_name(sym->type), type_name(vt));
+            error_semantic_hint(n->line, n->col,
+                                "Use toInt(), toFloat(), toString() or toBool() to convert.",
+                                "Type mismatch in assignment");
         break;
     }
 
     case NODE_INDEX_ASSIGN: {
         Symbol *sym = scope_lookup(ctx->current, n->u.index_assign.name);
         if (!sym) {
-            error_semantic(n->line, n->col,
-                           "undefined variable '%s'", n->u.index_assign.name);
+            char hint[160];
+            snprintf(hint, sizeof(hint), "'%s' must be declared before use.",
+                     n->u.index_assign.name);
+            error_semantic_hint(n->line, n->col, hint,
+                                "Undefined variable: '%s'", n->u.index_assign.name);
             break;
         }
         if (sym->type == TYPE_STRING) {
-            error_semantic(n->line, n->col,
-                           "strings are immutable; cannot assign to index");
+            error_semantic_hint(n->line, n->col,
+                                "Use replace() or build a new string with concatenation.",
+                                "Strings are immutable: index assignment is not allowed");
             break;
         }
         if (!type_is_array(sym->type)) {
@@ -652,7 +678,7 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                                            TYPE_INT, init->line, init->col);
                 if (!sym)
                     error_semantic(init->line, init->col,
-                                   "for-loop variable '%s' already declared",
+                                   "Variable '%s' already declared",
                                    init->u.for_init.name);
                 CimpleType et = check_expr(ctx, init->u.for_init.init_expr);
                 if (et != TYPE_INT && et != TYPE_UNKNOWN)
@@ -684,9 +710,9 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                 error_semantic(n->line, n->col,
                                "void function cannot return a value");
             else if (vt != TYPE_UNKNOWN && !types_equal(vt, ctx->current_ret))
-                error_semantic(n->line, n->col,
-                               "return type mismatch: expected '%s', got '%s'",
-                               type_name(ctx->current_ret), type_name(vt));
+                error_semantic_hint(n->line, n->col,
+                                    "Expected the function return type here.",
+                                    "Wrong return type");
         } else {
             if (ctx->current_ret != TYPE_VOID)
                 error_semantic(n->line, n->col,
@@ -707,7 +733,9 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         const char *name = n->u.incr_decr.name;
         Symbol *sym = scope_lookup(ctx->current, name);
         if (!sym)
-            error_semantic(n->line, n->col, "undefined variable '%s'", name);
+            error_semantic_hint(n->line, n->col,
+                                "The variable must be declared before it can be incremented or decremented.",
+                                "Undefined variable: '%s'", name);
         else if (sym->type != TYPE_INT)
             error_semantic(n->line, n->col,
                            "'%s' requires int variable", n->kind == NODE_INCR ? "++" : "--");
@@ -788,9 +816,10 @@ static void check_func(SemCtx *ctx, AstNode *f) {
         /* Return-path analysis for non-void functions */
         if (ctx->current_ret != TYPE_VOID) {
             if (!block_always_returns(body))
-                error_semantic(f->line, f->col,
-                               "function '%s' does not always return a value",
-                               f->u.func_decl.name);
+                error_semantic_hint(f->line, f->col,
+                                    "Function returns a value but not all paths return one.",
+                                    "Missing return in function '%s'",
+                                    f->u.func_decl.name);
         }
     }
 
@@ -824,8 +853,9 @@ static void check_main(SemCtx *ctx, AstNode *program) {
     NodeList  *params = &main_fn->u.func_decl.params;
 
     if (ret != TYPE_INT && ret != TYPE_VOID) {
-        error_semantic(main_fn->line, main_fn->col,
-                       "'main' must return int or void");
+        error_semantic_hint(main_fn->line, main_fn->col,
+                            "Valid signatures: void main(), int main(), void main(string[] args), int main(string[] args).",
+                            "Invalid signature for 'main'");
     }
 
     if (npar == 0) {
@@ -833,11 +863,13 @@ static void check_main(SemCtx *ctx, AstNode *program) {
     } else if (npar == 1) {
         CimpleType pt = params->items[0]->u.param.type;
         if (pt != TYPE_STR_ARR)
-            error_semantic(main_fn->line, main_fn->col,
-                           "'main' parameter must be 'string[]'");
+            error_semantic_hint(main_fn->line, main_fn->col,
+                                "Valid signatures: void main(), int main(), void main(string[] args), int main(string[] args).",
+                                "Invalid signature for 'main'");
     } else {
-        error_semantic(main_fn->line, main_fn->col,
-                       "'main' takes 0 or 1 parameter ('string[] args')");
+        error_semantic_hint(main_fn->line, main_fn->col,
+                            "Valid signatures: void main(), int main(), void main(string[] args), int main(string[] args).",
+                            "Invalid signature for 'main'");
     }
 }
 

@@ -1,1 +1,2 @@
-cannot initialise 'x'
+Type mismatch in initialization
+Expected 'int', got 'string'.

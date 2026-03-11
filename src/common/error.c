@@ -55,6 +55,27 @@ void error_syntax(int line, int col, const char *fmt, ...) {
 }
 
 void error_semantic(int line, int col, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    if (g_error_ctx.semantic_count >= MAX_ACCUMULATED_ERRORS) {
+        g_error_ctx.semantic_truncated = 1;
+        va_end(ap);
+        return;
+    }
+    char buf[512];
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    Error *e = &g_error_ctx.semantic[g_error_ctx.semantic_count++];
+    e->kind  = ERR_SEMANTIC;
+    e->line  = line;
+    e->col   = col;
+    strncpy(e->msg, buf, sizeof(e->msg) - 1);
+    e->msg[sizeof(e->msg) - 1] = '\0';
+    e->hint[0] = '\0';
+}
+
+void error_semantic_hint(int line, int col, const char *hint,
+                         const char *fmt, ...) {
     if (g_error_ctx.semantic_count >= MAX_ACCUMULATED_ERRORS) {
         g_error_ctx.semantic_truncated = 1;
         return;
@@ -69,7 +90,13 @@ void error_semantic(int line, int col, const char *fmt, ...) {
     e->line  = line;
     e->col   = col;
     strncpy(e->msg, buf, sizeof(e->msg) - 1);
-    e->hint[0] = '\0';
+    e->msg[sizeof(e->msg) - 1] = '\0';
+    if (hint && hint[0]) {
+        strncpy(e->hint, hint, sizeof(e->hint) - 1);
+        e->hint[sizeof(e->hint) - 1] = '\0';
+    } else {
+        e->hint[0] = '\0';
+    }
 }
 
 void error_runtime(int line, int col, const char *fmt, ...) {

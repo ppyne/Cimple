@@ -1,11 +1,5 @@
-cannot initialise 'a' (type 'int') with 'string'
-undefined variable 'y'
-print: expected 1 argument(s), got 0
-cannot initialise 's' (type 'string') with 'int'
-undefined variable 'z'
-cannot initialise 'b' (type 'bool') with 'int'
-unknown function 'foo'
-cannot initialise 'p' (type 'int') with 'bool'
-undefined variable 'q'
-undefined variable 'r'
+Type mismatch in initialization
+Undefined variable: 'y'
+Wrong number of arguments for 'print'
+Unknown function: 'foo'
 10 semantic errors found. Further analysis aborted.

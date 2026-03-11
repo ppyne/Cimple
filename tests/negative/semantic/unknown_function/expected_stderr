@@ -1,1 +1,2 @@
-unknown function 'mystery'
+Unknown function: 'mystery'
+not defined in this scope or the standard library

@@ -1,1 +1,2 @@
-does not always return a value
+Missing return in function 'f'
+not all paths return one

@@ -1,1 +1,2 @@
-return type mismatch
+Wrong return type
+Expected the function return type here.

@@ -1,1 +1,2 @@
-strings are immutable
+Strings are immutable: index assignment is not allowed
+Use replace() or build a new string with concatenation.

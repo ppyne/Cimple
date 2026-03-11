@@ -1,4 +1,4 @@
-cannot initialise 'x' (type 'int') with 'string'
-undefined variable 'y'
-return type mismatch: expected 'int', got 'string'
+Type mismatch in initialization
+Undefined variable: 'y'
+Wrong return type
 3 semantic error(s) found.

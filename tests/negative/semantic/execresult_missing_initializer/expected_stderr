@@ -1,1 +1,1 @@
-ExecResult variable 'r' must be initialised with exec()
+'ExecResult' variable must be initialized with exec()

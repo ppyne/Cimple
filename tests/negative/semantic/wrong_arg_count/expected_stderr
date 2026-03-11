@@ -1,1 +1,2 @@
-expected 1 argument(s), got 0
+Wrong number of arguments for 'print'
+Expected 1, got 0.
