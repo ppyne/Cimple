@@ -1,0 +1,4 @@
+void main() {
+    print(toString(minInt(9, 4)) + "\n");
+    print(toString(maxInt(9, 4)) + "\n");
+}

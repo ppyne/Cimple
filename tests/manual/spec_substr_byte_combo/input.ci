@@ -1,0 +1,6 @@
+void main() {
+    string s = "abcdef";
+    print(substr(s, 2, 3) + "\n");
+    print(toString(byteAt(s, 0)) + "\n");
+    print(toString(byteAt(s, 5)) + "\n");
+}

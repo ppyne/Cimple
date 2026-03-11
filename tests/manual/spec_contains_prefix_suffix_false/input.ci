@@ -1,0 +1,6 @@
+void main() {
+    string s = "banane";
+    print(toString(contains(s, "xyz")) + "\n");
+    print(toString(startsWith(s, "na")) + "\n");
+    print(toString(endsWith(s, "ba")) + "\n");
+}

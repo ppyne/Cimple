@@ -1,0 +1,1 @@
+Manual coverage for substr and byteAt together.

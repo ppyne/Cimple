@@ -1,0 +1,5 @@
+void main() {
+    bool[] flags = [false, false];
+    arraySet(flags, 1, true);
+    print(toString(flags[0]) + "," + toString(flags[1]) + "\n");
+}

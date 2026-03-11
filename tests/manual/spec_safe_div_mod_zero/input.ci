@@ -1,0 +1,4 @@
+void main() {
+    print(toString(safeDivInt(5, 0, 99)) + "\n");
+    print(toString(safeModInt(5, 0, 77)) + "\n");
+}

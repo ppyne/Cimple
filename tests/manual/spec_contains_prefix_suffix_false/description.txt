@@ -1,0 +1,1 @@
+Manual coverage for false cases of contains/startsWith/endsWith.
