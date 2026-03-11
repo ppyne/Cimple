@@ -1,0 +1,7 @@
+void main() {
+    print(toString(INT_SIZE) + "\n");
+    print(toString(FLOAT_DIG) + "\n");
+    print(toString(M_PI > 3.14) + "\n");
+    print(toString(M_E > 2.71) + "\n");
+    print(toString(FLOAT_EPSILON > 0.0) + "\n");
+}
