@@ -523,6 +523,18 @@ static int block_always_returns(AstNode *block) {
     return 0;
 }
 
+static int is_reserved_constant_name(const char *name) {
+    static const char *reserved_consts[] = {
+        "INT_MAX","INT_MIN","INT_SIZE","FLOAT_SIZE","FLOAT_DIG",
+        "FLOAT_EPSILON","FLOAT_MIN","FLOAT_MAX",
+        "M_PI","M_E","M_TAU","M_SQRT2","M_LN2","M_LN10", NULL
+    };
+    for (int i = 0; reserved_consts[i]; i++) {
+        if (strcmp(name, reserved_consts[i]) == 0) return 1;
+    }
+    return 0;
+}
+
 /* -----------------------------------------------------------------------
  * check_stmt
  * ----------------------------------------------------------------------- */
@@ -535,18 +547,11 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         CimpleType   t   = n->u.var_decl.type;
 
         /* Check for predefined constant collision */
-        static const char *reserved_consts[] = {
-            "INT_MAX","INT_MIN","INT_SIZE","FLOAT_SIZE","FLOAT_DIG",
-            "FLOAT_EPSILON","FLOAT_MIN","FLOAT_MAX",
-            "M_PI","M_E","M_TAU","M_SQRT2","M_LN2","M_LN10", NULL
-        };
-        for (int i = 0; reserved_consts[i]; i++) {
-            if (strcmp(name, reserved_consts[i]) == 0) {
-                error_semantic(n->line, n->col,
-                               "'%s' is a reserved identifier",
-                               name);
-                return;
-            }
+        if (is_reserved_constant_name(name)) {
+            error_semantic(n->line, n->col,
+                           "'%s' is a reserved identifier",
+                           name);
+            return;
         }
 
         /* ExecResult must be initialised */
@@ -587,6 +592,12 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
     }
 
     case NODE_ASSIGN: {
+        if (is_reserved_constant_name(n->u.assign.name)) {
+            error_semantic(n->line, n->col,
+                           "Cannot assign to predefined constant '%s'",
+                           n->u.assign.name);
+            break;
+        }
         Symbol *sym = scope_lookup(ctx->current, n->u.assign.name);
         if (!sym) {
             char hint[160];

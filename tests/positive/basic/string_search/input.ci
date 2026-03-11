@@ -1,0 +1,6 @@
+void main() {
+    print(toString(indexOf("banana", "na")) + "\n");
+    print(toString(contains("banana", "nan")) + "\n");
+    print(toString(startsWith("banana", "ban")) + "\n");
+    print(toString(endsWith("banana", "ana")) + "\n");
+}

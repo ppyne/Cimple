@@ -1,0 +1,3 @@
+void main() {
+    INT_MAX = 1;
+}

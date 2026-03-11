@@ -1,0 +1,3 @@
+void main() {
+    print(toString(isNaN(toFloat("bad"))) + "\n");
+}

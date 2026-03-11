@@ -1,0 +1,6 @@
+void main() {
+    string s = "hé";
+    print(toString(glyphLen(s)) + "\n");
+    print(glyphAt(s, 1) + "\n");
+    print(toString(byteAt("é", 1)) + "\n");
+}

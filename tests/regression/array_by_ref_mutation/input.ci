@@ -1,0 +1,9 @@
+void setFirst(int[] xs, int value) {
+    xs[0] = value;
+}
+
+void main() {
+    int[] xs = [1, 2, 3];
+    setFirst(xs, 7);
+    print(toString(xs[0]) + "\n");
+}

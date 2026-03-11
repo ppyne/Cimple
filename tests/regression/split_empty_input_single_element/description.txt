@@ -1,0 +1,1 @@
+Protects the split implementation for the empty-string input case.

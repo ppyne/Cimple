@@ -1,0 +1,7 @@
+void main() {
+    int ts = makeEpoch(2025, 3, 11, 0, 0, 0);
+    print(toString(INT_MAX > 0) + "\n");
+    print(toString(epochToYear(ts)) + "\n");
+    print(toString(epochToMonth(ts)) + "\n");
+    print(toString(epochToDay(ts)) + "\n");
+}

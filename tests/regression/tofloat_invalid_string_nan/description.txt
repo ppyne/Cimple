@@ -1,0 +1,1 @@
+Protects invalid string conversion to float, which should yield NaN.

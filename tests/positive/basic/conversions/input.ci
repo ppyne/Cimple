@@ -1,0 +1,8 @@
+void main() {
+    print(toString(toInt("12")) + "\n");
+    print(toString(toFloat("2.5")) + "\n");
+    print(toString(toBool("1")) + "\n");
+    print(toString(isIntString("-7")) + "\n");
+    print(toString(isFloatString("3.14")) + "\n");
+    print(toString(isBoolString("false")) + "\n");
+}
