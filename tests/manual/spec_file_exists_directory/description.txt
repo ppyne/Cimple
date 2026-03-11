@@ -1,0 +1,2 @@
+fileExists must return false for a directory (spec §9.9: "faux si path désigne un répertoire").
+Uses "." (always a directory) and a regular file as a control case.

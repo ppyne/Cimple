@@ -1,0 +1,2 @@
+input() reads one line from stdin, strips the trailing newline, and returns it as a string (spec §9.2).
+Two consecutive calls read two successive lines.

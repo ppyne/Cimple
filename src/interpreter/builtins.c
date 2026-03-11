@@ -896,9 +896,9 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
     if (strcmp(name, "fileExists") == 0) {
         REQUIRE(1);
-        FILE *f = fopen(ARG_STR(0), "rb");
-        if (f) { fclose(f); return val_bool(1); }
-        return val_bool(0);
+        struct stat st;
+        if (stat(ARG_STR(0), &st) != 0) return val_bool(0);
+        return val_bool(S_ISREG(st.st_mode) ? 1 : 0);
     }
     if (strcmp(name, "readLines") == 0) {
         REQUIRE(1);
@@ -943,7 +943,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         ArrayVal *arr = ARG_ARR(1);
         for (int i = 0; i < arr->count; i++) {
             fputs(arr->data.strings[i], f);
-            if (i < arr->count - 1) fputc('\n', f);
+            fputc('\n', f);
         }
         fclose(f);
         return val_void();

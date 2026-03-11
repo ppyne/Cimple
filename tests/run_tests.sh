@@ -34,7 +34,12 @@ run_test() {
     rm -rf "$tmp_run_dir"
     mkdir -p "$tmp_run_dir"
 
-    if actual_stdout=$(cd "$tmp_run_dir" && "$CIMPLE" run "$src" "$@" 2>"$TMP_ERR"); then
+    stdin_file="/dev/null"
+    if [ -f "$dir/stdin" ]; then
+        stdin_file="$dir/stdin"
+    fi
+
+    if actual_stdout=$(cd "$tmp_run_dir" && "$CIMPLE" run "$src" "$@" < "$stdin_file" 2>"$TMP_ERR"); then
         actual_exit=0
     else
         actual_exit=$?

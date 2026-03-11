@@ -1,0 +1,9 @@
+void main() {
+    writeLines("data.txt", ["a", "b", "c"]);
+    string content = readFile("data.txt");
+    // "a\nb\nc\n" = 6 bytes — each line followed by \n including the last
+    print(toString(len(content)) + "\n");
+    // Verify the file ends with a newline
+    int last = byteAt(content, len(content) - 1);
+    print(toString(last) + "\n");
+}

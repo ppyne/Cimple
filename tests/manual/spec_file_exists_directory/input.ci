@@ -1,0 +1,8 @@
+void main() {
+    // "." is the current directory — always exists, always a directory.
+    // fileExists must return false for directories (spec §9.9).
+    print(toString(fileExists(".")) + "\n");
+    // A regular file written here must return true.
+    writeFile("probe.txt", "x");
+    print(toString(fileExists("probe.txt")) + "\n");
+}

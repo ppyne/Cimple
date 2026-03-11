@@ -1,0 +1,20 @@
+int getStatus(ExecResult r) {
+    return execStatus(r);
+}
+
+string getFirstLine(ExecResult r) {
+    string out = execStdout(r);
+    string[] lines = split(out, "\n");
+    return lines[0];
+}
+
+bool hasError(ExecResult r) {
+    return len(execStderr(r)) > 0;
+}
+
+void main() {
+    ExecResult r = exec(["/bin/sh", "-c", "printf 'hello'"], []);
+    print(toString(getStatus(r)) + "\n");
+    print(getFirstLine(r) + "\n");
+    print(toString(hasError(r)) + "\n");
+}

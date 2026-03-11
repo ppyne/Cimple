@@ -1,0 +1,2 @@
+writeLines must append \n after every element including the last (spec §9.9).
+Verifies file length (6 bytes for ["a","b","c"]) and that the last byte is 0x0A (\n = 10).

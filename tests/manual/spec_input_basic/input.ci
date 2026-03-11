@@ -1,0 +1,6 @@
+void main() {
+    string line = input();
+    print("Got: " + line + "\n");
+    string second = input();
+    print("Got: " + second + "\n");
+}

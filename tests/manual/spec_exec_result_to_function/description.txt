@@ -1,0 +1,2 @@
+ExecResult is a first-class value that can be passed to user-defined functions (spec §6.3).
+Tests three user functions each accepting ExecResult: getStatus, getFirstLine, hasError.
