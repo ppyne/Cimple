@@ -47,6 +47,11 @@ cmake --build .
 ./cimple check myprogram.ci
 ```
 
+## Documentation
+
+- [Language Manual](MANUAL.md) — complete reference: types, operators, control flow, all 68 standard-library functions, scoping rules, error diagnostics, and worked examples.
+- [Language Specification](SPECIFICATION.md) — formal specification.
+
 ## Language overview
 
 ```c
