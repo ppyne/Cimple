@@ -1,0 +1,22 @@
+/* String operations demo */
+
+void main() {
+    string s = "Hello, Cimple!";
+
+    print("Original:    " + s + "\n");
+    print("Length:      " + toString(len(s)) + " bytes\n");
+    print("GlyphLen:    " + toString(glyphLen(s)) + " code points\n");
+    print("Upper first: " + s[0] + "\n");
+    print("IndexOf ',': " + toString(indexOf(s, ",")) + "\n");
+    print("Contains 'e': " + toString(contains(s, "e")) + "\n");
+    print("Starts 'Hello': " + toString(startsWith(s, "Hello")) + "\n");
+    print("Ends '!': " + toString(endsWith(s, "!")) + "\n");
+    print("Replace:     " + replace(s, "Cimple", "World") + "\n");
+
+    string[] parts = split(s, ", ");
+    print("Split count: " + toString(count(parts)) + "\n");
+    print("Join:        " + join(parts, " | ") + "\n");
+
+    string fmt_result = format("Lang: {} v{}", ["Cimple", "1.0"]);
+    print(fmt_result + "\n");
+}

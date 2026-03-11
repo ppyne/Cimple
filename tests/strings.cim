@@ -1,0 +1,6 @@
+void main() {
+    string a = "Hello";
+    string b = " World";
+    string c = a + b;
+    print(c + "\n");
+}

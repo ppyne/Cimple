@@ -1,0 +1,85 @@
+# Build directories
+build/
+build-*/
+cmake-build-*/
+out/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+_deps/
+
+# Generated files (re2c, Lemon) — stored in build/generated/
+# (already covered by build/ above)
+
+# Third-party tools fetched at build time (not committed)
+tools/lemon.c
+tools/lempar.c
+
+# Compiled object files
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.pdb
+*.exp
+*.ilk
+
+# Executables
+cimple
+cimple.exe
+*.out
+
+# WebAssembly output
+*.wasm
+*.js.mem
+*.wasm.map
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Xcode
+*.xcworkspace
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.orig
+*#
+
+# Test artifacts
+tests/output/
+*.log
+
+# Coverage
+*.gcno
+*.gcda
+*.gcov
+lcov.info
+coverage/
+
+# Emscripten cache
+.emscripten_cache/

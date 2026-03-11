@@ -1,0 +1,6 @@
+void main() {
+    float pi = M_PI;
+    /* print 3.141... (first 4 chars) */
+    string s = toString(pi);
+    print(substr(s, 0, 5) + "\n");
+}

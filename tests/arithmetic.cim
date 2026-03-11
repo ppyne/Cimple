@@ -1,0 +1,6 @@
+void main() {
+    int a = 10;
+    int b = 4;
+    int c = a * b + 2;
+    print(toString(c) + "\n");
+}

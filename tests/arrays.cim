@@ -1,0 +1,4 @@
+void main() {
+    int[] scores = [10, 20, 30];
+    print(toString(count(scores)) + "\n");
+}
