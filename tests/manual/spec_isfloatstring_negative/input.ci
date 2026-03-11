@@ -1,0 +1,4 @@
+void main() {
+    print(toString(isFloatString("abc")) + "\n");
+    print(toString(isFloatString("")) + "\n");
+}

@@ -1,0 +1,3 @@
+void main() {
+    print(toString(byteAt("A", 0)) + "\n");
+}

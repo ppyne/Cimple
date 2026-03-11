@@ -1,0 +1,4 @@
+void main() {
+    print(toString(isIntString("4.2")) + "\n");
+    print(toString(isIntString("")) + "\n");
+}

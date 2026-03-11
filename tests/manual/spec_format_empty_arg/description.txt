@@ -1,0 +1,1 @@
+Manual coverage for format with an empty string argument.

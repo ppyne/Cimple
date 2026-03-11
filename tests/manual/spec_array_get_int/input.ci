@@ -1,0 +1,4 @@
+void main() {
+    int[] xs = [10, 20, 30];
+    print(toString(arrayGet(xs, 2)) + "\n");
+}
