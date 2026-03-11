@@ -1,0 +1,8 @@
+void main() {
+    int[] xs = [];
+    arrayPush(xs, 1);
+    arrayPush(xs, 2);
+    arrayPush(xs, 3);
+    print(toString(count(xs)) + "\n");
+    print(toString(xs[0]) + "," + toString(xs[1]) + "," + toString(xs[2]) + "\n");
+}

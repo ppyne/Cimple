@@ -1,0 +1,5 @@
+void main() {
+    print(toString(INT_MAX > 0) + "\n");
+    print(toString(INT_MIN < 0) + "\n");
+    print(toString(INT_SIZE >= 4) + "\n");
+}
