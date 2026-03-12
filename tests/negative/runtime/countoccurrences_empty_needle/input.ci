@@ -1,0 +1,3 @@
+void main(string[] args) {
+    print(toString(countOccurrences("abc", "")) + "\n");
+}

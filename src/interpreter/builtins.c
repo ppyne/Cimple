@@ -50,6 +50,18 @@ typedef enum {
     BI_JOIN,
     BI_SPLIT,
     BI_CONCAT,
+    BI_TRIM,
+    BI_TRIM_LEFT,
+    BI_TRIM_RIGHT,
+    BI_TO_UPPER,
+    BI_TO_LOWER,
+    BI_CAPITALIZE,
+    BI_PAD_LEFT,
+    BI_PAD_RIGHT,
+    BI_REPEAT,
+    BI_LAST_INDEX_OF,
+    BI_COUNT_OCCURRENCES,
+    BI_IS_BLANK,
     BI_TO_STRING,
     BI_TO_INT,
     BI_TO_FLOAT,
@@ -179,6 +191,7 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"clampInt", BI_CLAMP_INT},
     {"concat", BI_CONCAT},
     {"contains", BI_CONTAINS},
+    {"countOccurrences", BI_COUNT_OCCURRENCES},
     {"copy", BI_COPY},
     {"cos", BI_COS},
     {"count", BI_COUNT},
@@ -222,9 +235,11 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"isNegativeInfinity", BI_IS_NEGATIVE_INFINITY},
     {"isOdd", BI_IS_ODD},
     {"isPositiveInfinity", BI_IS_POSITIVE_INFINITY},
+    {"isBlank", BI_IS_BLANK},
     {"isReadable", BI_IS_READABLE},
     {"isWritable", BI_IS_WRITABLE},
     {"join", BI_JOIN},
+    {"lastIndexOf", BI_LAST_INDEX_OF},
     {"len", BI_LEN},
     {"log", BI_LOG},
     {"log10", BI_LOG10},
@@ -236,6 +251,8 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"minInt", BI_MIN_INT},
     {"move", BI_MOVE},
     {"now", BI_NOW},
+    {"padLeft", BI_PAD_LEFT},
+    {"padRight", BI_PAD_RIGHT},
     {"pow", BI_POW},
     {"print", BI_PRINT},
     {"readFile", BI_READ_FILE},
@@ -243,6 +260,7 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"readLines", BI_READ_LINES},
     {"remove", BI_REMOVE},
     {"replace", BI_REPLACE},
+    {"repeat", BI_REPEAT},
     {"round", BI_ROUND},
     {"safeDivInt", BI_SAFE_DIV_INT},
     {"safeModInt", BI_SAFE_MOD_INT},
@@ -253,11 +271,17 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"substr", BI_SUBSTR},
     {"tan", BI_TAN},
     {"tempPath", BI_TEMP_PATH},
+    {"toLower", BI_TO_LOWER},
     {"toBool", BI_TO_BOOL},
+    {"toUpper", BI_TO_UPPER},
     {"stringToBytes", BI_STRING_TO_BYTES},
     {"toFloat", BI_TO_FLOAT},
     {"toInt", BI_TO_INT},
     {"toString", BI_TO_STRING},
+    {"trim", BI_TRIM},
+    {"trimLeft", BI_TRIM_LEFT},
+    {"trimRight", BI_TRIM_RIGHT},
+    {"capitalize", BI_CAPITALIZE},
     {"trunc", BI_TRUNC},
     {"writeFile", BI_WRITE_FILE},
     {"appendFileBytes", BI_APPEND_FILE_BYTES},
@@ -552,6 +576,102 @@ static char *bytes_to_string_lossy(ArrayVal *arr) {
         }
     }
     return sb_take(&sb);
+}
+
+static int is_blank_ascii(unsigned char c) {
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\v' || c == '\f';
+}
+
+static char *trim_ascii_edges(const char *s, int trim_left, int trim_right) {
+    size_t start = 0;
+    size_t end = strlen(s);
+    if (trim_left) {
+        while (start < end && is_blank_ascii((unsigned char)s[start])) start++;
+    }
+    if (trim_right) {
+        while (end > start && is_blank_ascii((unsigned char)s[end - 1])) end--;
+    }
+    return cimple_strndup(s + start, end - start);
+}
+
+static void sb_append_codepoint(StringBuilder *sb, utf8proc_int32_t cp) {
+    utf8proc_uint8_t buf[4];
+    utf8proc_ssize_t n = utf8proc_encode_char(cp, buf);
+    if (n <= 0) return;
+    sb_append_mem(sb, (const char *)buf, (size_t)n);
+}
+
+static char *transform_case_utf8(const char *s, int make_upper, int capitalize_first_only) {
+    StringBuilder sb;
+    sb_init(&sb, strlen(s) + 8);
+    utf8proc_ssize_t len = (utf8proc_ssize_t)strlen(s);
+    utf8proc_ssize_t pos = 0;
+    int first = 1;
+    while (pos < len) {
+        utf8proc_int32_t cp;
+        utf8proc_ssize_t n = utf8proc_iterate((const utf8proc_uint8_t *)s + pos, len - pos, &cp);
+        if (n <= 0) {
+            sb_append_mem(&sb, s + pos, 1);
+            pos++;
+            continue;
+        }
+        pos += n;
+        if (make_upper && cp == 0x00DF) {
+            if (!capitalize_first_only || first) sb_append_cstr(&sb, "SS");
+            else sb_append_mem(&sb, (const char *)"ß", 2);
+        } else {
+            utf8proc_int32_t mapped = cp;
+            if (make_upper) {
+                if (!capitalize_first_only || first) mapped = utf8proc_toupper(cp);
+            } else {
+                mapped = utf8proc_tolower(cp);
+            }
+            sb_append_codepoint(&sb, mapped);
+        }
+        first = 0;
+    }
+    return sb_take(&sb);
+}
+
+static char *pad_to_width(const char *s, int width, const char *pad, int pad_left, int line, int col, const char *name) {
+    if (width < 0) {
+        error_runtime(line, col, "%s: width must be non-negative", name);
+    }
+    if (pad[0] == '\0') return cimple_strdup(s);
+    int current = utf8_codepoint_count(s);
+    if (current >= width) return cimple_strdup(s);
+    int needed = width - current;
+    int pad_glyphs = utf8_codepoint_count(pad);
+    if (pad_glyphs <= 0) return cimple_strdup(s);
+
+    char *pad_norm = nfc_normalize(pad);
+    utf8proc_ssize_t pad_len = (utf8proc_ssize_t)strlen(pad_norm);
+    utf8proc_ssize_t pos = 0;
+    int produced = 0;
+    StringBuilder fill;
+    sb_init(&fill, (size_t)(needed * 4 + 1));
+    while (produced < needed) {
+        if (pos >= pad_len) pos = 0;
+        utf8proc_int32_t cp;
+        utf8proc_ssize_t n = utf8proc_iterate((const utf8proc_uint8_t *)pad_norm + pos, pad_len - pos, &cp);
+        if (n <= 0) break;
+        pos += n;
+        sb_append_codepoint(&fill, cp);
+        produced++;
+    }
+    free(pad_norm);
+
+    StringBuilder out;
+    sb_init(&out, strlen(s) + fill.len + 1);
+    if (pad_left) {
+        sb_append_mem(&out, fill.data, fill.len);
+        sb_append_cstr(&out, s);
+    } else {
+        sb_append_cstr(&out, s);
+        sb_append_mem(&out, fill.data, fill.len);
+    }
+    free(fill.data);
+    return sb_take(&out);
 }
 
 /* -----------------------------------------------------------------------
@@ -1177,6 +1297,97 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
             sb_append_cstr(&sb, arr->data.strings[i]);
         }
         return val_string_own(sb_take(&sb));
+    }
+
+    if (id == BI_TRIM) {
+        REQUIRE(1);
+        return val_string_own(trim_ascii_edges(ARG_STR(0), 1, 1));
+    }
+
+    if (id == BI_TRIM_LEFT) {
+        REQUIRE(1);
+        return val_string_own(trim_ascii_edges(ARG_STR(0), 1, 0));
+    }
+
+    if (id == BI_TRIM_RIGHT) {
+        REQUIRE(1);
+        return val_string_own(trim_ascii_edges(ARG_STR(0), 0, 1));
+    }
+
+    if (id == BI_TO_UPPER) {
+        REQUIRE(1);
+        return val_string_own(transform_case_utf8(ARG_STR(0), 1, 0));
+    }
+
+    if (id == BI_TO_LOWER) {
+        REQUIRE(1);
+        return val_string_own(transform_case_utf8(ARG_STR(0), 0, 0));
+    }
+
+    if (id == BI_CAPITALIZE) {
+        REQUIRE(1);
+        return val_string_own(transform_case_utf8(ARG_STR(0), 1, 1));
+    }
+
+    if (id == BI_PAD_LEFT) {
+        REQUIRE(3);
+        return val_string_own(pad_to_width(ARG_STR(0), (int)ARG_INT(1), ARG_STR(2), 1, line, col, "padLeft"));
+    }
+
+    if (id == BI_PAD_RIGHT) {
+        REQUIRE(3);
+        return val_string_own(pad_to_width(ARG_STR(0), (int)ARG_INT(1), ARG_STR(2), 0, line, col, "padRight"));
+    }
+
+    if (id == BI_REPEAT) {
+        REQUIRE(2);
+        int64_t count = ARG_INT(1);
+        if (count < 0) error_runtime(line, col, "repeat: count must be non-negative");
+        if (count == 0 || ARG_STR(0)[0] == '\0') return val_string("");
+        size_t slen = strlen(ARG_STR(0));
+        StringBuilder sb;
+        sb_init(&sb, slen * (size_t)count + 1);
+        for (int64_t i = 0; i < count; i++) sb_append_mem(&sb, ARG_STR(0), slen);
+        return val_string_own(sb_take(&sb));
+    }
+
+    if (id == BI_LAST_INDEX_OF) {
+        REQUIRE(2);
+        const char *s = ARG_STR(0);
+        const char *needle = ARG_STR(1);
+        size_t slen = strlen(s);
+        size_t nlen = strlen(needle);
+        if (nlen == 0) return val_int((int64_t)slen);
+        if (nlen > slen) return val_int(-1);
+        for (size_t i = slen - nlen + 1; i > 0; i--) {
+            size_t pos = i - 1;
+            if (memcmp(s + pos, needle, nlen) == 0) return val_int((int64_t)pos);
+        }
+        return val_int(-1);
+    }
+
+    if (id == BI_COUNT_OCCURRENCES) {
+        REQUIRE(2);
+        const char *s = ARG_STR(0);
+        const char *needle = ARG_STR(1);
+        size_t nlen = strlen(needle);
+        if (nlen == 0) error_runtime(line, col, "countOccurrences: needle cannot be empty");
+        int64_t count = 0;
+        const char *p = s;
+        while ((p = strstr(p, needle)) != NULL) {
+            count++;
+            p += nlen;
+        }
+        return val_int(count);
+    }
+
+    if (id == BI_IS_BLANK) {
+        REQUIRE(1);
+        const char *s = ARG_STR(0);
+        for (; *s; s++) {
+            if (!is_blank_ascii((unsigned char)*s)) return val_bool(0);
+        }
+        return val_bool(1);
     }
 
     if (id == BI_BYTE_TO_INT) {

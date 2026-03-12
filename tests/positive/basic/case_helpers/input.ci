@@ -1,0 +1,5 @@
+void main(string[] args) {
+    print(toUpper("héllo") + "\n");
+    print(toLower("HÉLLO") + "\n");
+    print(capitalize("été") + "\n");
+}

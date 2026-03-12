@@ -830,6 +830,78 @@ Concatenates all elements with no separator. Equivalent to `join(array, "")`.
 print(concat(["x", "=", "42"]) + "\n");  // x=42
 ```
 
+#### Whitespace helpers
+
+```ci
+string trim(string s)
+string trimLeft(string s)
+string trimRight(string s)
+bool isBlank(string s)
+```
+
+These helpers use the ASCII whitespace set: space, tab, carriage return, newline,
+vertical tab, and form feed.
+
+```ci
+print("[" + trim("  bonjour  ") + "]\n");      // [bonjour]
+print("[" + trimLeft("\t hello\n") + "]\n");   // [hello\n]
+print("[" + trimRight("\t hello\n") + "]\n");  // [\t hello]
+print(toString(isBlank("\t\n")) + "\n");       // true
+```
+
+#### Case helpers
+
+```ci
+string toUpper(string s)
+string toLower(string s)
+string capitalize(string s)
+```
+
+- `toUpper` uppercases every Unicode code point
+- `toLower` lowercases every Unicode code point
+- `capitalize` uppercases only the first code point and leaves the remainder unchanged
+
+```ci
+print(toUpper("straße") + "\n");    // STRASSE
+print(toLower("HÉLLO") + "\n");     // héllo
+print(capitalize("été") + "\n");    // Été
+```
+
+#### Padding and repetition
+
+```ci
+string padLeft(string s, int width, string pad)
+string padRight(string s, int width, string pad)
+string repeat(string s, int n)
+```
+
+- widths are measured in glyphs
+- if `glyphLen(s) >= width`, padding returns `s` unchanged
+- if `pad == ""`, padding returns `s` unchanged
+- negative `width` or negative repeat counts are runtime errors
+
+```ci
+print("[" + padLeft("42", 6, " ") + "]\n");   // [    42]
+print("[" + padRight("hi", 5, "+-") + "]\n"); // [hi+-+]
+print(repeat("-", 5) + "\n");                 // -----
+```
+
+#### Reverse search and counting
+
+```ci
+int lastIndexOf(string s, string needle)
+int countOccurrences(string s, string needle)
+```
+
+- `lastIndexOf` returns the byte offset of the last occurrence, or `-1`
+- `countOccurrences` counts non-overlapping matches
+- `countOccurrences(..., "")` is a runtime error
+
+```ci
+print(toString(lastIndexOf("abcabc", "abc")) + "\n");     // 3
+print(toString(countOccurrences("aaaa", "aa")) + "\n");   // 2
+```
+
 ---
 
 ### 8.3 Type conversion intrinsics

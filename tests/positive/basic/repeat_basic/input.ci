@@ -1,0 +1,4 @@
+void main(string[] args) {
+    print(repeat("ab", 3) + "\n");
+    print("[" + repeat("x", 0) + "]\n");
+}

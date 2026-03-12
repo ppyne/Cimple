@@ -1,0 +1,3 @@
+void main(string[] args) {
+    print(padRight("x", -1, " ") + "\n");
+}

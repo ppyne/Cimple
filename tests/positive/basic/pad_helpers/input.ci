@@ -1,0 +1,4 @@
+void main(string[] args) {
+    print("[" + padLeft("hi", 6, "-") + "]\n");
+    print("[" + padRight("hi", 5, "+-") + "]\n");
+}

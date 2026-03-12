@@ -1,0 +1,9 @@
+void main(string[] args) {
+    print(trim("  hello  ") + "\n");
+    print(toUpper("straße") + "\n");
+    print(padLeft("42", 6, " ") + "\n");
+    print(repeat("-", 5) + "\n");
+    print(toString(lastIndexOf("hello", "l")) + "\n");
+    print(toString(countOccurrences("aaa", "a")) + "\n");
+    print(toString(isBlank("\t\n")) + "\n");
+}

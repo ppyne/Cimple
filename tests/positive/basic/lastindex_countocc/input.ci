@@ -1,0 +1,4 @@
+void main(string[] args) {
+    print(toString(lastIndexOf("abcabc", "abc")) + "\n");
+    print(toString(countOccurrences("aaaa", "aa")) + "\n");
+}

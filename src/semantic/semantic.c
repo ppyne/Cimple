@@ -34,6 +34,18 @@ static const BuiltinSig BUILTINS[] = {
     { "join",       TYPE_STRING, { TYPE_STR_ARR, TYPE_STRING }, 2, 0, 0 },
     { "split",      TYPE_STR_ARR,{ TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
     { "concat",     TYPE_STRING, { TYPE_STR_ARR },           1, 0, 0 },
+    { "trim",       TYPE_STRING, { TYPE_STRING },           1, 0, 0 },
+    { "trimLeft",   TYPE_STRING, { TYPE_STRING },           1, 0, 0 },
+    { "trimRight",  TYPE_STRING, { TYPE_STRING },           1, 0, 0 },
+    { "toUpper",    TYPE_STRING, { TYPE_STRING },           1, 0, 0 },
+    { "toLower",    TYPE_STRING, { TYPE_STRING },           1, 0, 0 },
+    { "capitalize", TYPE_STRING, { TYPE_STRING },           1, 0, 0 },
+    { "padLeft",    TYPE_STRING, { TYPE_STRING, TYPE_INT, TYPE_STRING }, 3, 0, 0 },
+    { "padRight",   TYPE_STRING, { TYPE_STRING, TYPE_INT, TYPE_STRING }, 3, 0, 0 },
+    { "repeat",     TYPE_STRING, { TYPE_STRING, TYPE_INT }, 2, 0, 0 },
+    { "lastIndexOf",TYPE_INT,    { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "countOccurrences", TYPE_INT, { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "isBlank",    TYPE_BOOL,   { TYPE_STRING },           1, 0, 0 },
 
     /* Intrinsic conversions — resolved separately */
     { "toString",   TYPE_STRING, { TYPE_UNKNOWN },          1, 0, 0 },

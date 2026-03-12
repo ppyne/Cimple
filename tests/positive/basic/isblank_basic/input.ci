@@ -1,0 +1,5 @@
+void main(string[] args) {
+    print(toString(isBlank("")) + "\n");
+    print(toString(isBlank("\t\n")) + "\n");
+    print(toString(isBlank("  x")) + "\n");
+}
