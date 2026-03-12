@@ -395,6 +395,7 @@ static void resolve_file_recursive(ResolveState *st, const char *abs_path, int d
     char *body = cimple_strdup(source);
     ImportList imports = {0};
     strlist_push(&st->stack, abs_path);
+    error_init(disp);
     validate_and_collect_imports(disp, source, body, &imports);
 
     char *dir = path_dirname(abs_path);
@@ -471,6 +472,7 @@ int main(int argc, char **argv) {
 
     error_init(filepath);
     ResolvedProgram resolved = resolve_program_sources(filepath);
+    error_init(filepath);
     error_set_source_map(resolved.map, resolved.map_count);
 
     AstNode *program = parse_program(resolved.merged);

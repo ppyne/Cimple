@@ -1,0 +1,2 @@
+import "bad.ci";
+void main(string[] args) {}

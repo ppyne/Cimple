@@ -13,6 +13,46 @@
 #include "../ast/ast.h"
 #include "../common/memory.h"
 #include "../common/error.h"
+
+static int token_starts_statement_or_decl(TokenType t) {
+    switch (t) {
+    case TOK_RETURN:
+    case TOK_IF:
+    case TOK_WHILE:
+    case TOK_FOR:
+    case TOK_BREAK:
+    case TOK_CONTINUE:
+    case TOK_IDENT:
+    case TOK_KW_INT:
+    case TOK_KW_FLOAT:
+    case TOK_KW_BOOL:
+    case TOK_KW_STRING:
+    case TOK_KW_BYTE:
+    case TOK_KW_VOID:
+    case TOK_KW_EXECRESULT:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static int token_can_end_expression(TokenType t) {
+    switch (t) {
+    case TOK_IDENT:
+    case TOK_INT_LIT:
+    case TOK_FLOAT_LIT:
+    case TOK_STRING_LIT:
+    case TOK_TRUE:
+    case TOK_FALSE:
+    case TOK_RPAREN:
+    case TOK_RBRACKET:
+    case TOK_PLUSPLUS:
+    case TOK_MINUSMINUS:
+        return 1;
+    default:
+        return 0;
+    }
+}
 }
 
 %token_type   { Token }
@@ -23,6 +63,11 @@
 
 %syntax_error {
     (void)yyminor;
+    if (token_starts_statement_or_decl(TOKEN.type) &&
+        token_can_end_expression(ps->last_token_type)) {
+        error_syntax(TOKEN.line, TOKEN.col, "Missing ';' after statement");
+        return;
+    }
     switch (TOKEN.type) {
     case TOK_RBRACE:
         error_syntax(TOKEN.line, TOKEN.col, "Missing ';' after statement");

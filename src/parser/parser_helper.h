@@ -11,6 +11,9 @@
 typedef struct {
     AstNode  *root;     /* result of the parse */
     int       error;    /* non-zero if a parse error occurred */
+    TokenType last_token_type;
+    int       last_token_line;
+    int       last_token_col;
 } ParseState;
 
 /* -----------------------------------------------------------------------

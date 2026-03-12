@@ -15,7 +15,7 @@ void ParseFree(void *parser, void (*freeProc)(void *));
  * ----------------------------------------------------------------------- */
 AstNode *parse_program(const char *source) {
     Lexer      lex;
-    ParseState ps = { NULL, 0 };
+    ParseState ps = { NULL, 0, TOK_EOF, 0, 0 };
 
     lexer_init(&lex, source);
 
@@ -28,6 +28,10 @@ AstNode *parse_program(const char *source) {
             break;
 
         Parse(parser, tok.type, tok, &ps);
+
+        ps.last_token_type = tok.type;
+        ps.last_token_line = tok.line;
+        ps.last_token_col = tok.col;
 
         if (tok.type == TOK_EOF) {
             break;
