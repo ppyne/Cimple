@@ -66,6 +66,8 @@ void error_semantic_hint(int line, int col, const char *hint,
 
 /* Fatal runtime error — prints to stderr and exits(2). */
 void error_runtime(int line, int col, const char *fmt, ...);
+void error_runtime_hint(int line, int col, const char *hint,
+                        const char *fmt, ...);
 
 /* Print all accumulated semantic errors and return 1 if any, else 0. */
 int  error_flush_semantic(void);

@@ -499,13 +499,16 @@ static char *parent_dir_for_write(const char *path) {
     return dir;
 }
 
-static void copy_file_contents(const char *src, const char *dst, int line, int col) {
+static void copy_file_contents(const char *src, const char *dst,
+                               const char *op, int line, int col) {
     FILE *in = fopen(src, "rb");
-    if (!in) error_runtime(line, col, "Cannot read file: '%s'", src);
+    if (!in) error_runtime_hint(line, col, strerror(errno),
+                                "Cannot %s: '%s' -> '%s'", op, src, dst);
     FILE *out = fopen(dst, "wb");
     if (!out) {
         fclose(in);
-        error_runtime(line, col, "Cannot write file: '%s'", dst);
+        error_runtime_hint(line, col, strerror(errno),
+                           "Cannot %s: '%s' -> '%s'", op, src, dst);
     }
     char buf[4096];
     for (;;) {
@@ -513,13 +516,15 @@ static void copy_file_contents(const char *src, const char *dst, int line, int c
         if (n > 0 && fwrite(buf, 1, n, out) != n) {
             fclose(in);
             fclose(out);
-            error_runtime(line, col, "Cannot write file: '%s'", dst);
+            error_runtime_hint(line, col, strerror(errno),
+                               "Cannot %s: '%s' -> '%s'", op, src, dst);
         }
         if (n < sizeof(buf)) {
             if (ferror(in)) {
                 fclose(in);
                 fclose(out);
-                error_runtime(line, col, "Cannot read file: '%s'", src);
+                error_runtime_hint(line, col, strerror(errno),
+                                   "Cannot %s: '%s' -> '%s'", op, src, dst);
             }
             break;
         }
@@ -1661,13 +1666,16 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         REQUIRE(1);
         struct stat st;
         if (stat(ARG_STR(0), &st) != 0) {
-            error_runtime(line, col, "Cannot remove file: '%s' (does not exist)", ARG_STR(0));
+            error_runtime_hint(line, col, "File does not exist.",
+                               "Cannot remove file: '%s'", ARG_STR(0));
         }
         if (S_ISDIR(st.st_mode)) {
-            error_runtime(line, col, "Cannot remove file: '%s' (is a directory)", ARG_STR(0));
+            error_runtime_hint(line, col, "Path is a directory, not a file.",
+                               "Cannot remove file: '%s'", ARG_STR(0));
         }
         if (remove(ARG_STR(0)) != 0) {
-            error_runtime(line, col, "Cannot remove file: '%s'", ARG_STR(0));
+            error_runtime_hint(line, col, strerror(errno),
+                               "Cannot remove file: '%s'", ARG_STR(0));
         }
         return val_void();
     }
@@ -1678,10 +1686,12 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
 #else
         struct stat st;
         if (stat(ARG_STR(0), &st) != 0) {
-            error_runtime(line, col, "Cannot chmod: '%s' (does not exist)", ARG_STR(0));
+            error_runtime_hint(line, col, "File or directory does not exist.",
+                               "Cannot chmod: '%s'", ARG_STR(0));
         }
         if (chmod(ARG_STR(0), (mode_t)ARG_INT(1)) != 0) {
-            error_runtime(line, col, "Cannot chmod: '%s'", ARG_STR(0));
+            error_runtime_hint(line, col, strerror(errno),
+                               "Cannot chmod: '%s'", ARG_STR(0));
         }
         return val_void();
 #endif
@@ -1692,19 +1702,51 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
     if (id == BI_COPY) {
         REQUIRE(2);
-        copy_file_contents(ARG_STR(0), ARG_STR(1), line, col);
+        const char *src = ARG_STR(0);
+        const char *dst = ARG_STR(1);
+        struct stat src_st;
+        if (stat(src, &src_st) != 0)
+            error_runtime_hint(line, col, strerror(errno),
+                               "Cannot copy: source file not found: '%s'", src);
+        if (S_ISDIR(src_st.st_mode))
+            error_runtime_hint(line, col, "Source is a directory, not a file.",
+                               "Cannot copy: '%s'", src);
+        char *dst_parent = parent_dir_for_write(dst);
+        struct stat pst;
+        int parent_ok = (stat(dst_parent, &pst) == 0 && S_ISDIR(pst.st_mode));
+        free(dst_parent);
+        if (!parent_ok)
+            error_runtime_hint(line, col, strerror(errno),
+                               "Cannot copy: destination directory not found: '%s'", dst);
+        copy_file_contents(src, dst, "copy", line, col);
         return val_void();
     }
     if (id == BI_MOVE) {
         REQUIRE(2);
-        if (rename(ARG_STR(0), ARG_STR(1)) != 0) {
-            if (errno != EXDEV) {
-                error_runtime(line, col, "Cannot move file: '%s'", ARG_STR(0));
-            }
-            copy_file_contents(ARG_STR(0), ARG_STR(1), line, col);
-            if (remove(ARG_STR(0)) != 0) {
-                error_runtime(line, col, "Cannot move file: '%s'", ARG_STR(0));
-            }
+        const char *src = ARG_STR(0);
+        const char *dst = ARG_STR(1);
+        struct stat src_st;
+        if (stat(src, &src_st) != 0)
+            error_runtime_hint(line, col, strerror(errno),
+                               "Cannot move: source file not found: '%s'", src);
+        if (S_ISDIR(src_st.st_mode))
+            error_runtime_hint(line, col, "Source is a directory, not a file.",
+                               "Cannot move: '%s'", src);
+        char *dst_parent = parent_dir_for_write(dst);
+        struct stat pst;
+        int parent_ok = (stat(dst_parent, &pst) == 0 && S_ISDIR(pst.st_mode));
+        free(dst_parent);
+        if (!parent_ok)
+            error_runtime_hint(line, col, strerror(errno),
+                               "Cannot move: destination directory not found: '%s'", dst);
+        if (rename(src, dst) != 0) {
+            if (errno != EXDEV)
+                error_runtime_hint(line, col, strerror(errno),
+                                   "Cannot move: '%s' -> '%s'", src, dst);
+            copy_file_contents(src, dst, "move", line, col);
+            if (remove(src) != 0)
+                error_runtime_hint(line, col, strerror(errno),
+                                   "Cannot move: '%s' -> '%s'", src, dst);
         }
         return val_void();
     }

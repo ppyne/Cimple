@@ -21,11 +21,12 @@ This document is the authoritative user-facing manual for the current reference 
 6. [Control Flow](#6-control-flow)
 7. [Functions](#7-functions)
 8. [Standard Library](#8-standard-library)
-9. [Predefined Constants](#9-predefined-constants)
-10. [Scoping Rules](#10-scoping-rules)
-11. [Keywords](#11-keywords)
-12. [Diagnostics](#12-diagnostics)
-13. [Worked Examples](#13-worked-examples)
+9. [Imports](#9-imports)
+10. [Predefined Constants](#10-predefined-constants)
+11. [Scoping Rules](#11-scoping-rules)
+12. [Keywords](#12-keywords)
+13. [Diagnostics](#13-diagnostics)
+14. [Worked Examples](#14-worked-examples)
 
 ---
 
@@ -93,6 +94,17 @@ A Cimple program is a single source file. It must define a `main` function that 
 program entry point. Every other construct — type annotations, function signatures, variable
 declarations — must be explicit. There is no type inference, no implicit conversion, no
 preprocessor, and no pointers.
+
+### Comments
+
+`//` starts a line comment; everything from `//` to the end of the line is ignored:
+
+```ci
+// This is a comment.
+int x = 42;    // inline comment
+```
+
+There are no block comments.
 
 ### Hello, world
 
@@ -198,6 +210,9 @@ int n = 10;
 byte good = intToByte(n);
 ```
 
+The logical operators `&&`, `||`, and `!` are **not defined on `byte`**; using them on a
+`byte` value is a semantic error. Convert to `bool` explicitly if needed.
+
 ---
 
 ## 4. Variables
@@ -214,7 +229,7 @@ string name = "Alice";
 
 All variables must have an explicit type. There is no `var` or `auto`.
 
-Uninitialized variables receive default values: `0` for `int`, `0.0` for `float`,
+Uninitialized variables receive default values: `0` for `int` and `byte`, `0.0` for `float`,
 `""` for `string`, `false` for `bool`.
 
 ### 4.2 Array declarations
@@ -262,6 +277,9 @@ i--;    // equivalent to i = i - 1
 
 The prefix forms `++i` and `--i` are syntactically forbidden.
 Using `i++` inside an expression (e.g. `x = i++`) is a semantic error.
+
+`++` and `--` only apply to `int` variables. Applying them to a `byte` variable is a
+semantic error — use `x = intToByte(byteToInt(x) + 1)` instead.
 
 ---
 
@@ -363,7 +381,7 @@ Division by zero is a runtime error.
 | `\|\|` | logical OR (short-circuits) |
 | `!` | logical NOT |
 
-#### Bitwise (integers only)
+#### Bitwise (`int` and `byte`)
 
 | Operator | Description |
 |----------|-------------|
@@ -374,13 +392,31 @@ Division by zero is a runtime error.
 | `<<` | left shift |
 | `>>` | right shift |
 
+The result type depends on the operand types:
+
+| Operands | Result |
+|----------|--------|
+| `int` op `int` | `int` |
+| `byte` op `byte` (binary `&` `\|` `^` only) | `byte` |
+| `byte` op `int` or `int` op `byte` | `int` |
+| `~byte` | `byte` |
+| `~int` | `int` |
+| `byte << int`, `byte >> int` | `int` |
+
 ```ci
+// int bitwise
 print(toString(6 & 3)   + "\n");   // 2
 print(toString(6 | 3)   + "\n");   // 7
 print(toString(6 ^ 3)   + "\n");   // 5
 print(toString(~0)      + "\n");   // -1
 print(toString(1 << 3)  + "\n");   // 8
 print(toString(20 >> 2) + "\n");   // 5
+
+// byte bitwise — result is byte when both operands are byte
+byte mask = 0xF0;
+byte lo   = 0x0F;
+byte both = mask | lo;             // byte (0xFF = 255)
+int  wide = mask | 256;            // int  (byte | int → int)
 ```
 
 #### Unary
@@ -389,7 +425,8 @@ print(toString(20 >> 2) + "\n");   // 5
 |----------|-------|-------------|
 | `-` | `int`, `float` | numeric negation |
 | `!` | `bool` | logical NOT |
-| `~` | `int` | bitwise NOT |
+| `~` | `int` | bitwise NOT (result `int`) |
+| `~` | `byte` | bitwise NOT (result `byte`) |
 
 ### 5.7 Operator precedence
 
@@ -906,8 +943,8 @@ print(toString(countOccurrences("aaaa", "aa")) + "\n");   // 2
 
 ### 8.3 Type conversion intrinsics
 
-These four are the only polymorphic functions in Cimple; overload resolution is entirely
-static.
+`toString`, `toInt`, `toFloat`, and `toBool` are polymorphic: they accept several source
+types and the correct overload is resolved statically by the semantic analyser.
 
 #### `toString`
 
@@ -915,12 +952,14 @@ static.
 string toString(int value)
 string toString(float value)
 string toString(bool value)
+string toString(byte value)
 ```
 
 ```ci
-print(toString(42)    + "\n");  // 42
-print(toString(3.14)  + "\n");  // 3.14
-print(toString(true)  + "\n");  // true
+print(toString(42)              + "\n");  // 42
+print(toString(3.14)            + "\n");  // 3.14
+print(toString(true)            + "\n");  // true
+print(toString(intToByte(65))   + "\n");  // 65   (decimal, 0–255)
 ```
 
 #### `toInt`
@@ -1078,7 +1117,7 @@ print(toString(isOdd(7))             + "\n");  // true
 ### 8.8 Array functions
 
 These polymorphic intrinsics work with any element type (`T` stands for `int`, `float`,
-`bool`, or `string`):
+`bool`, `string`, or `byte`):
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -1225,30 +1264,43 @@ int makeEpoch(int year, int month, int day, int hour, int minute, int second)
 string formatDate(int epochMs, string fmt)
 ```
 
-`formatDate` tokens:
+`formatDate` substitutes named tokens in `fmt` left-to-right using **longest-prefix-first**
+matching (so `WW` is recognised before a bare `W`). Any character sequence that does not
+match a token is copied verbatim.
 
-| Token | Field | Example |
-|-------|-------|---------|
-| `YYYY` | 4-digit year | `2025` |
-| `MM` | 2-digit month | `03` |
-| `DD` | 2-digit day | `11` |
-| `HH` | 2-digit hour | `14` |
-| `mm` | 2-digit minute | `32` |
-| `ss` | 2-digit second | `07` |
-| `w` | weekday (`0` = Sunday, `6` = Saturday) | `2` |
-| `yday` | day of year, base 0 | `69` |
-| `WW` | ISO week number, zero-padded | `11` |
-| `ISO` | full UTC ISO 8601 datetime | `2025-03-11T14:32:07Z` |
+| Token | Field | Range / format | Example |
+|-------|-------|----------------|---------|
+| `YYYY` | 4-digit year, zero-padded | `0000`–`9999` | `2025` |
+| `MM` | 2-digit month | `01`–`12` | `03` |
+| `DD` | 2-digit day | `01`–`31` | `11` |
+| `HH` | 2-digit hour (24 h) | `00`–`23` | `14` |
+| `mm` | 2-digit minute | `00`–`59` | `32` |
+| `ss` | 2-digit second | `00`–`59` | `07` |
+| `w` | weekday, no padding (`0`=Sunday … `6`=Saturday) | `0`–`6` | `2` |
+| `yday` | day of year, base 0, no padding | `0`–`365` | `69` |
+| `WW` | ISO 8601 week number, zero-padded | `01`–`53` | `11` |
+| `ISO` | full UTC date-time | `YYYY-MM-DDTHH:mm:ssZ` | `2025-03-11T14:32:07Z` |
+
+**Notes on specific tokens:**
+
+- **`yday`** — January 1 is `"0"`, December 31 of a non-leap year is `"364"`, December 31 of
+  a leap year is `"365"`. The value is not padded.
+- **`WW`** — uses ISO 8601 week numbering: weeks start on **Monday**; the week containing
+  the first Thursday of the year is week `01`. Days at the very start or end of a year can
+  belong to the previous or next year's week.
+- **`ISO`** — returns `"invalid"` if the year of the epoch falls outside the range `0`–`9999`.
 
 ```ci
 void main() {
     int ts = makeEpoch(2025, 3, 11, 14, 32, 7);
-    print(formatDate(ts, "YYYY-MM-DD") + "\n");   // 2025-03-11
-    print(formatDate(ts, "HH:mm:ss")   + "\n");   // 14:32:07
-    print(formatDate(ts, "w")          + "\n");   // 2
-    print(formatDate(ts, "yday")       + "\n");   // 69
-    print(formatDate(ts, "WW")         + "\n");   // 11
-    print(formatDate(ts, "ISO")        + "\n");   // 2025-03-11T14:32:07Z
+    print(formatDate(ts, "YYYY-MM-DD")        + "\n");  // 2025-03-11
+    print(formatDate(ts, "HH:mm:ss")          + "\n");  // 14:32:07
+    print(formatDate(ts, "[YYYY-MM-DD]")      + "\n");  // [2025-03-11]  ([ ] copied verbatim)
+    print(formatDate(ts, "w")                 + "\n");  // 2             (Tuesday)
+    print(formatDate(ts, "yday")              + "\n");  // 69            (70th day, base 0)
+    print(formatDate(ts, "WW")               + "\n");  // 11            (ISO week 11)
+    print(formatDate(ts, "YYYY-WW-w")         + "\n");  // 2025-11-2     (ISO week date)
+    print(formatDate(ts, "ISO")               + "\n");  // 2025-03-11T14:32:07Z
 
     int t0 = now();
     // ... some work ...
@@ -1263,44 +1315,134 @@ To get the current time in seconds: `now() / 1000`.
 
 ### 8.13 File system helpers
 
+#### `cwd`
+
+```ci
+string cwd()
+```
+
+Returns the current working directory as an absolute path.
+
+#### `tempPath`
+
 ```ci
 string tempPath()
+```
+
+Returns a unique path string that does not currently exist on disk. It does **not** create
+the file. Two successive calls always return different paths. The path is located in the
+system's temporary directory (`$TMPDIR` on POSIX, `%TEMP%` on Windows).
+
+```ci
+string tmp = tempPath();
+writeFile(tmp, "scratch data");
+// ... use tmp ...
+remove(tmp);
+```
+
+#### `remove`
+
+```ci
 void remove(string path)
+```
+
+Deletes the file at `path`. Both of the following are **runtime errors**:
+- `path` does not exist
+- `path` names a directory (use a shell command via `exec` to remove directories)
+
+#### `chmod`
+
+```ci
 void chmod(string path, int mode)
-string cwd()
+```
+
+Changes the permission bits of `path` to `mode` (octal integer, e.g. `0o644`). Available
+on **POSIX platforms only** (macOS, Linux). Raises a runtime error on Windows and
+WebAssembly with the message `chmod: not supported on this platform`.
+
+```ci
+chmod("script.sh", 0x1ED);  // 0755 octal — owner rwx, group rx, other rx
+```
+
+#### `copy`
+
+```ci
 void copy(string src, string dst)
+```
+
+Copies the regular file at `src` to `dst`. If `dst` already exists it is overwritten.
+Runtime errors:
+- `src` does not exist
+- `src` is a directory (only regular files may be copied)
+- the parent directory of `dst` does not exist
+
+#### `move`
+
+```ci
 void move(string src, string dst)
+```
+
+Moves (renames) the regular file at `src` to `dst`. If `dst` already exists it is
+overwritten. Runtime errors:
+- `src` does not exist
+- `src` is a directory
+- the parent directory of `dst` does not exist
+
+#### `isReadable` / `isWritable` / `isExecutable`
+
+```ci
 bool isReadable(string path)
 bool isWritable(string path)
 bool isExecutable(string path)
-bool isDirectory(string path)
-string dirname(string path)
-string basename(string path)
-string filename(string path)
-string extension(string path)
 ```
 
-Notes:
+Return `true` if the current process has the corresponding permission on `path`. Return
+`false` if `path` does not exist.
 
-- `tempPath()` returns a unique path that does not currently exist; it does not create the file
-- `remove()` removes files only; removing a directory is a runtime error
-- `chmod()` is available on POSIX platforms and raises a runtime error on WebAssembly
-- `copy()` and `move()` overwrite the destination if it already exists
-- `dirname`, `basename`, `filename`, `extension`, and `cwd()` are pure path helpers
+#### `isDirectory`
 
 ```ci
-void main(string[] args) {
+bool isDirectory(string path)
+```
+
+Returns `true` if `path` names an existing directory, `false` otherwise (including when the
+path does not exist or names a regular file).
+
+#### Path decomposition helpers
+
+```ci
+string dirname(string path)    // parent directory
+string basename(string path)   // file name with extension
+string filename(string path)   // file name without extension
+string extension(string path)  // extension without leading dot
+```
+
+| Call | Result | Notes |
+|------|--------|-------|
+| `dirname("/tmp/demo.txt")` | `"/tmp"` | |
+| `dirname("file.txt")` | `""` | no directory component |
+| `basename("/tmp/demo.txt")` | `"demo.txt"` | |
+| `filename("archive.tar.gz")` | `"archive.tar"` | strips last extension only |
+| `filename(".gitignore")` | `".gitignore"` | leading-dot file has no extension |
+| `extension("archive.tar.gz")` | `"gz"` | |
+| `extension(".gitignore")` | `""` | leading-dot file has no extension |
+| `extension("makefile")` | `""` | no extension |
+
+```ci
+void main() {
     string src = tempPath();
     string dst = tempPath();
 
     writeFile(src, "hello");
     copy(src, dst);
-    print(readFile(dst) + "\n");
+    print(readFile(dst) + "\n");       // hello
 
     move(dst, "moved.txt");
-    print(toString(fileExists("moved.txt")) + "\n");
-    print(dirname("/tmp/demo.txt") + "\n");     // /tmp
-    print(filename("archive.tar.gz") + "\n");   // archive.tar
+    print(toString(fileExists("moved.txt")) + "\n");   // true
+    print(toString(isDirectory(cwd()))      + "\n");   // true
+    print(dirname("/tmp/demo.txt")          + "\n");   // /tmp
+    print(filename("archive.tar.gz")        + "\n");   // archive.tar
+    print(extension("archive.tar.gz")       + "\n");   // gz
 
     remove(src);
     remove("moved.txt");
@@ -1328,8 +1470,14 @@ float bytesToFloat(byte[] data)
 Rules:
 
 - `intToByte()` clamps silently to `[0, 255]`
-- `byte + byte` and `byte + int` produce `int`
-- `byte & byte`, `byte | byte`, `byte ^ byte`, and `~byte` produce `byte`
+- **Arithmetic** (`+`, `-`, `*`, `/`, `%`): `byte op byte` and `byte op int` always produce `int`
+- **Bitwise binary** (`&`, `|`, `^`): `byte op byte` → `byte`; `byte op int` or `int op byte` → `int`
+- **Bitwise unary** (`~`): `~byte` → `byte`; `~int` → `int`
+- **Shifts** (`<<`, `>>`): `byte << int` and `byte >> int` → `int`; the result can exceed 255
+- **Comparisons** (`==`, `!=`, `<`, `<=`, `>`, `>=`): a `byte` may be compared with another `byte`
+  or with an `int` (the byte is promoted to int for the comparison)
+- **Logical operators** (`&&`, `||`, `!`): **not defined on `byte`** — semantic error
+- **Increment / decrement** (`++`, `--`): **not defined on `byte`** — semantic error
 - `bytesToString()` replaces invalid UTF-8 byte sequences with `U+FFFD`
 - `bytesToInt()` requires exactly `INT_SIZE` bytes
 - `bytesToFloat()` requires exactly `FLOAT_SIZE` bytes
@@ -1362,10 +1510,18 @@ import "utils/strings.ci";
 
 Rules:
 
-- every `import` must appear before any declaration in the current file
-- the path must end with `.ci`
-- imports are resolved recursively before semantic analysis
-- each imported file is processed once, even if multiple files import it
+- every `import` must appear **before any declaration** in the current file — including
+  global variable declarations; an `import` that follows a declaration is a syntax error
+- `import` inside a function or block is a **syntax error**
+- the path must end with `.ci`; any other extension is a semantic error
+- paths are resolved **relative to the directory of the file containing the `import`**,
+  not relative to the working directory where `cimple run` is invoked; absolute paths are
+  also accepted; both `/` and `\` are valid separators
+- imports are resolved recursively (depth-first) before semantic analysis
+- each imported file is processed **exactly once**, even if multiple files import it;
+  re-importing the same file is silently ignored, not an error
+- the maximum import nesting depth is **32 levels**; a chain deeper than that is a
+  semantic error
 - imported files may not define `main`
 - circular imports are semantic errors
 
@@ -1380,7 +1536,7 @@ void main(string[] args) {
 
 ```ci
 // math/add.ci
-import "more.ci";
+import "more.ci";      // resolved relative to math/, not to the project root
 
 int addThree(int n) {
     return addOne(addOne(addOne(n)));
@@ -1487,7 +1643,7 @@ int       return    string    true      void
 while     byte
 ```
 
-The predefined constants are also reserved (see §9):
+The predefined constants are also reserved (see §10):
 
 ```
 FLOAT_DIG  FLOAT_EPSILON  FLOAT_MAX  FLOAT_MIN  FLOAT_SIZE
@@ -1499,19 +1655,35 @@ M_E        M_LN10         M_LN2      M_PI       M_SQRT2  M_TAU
 
 ## 13. Diagnostics
 
+### Error categories
+
 The implementation reports four categories of error, each with a source location:
 
-| Category | When raised | Example |
-|----------|-------------|---------|
-| **Lexical error** | during tokenisation | unknown escape `\q`, unterminated string |
-| **Syntax error** | during parsing | missing `;`, unmatched `}` |
-| **Semantic error** | during analysis | type mismatch, undeclared variable, missing `return` |
-| **Runtime error** | during execution | division by zero, out-of-bounds index, file not found |
+| Category | When raised | Exit code | Example |
+|----------|-------------|-----------|---------|
+| **Lexical error** | during tokenisation | `1` | unknown escape `\q`, unterminated string |
+| **Syntax error** | during parsing | `1` | missing `;`, unmatched `}` |
+| **Semantic error** | during analysis | `1` | type mismatch, undeclared variable, missing `return` |
+| **Runtime error** | during execution | `2` | division by zero, out-of-bounds index, file not found |
 
-Semantic errors prevent execution entirely. Runtime errors abort the program immediately with
-a descriptive message including the source location.
+### Exit codes
 
-Common semantic errors to watch for:
+| Code | Meaning |
+|------|---------|
+| `0` | program completed successfully |
+| `1` | lexical, syntax, or semantic error |
+| `2` | runtime error |
+
+### Error behaviour
+
+- **Lexical and syntax errors** are fatal: the compiler reports the first error and stops
+  immediately.
+- **Semantic errors** accumulate: up to **10** errors are collected and reported together
+  before stopping. This lets you fix several problems in one edit cycle.
+- **Runtime errors** abort the program immediately with a message that includes the source
+  file, line, and column, followed by an indication line describing the cause.
+
+### Common semantic errors
 
 - Using a variable before declaring it.
 - Calling a function with wrong argument count or wrong types.
@@ -1521,12 +1693,14 @@ Common semantic errors to watch for:
 - Reassigning an array variable as a whole (`xs = [...]` after its declaration).
 - Declaring a variable whose name matches a reserved constant (`INT_MAX = 5` is forbidden).
 - Calling `toInt(bool)` or any conversion with an unsupported source type.
+- Applying `&&`, `||`, `!`, `++`, or `--` to a `byte` value.
+- Placing an `import` after a declaration, or inside a function body.
 
 ---
 
 ## 14. Worked Examples
 
-### 13.1 FizzBuzz
+### 14.1 FizzBuzz
 
 ```ci
 void main() {
@@ -1544,7 +1718,7 @@ void main() {
 }
 ```
 
-### 13.2 Recursive Fibonacci
+### 14.2 Recursive Fibonacci
 
 ```ci
 int fibonacci(int n) {
@@ -1559,7 +1733,7 @@ void main(string[] args) {
 }
 ```
 
-### 13.3 Count words in a line
+### 14.3 Count words in a line
 
 ```ci
 void main() {
@@ -1570,7 +1744,7 @@ void main() {
 }
 ```
 
-### 13.4 Sum an array with a helper function
+### 14.4 Sum an array with a helper function
 
 ```ci
 int sumArray(int[] xs) {
@@ -1587,7 +1761,7 @@ void main() {
 }
 ```
 
-### 13.5 File processing
+### 14.5 File processing
 
 ```ci
 void main(string[] args) {
@@ -1608,7 +1782,7 @@ void main(string[] args) {
 }
 ```
 
-### 13.6 Running an external command
+### 14.6 Running an external command
 
 ```ci
 void main() {
@@ -1622,7 +1796,7 @@ void main() {
 }
 ```
 
-### 13.7 Formatted timestamp
+### 14.7 Formatted timestamp
 
 ```ci
 void main() {
@@ -1632,7 +1806,7 @@ void main() {
 }
 ```
 
-### 13.8 Bitwise permission flags
+### 14.8 Bitwise permission flags
 
 ```ci
 int FLAG_READ    = 0x1;
@@ -1650,7 +1824,7 @@ void main() {
 }
 ```
 
-### 13.9 CSV line parser
+### 14.9 CSV line parser
 
 ```ci
 string[] parseCSV(string line) {

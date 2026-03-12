@@ -1,0 +1,5 @@
+void main() {
+    byte a = 1;
+    byte b = 0;
+    bool r = a && b;
+}

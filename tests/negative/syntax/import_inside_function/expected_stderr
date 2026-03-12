@@ -1,0 +1,2 @@
+'import' is not allowed inside a function or block
+Import directives are only valid at the top level.

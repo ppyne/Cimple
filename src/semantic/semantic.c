@@ -410,14 +410,23 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
 
         /* Logical */
         if (op == OP_AND || op == OP_OR) {
-            if (lt != TYPE_BOOL)
-                error_operator_type(n->line, n->col,
-                                    op == OP_AND ? "&&" : "||",
-                                    "bool operands", lt);
-            if (rt != TYPE_BOOL)
-                error_operator_type(n->line, n->col,
-                                    op == OP_AND ? "&&" : "||",
-                                    "bool operands", rt);
+            const char *opname = op == OP_AND ? "&&" : "||";
+            if (lt != TYPE_BOOL) {
+                if (lt == TYPE_BYTE)
+                    error_semantic_hint(n->line, n->col,
+                                        "Logical operators require 'bool' operands.",
+                                        "Operator '%s' cannot be applied to type 'byte'", opname);
+                else
+                    error_operator_type(n->line, n->col, opname, "bool operands", lt);
+            }
+            if (rt != TYPE_BOOL) {
+                if (rt == TYPE_BYTE)
+                    error_semantic_hint(n->line, n->col,
+                                        "Logical operators require 'bool' operands.",
+                                        "Operator '%s' cannot be applied to type 'byte'", opname);
+                else
+                    error_operator_type(n->line, n->col, opname, "bool operands", rt);
+            }
             n->type = TYPE_BOOL;
             return TYPE_BOOL;
         }
@@ -477,8 +486,14 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         CimpleType t = check_expr(ctx, n->u.unop.operand);
         OpKind op = n->u.unop.op;
         if (op == OP_NOT) {
-            if (t != TYPE_BOOL)
-                error_operator_type(n->line, n->col, "!", "a bool operand", t);
+            if (t != TYPE_BOOL) {
+                if (t == TYPE_BYTE)
+                    error_semantic_hint(n->line, n->col,
+                                        "Logical operators require 'bool' operands.",
+                                        "Operator '!' cannot be applied to type 'byte'");
+                else
+                    error_operator_type(n->line, n->col, "!", "a bool operand", t);
+            }
             n->type = TYPE_BOOL; return TYPE_BOOL;
         }
         if (op == OP_NEG) {

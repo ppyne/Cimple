@@ -2691,7 +2691,7 @@ string week  = formatDate(ts, "WW");                    // "11" (semaine ISO 11)
 string iso   = formatDate(ts, "ISO");                   // "2025-03-11T14:32:07Z"
 
 // Combinaisons
-string label = formatDate(ts, "YYYY-Www-w");            // "2025-W11-2"  (format ISO semaine)
+string label = formatDate(ts, "YYYY-Www-w");            // "2025-W22-2"  (W littéral, w=weekday 2, w=weekday 2)
 string log2  = formatDate(ts, "[ISO] ");                // "[2025-03-11T14:32:07Z] "
 
 // Horodatage d'un fichier de log
@@ -5343,7 +5343,7 @@ Chaque ligne ci-dessous correspond à au moins un répertoire de test dans `test
 - `formatDate("yday")` : 1er janvier → `"0"`, 31 décembre non-bissextile → `"364"`, 31 décembre bissextile → `"365"`
 - `formatDate("WW")` : semaine 1 → `"01"`, semaine 42 → `"42"`, semaine 53 sur année longue
 - `formatDate("ISO")` : résultat de la forme `YYYY-MM-DDTHH:mm:ssZ`
-- `formatDate("YYYY-Www-w")` : format de semaine ISO — ex. `"2025-W11-2"`
+- `formatDate("YYYY-WW-w")` : numéro de semaine ISO suivi du jour — ex. `"2025-11-2"` (pour ISO week 11, mardi)
 - `makeEpoch` : composants valides → epoch positif
 
 **Stdlib — environnement**

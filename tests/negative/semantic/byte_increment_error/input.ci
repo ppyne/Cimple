@@ -1,0 +1,4 @@
+void main() {
+    byte b = 5;
+    b++;
+}

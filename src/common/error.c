@@ -143,6 +143,17 @@ void error_runtime(int line, int col, const char *fmt, ...) {
     exit(2);
 }
 
+void error_runtime_hint(int line, int col, const char *hint,
+                        const char *fmt, ...) {
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    error_print(ERR_RUNTIME, line, col, buf, hint);
+    exit(2);
+}
+
 int error_flush_semantic(void) {
     if (g_error_ctx.semantic_count == 0)
         return 0;

@@ -1,1 +1,2 @@
-Cannot remove file: '.' (is a directory)
+Cannot remove file:
+Path is a directory, not a file.

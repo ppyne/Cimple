@@ -302,8 +302,12 @@ static void fail_circular_import(ResolveState *st, const char *abs_path) {
     }
     if (chain.len > 0) sb_append(&chain, " -> ");
     sb_append(&chain, disp);
+    StrBuf indication;
+    sb_init(&indication);
+    sb_append(&indication, "Import chain: ");
+    sb_append(&indication, chain.data);
     fail_formatted(ERR_SEMANTIC, disp, 1, 1,
-                   chain.data,
+                   indication.data,
                    "Circular import detected: '%s'", disp);
 }
 
@@ -330,8 +334,8 @@ static void validate_and_collect_imports(const char *display_file, const char *s
         if (tok.type == TOK_KW_IMPORT) {
             if (top_level_depth > 0) {
                 fail_formatted(ERR_SYNTAX, display_file, tok.line, tok.col,
-                               "Move import directives to the top of the file.",
-                               "'import' is not allowed inside a function");
+                               "Import directives are only valid at the top level.",
+                               "'import' is not allowed inside a function or block");
             }
             if (seen_non_import) {
                 fail_formatted(ERR_SYNTAX, display_file, tok.line, tok.col,

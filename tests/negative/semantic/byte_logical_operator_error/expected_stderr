@@ -1,0 +1,2 @@
+Operator '&&' cannot be applied to type 'byte'
+Logical operators require 'bool' operands.

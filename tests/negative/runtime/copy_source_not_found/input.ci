@@ -1,0 +1,3 @@
+void main() {
+    copy("nonexistent.txt", "dst.txt");
+}
