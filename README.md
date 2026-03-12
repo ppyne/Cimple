@@ -27,10 +27,11 @@ This repository contains the reference implementation: a lexer, parser, semantic
 | CMake ≥ 3.15 | Build system |
 | C11 compiler | GCC, Clang, MSVC |
 
-**Get Lemon:**
+**Get Lemon and utf8proc:**
 ```sh
 cd tools/
 ./fetch_lemon.sh
+./fetch_utf8proc.sh
 ```
 
 **Install re2c** (macOS: `sudo port install re2c`, Ubuntu: `apt install re2c`).
