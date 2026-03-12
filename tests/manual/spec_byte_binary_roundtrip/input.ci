@@ -1,0 +1,10 @@
+void main(string[] args) {
+    int n = 42;
+    float f = 3.5;
+    byte[] ib = intToBytes(n);
+    byte[] fb = floatToBytes(f);
+    print(toString(count(ib)) + "\n");
+    print(toString(bytesToInt(ib)) + "\n");
+    print(toString(count(fb)) + "\n");
+    print(toString(bytesToFloat(fb)) + "\n");
+}

@@ -1,0 +1,7 @@
+void main(string[] args) {
+    int ts = makeEpoch(2025, 3, 11, 14, 32, 7);
+    print(formatDate(ts, "w") + "\n");
+    print(formatDate(ts, "yday") + "\n");
+    print(formatDate(ts, "WW") + "\n");
+    print(formatDate(ts, "ISO") + "\n");
+}

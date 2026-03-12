@@ -1,0 +1,13 @@
+void main(string[] args) {
+    string src = tempPath();
+    string dst = tempPath();
+    writeFile(src, "hello");
+    copy(src, dst);
+    print(readFile(dst) + "\n");
+    move(dst, "moved.txt");
+    print(toString(fileExists("moved.txt")) + "\n");
+    print(toString(isDirectory(".")) + "\n");
+    print(toString(startsWith(cwd(), "/")) + "\n");
+    remove(src);
+    remove("moved.txt");
+}

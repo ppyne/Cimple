@@ -143,8 +143,10 @@ const char *token_type_name(TokenType t) {
     case TOK_KW_FLOAT:     return "'float'";
     case TOK_KW_BOOL:      return "'bool'";
     case TOK_KW_STRING:    return "'string'";
+    case TOK_KW_BYTE:      return "'byte'";
     case TOK_KW_VOID:      return "'void'";
     case TOK_KW_EXECRESULT:return "'ExecResult'";
+    case TOK_KW_IMPORT:    return "'import'";
     case TOK_IF:           return "'if'";
     case TOK_ELSE:         return "'else'";
     case TOK_WHILE:        return "'while'";
@@ -265,6 +267,8 @@ yybegin:
             tok.type    = TOK_STRING_LIT;
             tok.line    = l->line;
             tok.col     = l->tok_col;
+            tok.start_offset = (int)(start - l->buf);
+            tok.end_offset   = (int)(l->cur - l->buf);
             tok.v.sval  = decode_string(l, start, l->cur - 1);
             return tok;
         }
@@ -279,6 +283,8 @@ yybegin:
             tok.type   = TOK_FLOAT_LIT;
             tok.line   = l->line;
             tok.col    = l->tok_col;
+            tok.start_offset = (int)(l->tok - l->buf);
+            tok.end_offset   = (int)(l->cur - l->buf);
             tok.v.fval = strtod(buf, NULL);
             l->col    += (int)(l->cur - l->tok);
             return tok;
@@ -289,6 +295,8 @@ yybegin:
             tok.type   = TOK_INT_LIT;
             tok.line   = l->line;
             tok.col    = l->tok_col;
+            tok.start_offset = (int)(l->tok - l->buf);
+            tok.end_offset   = (int)(l->cur - l->buf);
             tok.v.ival = parse_int_literal(l, l->tok, (size_t)(l->cur - l->tok));
             l->col    += (int)(l->cur - l->tok);
             return tok;
@@ -299,6 +307,8 @@ yybegin:
             tok.type   = TOK_INT_LIT;
             tok.line   = l->line;
             tok.col    = l->tok_col;
+            tok.start_offset = (int)(l->tok - l->buf);
+            tok.end_offset   = (int)(l->cur - l->buf);
             tok.v.ival = parse_int_literal(l, l->tok, (size_t)(l->cur - l->tok));
             l->col    += (int)(l->cur - l->tok);
             return tok;
@@ -309,6 +319,8 @@ yybegin:
             tok.type   = TOK_INT_LIT;
             tok.line   = l->line;
             tok.col    = l->tok_col;
+            tok.start_offset = (int)(l->tok - l->buf);
+            tok.end_offset   = (int)(l->cur - l->buf);
             tok.v.ival = parse_int_literal(l, l->tok, (size_t)(l->cur - l->tok));
             l->col    += (int)(l->cur - l->tok);
             return tok;
@@ -325,8 +337,10 @@ yybegin:
         "float"         { tok.type = TOK_KW_FLOAT;      goto kw_done; }
         "bool"          { tok.type = TOK_KW_BOOL;       goto kw_done; }
         "string"        { tok.type = TOK_KW_STRING;     goto kw_done; }
+        "byte"          { tok.type = TOK_KW_BYTE;       goto kw_done; }
         "void"          { tok.type = TOK_KW_VOID;       goto kw_done; }
         "ExecResult"    { tok.type = TOK_KW_EXECRESULT; goto kw_done; }
+        "import"        { tok.type = TOK_KW_IMPORT;     goto kw_done; }
         "if"            { tok.type = TOK_IF;            goto kw_done; }
         "else"          { tok.type = TOK_ELSE;          goto kw_done; }
         "while"         { tok.type = TOK_WHILE;         goto kw_done; }
@@ -339,6 +353,8 @@ yybegin:
             tok.type   = TOK_IDENT;
             tok.line   = l->line;
             tok.col    = l->tok_col;
+            tok.start_offset = (int)(l->tok - l->buf);
+            tok.end_offset   = (int)(l->cur - l->buf);
             tok.v.sval = cimple_strndup(l->tok, (size_t)(l->cur - l->tok));
             l->col    += (int)(l->cur - l->tok);
             return tok;
@@ -384,6 +400,8 @@ yybegin:
             tok.type  = TOK_EOF;
             tok.line  = l->line;
             tok.col   = l->col;
+            tok.start_offset = (int)(l->tok - l->buf);
+            tok.end_offset   = (int)(l->cur - l->buf);
             tok.v.ival = 0;
             return tok;
         }
@@ -399,6 +417,8 @@ yybegin:
 kw_done:
     tok.line  = l->line;
     tok.col   = l->tok_col;
+    tok.start_offset = (int)(l->tok - l->buf);
+    tok.end_offset   = (int)(l->cur - l->buf);
     tok.v.ival = 0;
     l->col   += (int)(l->cur - l->tok);
     return tok;
@@ -406,6 +426,8 @@ kw_done:
 op_done:
     tok.line  = l->line;
     tok.col   = l->tok_col;
+    tok.start_offset = (int)(l->tok - l->buf);
+    tok.end_offset   = (int)(l->cur - l->buf);
     tok.v.ival = 0;
     l->col   += (int)(l->cur - l->tok);
     return tok;

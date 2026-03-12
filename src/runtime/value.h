@@ -16,6 +16,7 @@ typedef struct {
         double  *floats;
         int     *bools;
         char   **strings;
+        unsigned char *bytes;
     } data;
     int count;
     int cap;
@@ -48,6 +49,7 @@ struct Value {
 Value  val_int(int64_t v);
 Value  val_float(double v);
 Value  val_bool(int v);
+Value  val_byte(unsigned char v);
 Value  val_string(const char *s);      /* duplicates s */
 Value  val_string_own(char *s);        /* takes ownership */
 Value  val_void(void);

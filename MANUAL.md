@@ -139,6 +139,7 @@ int main(string[] args) {
 | `float` | 64-bit IEEE 754 double | `0.0` |
 | `bool` | Boolean: `true` or `false` | `false` |
 | `string` | Immutable UTF-8 byte string | `""` |
+| `byte` | Unsigned 8-bit integer (`0`–`255`) | `0` |
 | `void` | No value; only valid as a function return type | — |
 
 ### 3.2 Array types
@@ -151,6 +152,7 @@ Arrays are ordered, dynamic, and homogeneous. Each element type has its own arra
 | `float[]` | `float` |
 | `bool[]` | `bool` |
 | `string[]` | `string` |
+| `byte[]` | `byte` |
 
 Mixed-type arrays do not exist. There are no two-dimensional arrays.
 
@@ -180,6 +182,21 @@ string s = "age=" + toString(42);   // OK
 The four conversion intrinsics (`toString`, `toInt`, `toFloat`, `toBool`) are the only
 polymorphic functions in the language. Their overloads are resolved statically by the
 semantic analyser based on the declared type of the argument.
+
+`byte` is intentionally strict:
+
+- integer literals in `[0, 255]` may be assigned directly to `byte`
+- assigning an `int` variable or expression to `byte` is a semantic error
+- use `intToByte()` when you want an explicit clamp
+
+```ci
+byte ok = 255;
+byte alsoOk = intToByte(300);   // 255
+
+int n = 10;
+// byte bad = n;                // semantic error
+byte good = intToByte(n);
+```
 
 ---
 
@@ -1146,12 +1163,20 @@ string formatDate(int epochMs, string fmt)
 | `HH` | 2-digit hour | `14` |
 | `mm` | 2-digit minute | `32` |
 | `ss` | 2-digit second | `07` |
+| `w` | weekday (`0` = Sunday, `6` = Saturday) | `2` |
+| `yday` | day of year, base 0 | `69` |
+| `WW` | ISO week number, zero-padded | `11` |
+| `ISO` | full UTC ISO 8601 datetime | `2025-03-11T14:32:07Z` |
 
 ```ci
 void main() {
     int ts = makeEpoch(2025, 3, 11, 14, 32, 7);
     print(formatDate(ts, "YYYY-MM-DD") + "\n");   // 2025-03-11
     print(formatDate(ts, "HH:mm:ss")   + "\n");   // 14:32:07
+    print(formatDate(ts, "w")          + "\n");   // 2
+    print(formatDate(ts, "yday")       + "\n");   // 69
+    print(formatDate(ts, "WW")         + "\n");   // 11
+    print(formatDate(ts, "ISO")        + "\n");   // 2025-03-11T14:32:07Z
 
     int t0 = now();
     // ... some work ...
@@ -1164,7 +1189,140 @@ To get the current time in seconds: `now() / 1000`.
 
 ---
 
-## 9. Predefined Constants
+### 8.13 File system helpers
+
+```ci
+string tempPath()
+void remove(string path)
+void chmod(string path, int mode)
+string cwd()
+void copy(string src, string dst)
+void move(string src, string dst)
+bool isReadable(string path)
+bool isWritable(string path)
+bool isExecutable(string path)
+bool isDirectory(string path)
+string dirname(string path)
+string basename(string path)
+string filename(string path)
+string extension(string path)
+```
+
+Notes:
+
+- `tempPath()` returns a unique path that does not currently exist; it does not create the file
+- `remove()` removes files only; removing a directory is a runtime error
+- `chmod()` is available on POSIX platforms and raises a runtime error on WebAssembly
+- `copy()` and `move()` overwrite the destination if it already exists
+- `dirname`, `basename`, `filename`, `extension`, and `cwd()` are pure path helpers
+
+```ci
+void main(string[] args) {
+    string src = tempPath();
+    string dst = tempPath();
+
+    writeFile(src, "hello");
+    copy(src, dst);
+    print(readFile(dst) + "\n");
+
+    move(dst, "moved.txt");
+    print(toString(fileExists("moved.txt")) + "\n");
+    print(dirname("/tmp/demo.txt") + "\n");     // /tmp
+    print(filename("archive.tar.gz") + "\n");   // archive.tar
+
+    remove(src);
+    remove("moved.txt");
+}
+```
+
+---
+
+### 8.14 Binary I/O and `byte`
+
+```ci
+int byteToInt(byte b)
+byte intToByte(int n)
+byte[] stringToBytes(string s)
+string bytesToString(byte[] data)
+byte[] readFileBytes(string path)
+void writeFileBytes(string path, byte[] data)
+void appendFileBytes(string path, byte[] data)
+byte[] intToBytes(int n)
+byte[] floatToBytes(float f)
+int bytesToInt(byte[] data)
+float bytesToFloat(byte[] data)
+```
+
+Rules:
+
+- `intToByte()` clamps silently to `[0, 255]`
+- `byte + byte` and `byte + int` produce `int`
+- `byte & byte`, `byte | byte`, `byte ^ byte`, and `~byte` produce `byte`
+- `bytesToString()` replaces invalid UTF-8 byte sequences with `U+FFFD`
+- `bytesToInt()` requires exactly `INT_SIZE` bytes
+- `bytesToFloat()` requires exactly `FLOAT_SIZE` bytes
+
+```ci
+void main(string[] args) {
+    byte[] raw = [0x48, 0x69];
+    print(bytesToString(raw) + "\n");           // Hi
+
+    byte mask = 0xF0;
+    byte low  = 0x0F;
+    byte both = mask | low;
+    print(toString(byteToInt(both)) + "\n");    // 255
+
+    byte[] dump = intToBytes(42);
+    print(toString(bytesToInt(dump)) + "\n");   // 42
+}
+```
+
+---
+
+## 9. Imports
+
+Use top-level imports to split a program across multiple files:
+
+```ci
+import "math/add.ci";
+import "utils/strings.ci";
+```
+
+Rules:
+
+- every `import` must appear before any declaration in the current file
+- the path must end with `.ci`
+- imports are resolved recursively before semantic analysis
+- each imported file is processed once, even if multiple files import it
+- imported files may not define `main`
+- circular imports are semantic errors
+
+```ci
+// main.ci
+import "math/add.ci";
+
+void main(string[] args) {
+    print(toString(addThree(4)) + "\n");
+}
+```
+
+```ci
+// math/add.ci
+import "more.ci";
+
+int addThree(int n) {
+    return addOne(addOne(addOne(n)));
+}
+```
+
+```ci
+// math/more.ci
+int addOne(int n) { return n + 1; }
+```
+
+---
+
+## 10. Predefined Constants
 
 These identifiers are reserved; they cannot be redeclared or assigned.
 
@@ -1214,7 +1372,7 @@ void main() {
 
 ---
 
-## 10. Scoping Rules
+## 11. Scoping Rules
 
 Cimple uses **lexical (block) scoping**.
 
@@ -1246,14 +1404,15 @@ void main() {
 
 ---
 
-## 11. Keywords
+## 12. Keywords
 
 The following identifiers are reserved and may not be used as variable or function names:
 
 ```
 bool      break     continue  else      ExecResult
-false     float     for       if        int
-return    string    true      void      while
+false     float     for       if        import
+int       return    string    true      void
+while     byte
 ```
 
 The predefined constants are also reserved (see §9):
@@ -1266,7 +1425,7 @@ M_E        M_LN10         M_LN2      M_PI       M_SQRT2  M_TAU
 
 ---
 
-## 12. Diagnostics
+## 13. Diagnostics
 
 The implementation reports four categories of error, each with a source location:
 
@@ -1293,7 +1452,7 @@ Common semantic errors to watch for:
 
 ---
 
-## 13. Worked Examples
+## 14. Worked Examples
 
 ### 13.1 FizzBuzz
 

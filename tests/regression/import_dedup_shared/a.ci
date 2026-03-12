@@ -1,0 +1,2 @@
+import "shared.ci";
+int fromA() { return shared(); }

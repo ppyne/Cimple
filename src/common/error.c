@@ -5,6 +5,8 @@
 #include <string.h>
 
 ErrorCtx g_error_ctx;
+static const SourceMapEntry *g_source_map = NULL;
+static int g_source_map_count = 0;
 
 static const char *kind_label(ErrorKind k) {
     switch (k) {
@@ -24,14 +26,46 @@ void error_init(const char *filename) {
     memset(g_error_ctx.semantic, 0, sizeof(g_error_ctx.semantic));
 }
 
-void error_print(ErrorKind kind, int line, int col,
-                 const char *msg, const char *hint) {
+void error_set_source_map(const SourceMapEntry *entries, int count) {
+    g_source_map = entries;
+    g_source_map_count = count;
+}
+
+void error_clear_source_map(void) {
+    g_source_map = NULL;
+    g_source_map_count = 0;
+}
+
+static void translate_location(int merged_line, const char **file_out, int *line_out) {
+    *file_out = g_error_ctx.filename;
+    *line_out = merged_line;
+    if (!g_source_map || merged_line <= 0) return;
+    for (int i = 0; i < g_source_map_count; i++) {
+        const SourceMapEntry *entry = &g_source_map[i];
+        if (merged_line >= entry->merged_line_start && merged_line <= entry->merged_line_end) {
+            *file_out = entry->display_file ? entry->display_file : g_error_ctx.filename;
+            *line_out = entry->source_line_start + (merged_line - entry->merged_line_start);
+            return;
+        }
+    }
+}
+
+void error_print_at_file(ErrorKind kind, const char *filename, int line, int col,
+                         const char *msg, const char *hint) {
     fprintf(stderr, "%s  %s  line %d, column %d\n",
-            kind_label(kind), g_error_ctx.filename, line, col);
+            kind_label(kind), filename ? filename : g_error_ctx.filename, line, col);
     fprintf(stderr, "  %s\n", msg);
     if (hint && hint[0])
         fprintf(stderr, "  -> %s\n", hint);
     fprintf(stderr, "\n");
+}
+
+void error_print(ErrorKind kind, int line, int col,
+                 const char *msg, const char *hint) {
+    const char *display_file;
+    int display_line;
+    translate_location(line, &display_file, &display_line);
+    error_print_at_file(kind, display_file, display_line, col, msg, hint);
 }
 
 void error_lexical(int line, int col, const char *fmt, ...) {

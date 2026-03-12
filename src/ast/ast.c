@@ -12,11 +12,13 @@ const char *type_name(CimpleType t) {
     case TYPE_FLOAT:       return "float";
     case TYPE_BOOL:        return "bool";
     case TYPE_STRING:      return "string";
+    case TYPE_BYTE:        return "byte";
     case TYPE_VOID:        return "void";
     case TYPE_INT_ARR:     return "int[]";
     case TYPE_FLOAT_ARR:   return "float[]";
     case TYPE_BOOL_ARR:    return "bool[]";
     case TYPE_STR_ARR:     return "string[]";
+    case TYPE_BYTE_ARR:    return "byte[]";
     case TYPE_EXEC_RESULT: return "ExecResult";
     default:               return "<unknown>";
     }

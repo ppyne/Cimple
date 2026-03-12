@@ -1,0 +1,8 @@
+void main(string[] args) {
+    byte a = 0xF0;
+    byte b = 0x0F;
+    byte c = a | b;
+    int sum = a + b;
+    print(toString(byteToInt(c)) + "\n");
+    print(toString(sum) + "\n");
+}

@@ -25,6 +25,10 @@ static int is_mutating_array_builtin(const char *name) {
            strcmp(name, "arraySet") == 0;
 }
 
+static int is_int_like_value(CimpleType t) {
+    return t == TYPE_INT || t == TYPE_BYTE;
+}
+
 static uint64_t hash_name(const char *name) {
     uint64_t hash = UINT64_C(1469598103934665603);
     while (*name) {
@@ -169,22 +173,22 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         case OP_ADD:
             if (l.type == TYPE_STRING && r.type == TYPE_STRING) {
                 result = val_string_own(cimple_strconcat(l.u.s, r.u.s));
-            } else if (l.type == TYPE_INT) {
+            } else if (is_int_like_value(l.type) && is_int_like_value(r.type)) {
                 result = val_int(l.u.i + r.u.i);
             } else {
                 result = val_float(l.u.f + r.u.f);
             }
             break;
         case OP_SUB:
-            result = l.type == TYPE_INT ? val_int(l.u.i - r.u.i)
+            result = is_int_like_value(l.type) && is_int_like_value(r.type) ? val_int(l.u.i - r.u.i)
                                         : val_float(l.u.f - r.u.f);
             break;
         case OP_MUL:
-            result = l.type == TYPE_INT ? val_int(l.u.i * r.u.i)
+            result = is_int_like_value(l.type) && is_int_like_value(r.type) ? val_int(l.u.i * r.u.i)
                                         : val_float(l.u.f * r.u.f);
             break;
         case OP_DIV:
-            if (l.type == TYPE_INT) {
+            if (is_int_like_value(l.type) && is_int_like_value(r.type)) {
                 if (r.u.i == 0)
                     error_runtime(n->line, n->col, "Integer division by zero");
                 result = val_int(l.u.i / r.u.i);
@@ -200,38 +204,38 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
 
         /* Comparison */
         case OP_EQ:
-            if (l.type == TYPE_INT)    result = val_bool(l.u.i == r.u.i);
+            if (is_int_like_value(l.type) && is_int_like_value(r.type)) result = val_bool(l.u.i == r.u.i);
             else if (l.type == TYPE_FLOAT) result = val_bool(l.u.f == r.u.f);
             else if (l.type == TYPE_BOOL)  result = val_bool(l.u.b == r.u.b);
             else result = val_bool(strcmp(l.u.s, r.u.s) == 0);
             break;
         case OP_NEQ:
-            if (l.type == TYPE_INT)    result = val_bool(l.u.i != r.u.i);
+            if (is_int_like_value(l.type) && is_int_like_value(r.type)) result = val_bool(l.u.i != r.u.i);
             else if (l.type == TYPE_FLOAT) result = val_bool(l.u.f != r.u.f);
             else if (l.type == TYPE_BOOL)  result = val_bool(l.u.b != r.u.b);
             else result = val_bool(strcmp(l.u.s, r.u.s) != 0);
             break;
         case OP_LT:
-            result = l.type == TYPE_INT ? val_bool(l.u.i < r.u.i)
+            result = is_int_like_value(l.type) && is_int_like_value(r.type) ? val_bool(l.u.i < r.u.i)
                                         : val_bool(l.u.f < r.u.f);
             break;
         case OP_LEQ:
-            result = l.type == TYPE_INT ? val_bool(l.u.i <= r.u.i)
+            result = is_int_like_value(l.type) && is_int_like_value(r.type) ? val_bool(l.u.i <= r.u.i)
                                         : val_bool(l.u.f <= r.u.f);
             break;
         case OP_GT:
-            result = l.type == TYPE_INT ? val_bool(l.u.i > r.u.i)
+            result = is_int_like_value(l.type) && is_int_like_value(r.type) ? val_bool(l.u.i > r.u.i)
                                         : val_bool(l.u.f > r.u.f);
             break;
         case OP_GEQ:
-            result = l.type == TYPE_INT ? val_bool(l.u.i >= r.u.i)
+            result = is_int_like_value(l.type) && is_int_like_value(r.type) ? val_bool(l.u.i >= r.u.i)
                                         : val_bool(l.u.f >= r.u.f);
             break;
 
         /* Bitwise */
-        case OP_BAND:   result = val_int(l.u.i & r.u.i);  break;
-        case OP_BOR:    result = val_int(l.u.i | r.u.i);  break;
-        case OP_BXOR:   result = val_int(l.u.i ^ r.u.i);  break;
+        case OP_BAND:   result = (l.type == TYPE_BYTE && r.type == TYPE_BYTE) ? val_byte((unsigned char)(l.u.i & r.u.i)) : val_int(l.u.i & r.u.i);  break;
+        case OP_BOR:    result = (l.type == TYPE_BYTE && r.type == TYPE_BYTE) ? val_byte((unsigned char)(l.u.i | r.u.i)) : val_int(l.u.i | r.u.i);  break;
+        case OP_BXOR:   result = (l.type == TYPE_BYTE && r.type == TYPE_BYTE) ? val_byte((unsigned char)(l.u.i ^ r.u.i)) : val_int(l.u.i ^ r.u.i);  break;
         case OP_LSHIFT: result = val_int(l.u.i << (int)r.u.i); break;
         case OP_RSHIFT: result = val_int(l.u.i >> (int)r.u.i); break;
 
@@ -248,9 +252,9 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         switch (n->u.unop.op) {
         case OP_NOT:  result = val_bool(!v.u.b); break;
         case OP_NEG:
-            result = v.type == TYPE_INT ? val_int(-v.u.i) : val_float(-v.u.f);
+            result = is_int_like_value(v.type) ? val_int(-v.u.i) : val_float(-v.u.f);
             break;
-        case OP_BNOT: result = val_int(~v.u.i); break;
+        case OP_BNOT: result = (v.type == TYPE_BYTE) ? val_byte((unsigned char)(~v.u.i)) : val_int(~v.u.i); break;
         default:      result = val_void(); break;
         }
         value_free(&v);
@@ -354,6 +358,7 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
         }
         if (sym) {
             value_free(&sym->val);
+            if (t == TYPE_BYTE && v.type == TYPE_INT) v.type = TYPE_BYTE;
             sym->val = v;
         } else {
             value_free(&v);
@@ -366,6 +371,7 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
         if (!sym) error_runtime(n->line, n->col,
                                 "undefined variable '%s'", n->u.assign.name);
         Value v = eval_expr(ip, scope, n->u.assign.value);
+        if (sym->type == TYPE_BYTE && v.type == TYPE_INT) v.type = TYPE_BYTE;
         value_free(&sym->val);
         sym->val = v;
         break;

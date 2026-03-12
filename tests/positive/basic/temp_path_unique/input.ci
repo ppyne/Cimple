@@ -1,0 +1,6 @@
+void main(string[] args) {
+    string a = tempPath();
+    string b = tempPath();
+    print(toString(fileExists(a)) + "\n");
+    print(toString(a != b) + "\n");
+}

@@ -1,0 +1,6 @@
+void main(string[] args) {
+    print(dirname("/path/to/my.file.txt") + "\n");
+    print(basename("/path/to/my.file.txt") + "\n");
+    print(filename("archive.tar.gz") + "\n");
+    print(extension("archive.tar.gz") + "\n");
+}

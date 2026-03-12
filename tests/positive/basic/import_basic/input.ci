@@ -1,0 +1,4 @@
+import "utils.ci";
+void main(string[] args) {
+    print(toString(answer()) + "\n");
+}

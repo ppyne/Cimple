@@ -39,12 +39,21 @@ typedef struct {
 
 extern ErrorCtx g_error_ctx;
 
+typedef struct {
+    int         merged_line_start;
+    int         merged_line_end;
+    int         source_line_start;
+    const char *display_file;
+} SourceMapEntry;
+
 /* -----------------------------------------------------------------------
  * API
  * ----------------------------------------------------------------------- */
 
 /* Initialise the error context for a new source file. */
 void error_init(const char *filename);
+void error_set_source_map(const SourceMapEntry *entries, int count);
+void error_clear_source_map(void);
 
 /* Fatal lexical/syntax error — prints to stderr and exits(1). */
 void error_lexical(int line, int col, const char *fmt, ...);
@@ -64,5 +73,7 @@ int  error_flush_semantic(void);
 /* Print a single error with the standard format to stderr. */
 void error_print(ErrorKind kind, int line, int col,
                  const char *msg, const char *hint);
+void error_print_at_file(ErrorKind kind, const char *filename, int line, int col,
+                         const char *msg, const char *hint);
 
 #endif /* CIMPLE_ERROR_H */

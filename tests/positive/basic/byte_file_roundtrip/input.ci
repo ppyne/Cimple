@@ -1,0 +1,7 @@
+void main(string[] args) {
+    byte[] bytes = stringToBytes("Hi");
+    writeFileBytes("data.bin", bytes);
+    byte[] back = readFileBytes("data.bin");
+    print(toString(count(back)) + "\n");
+    print(bytesToString(back) + "\n");
+}

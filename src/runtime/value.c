@@ -12,6 +12,7 @@
 Value val_int(int64_t v)   { Value r; r.type = TYPE_INT;   r.u.i = v; return r; }
 Value val_float(double v)  { Value r; r.type = TYPE_FLOAT; r.u.f = v; return r; }
 Value val_bool(int v)      { Value r; r.type = TYPE_BOOL;  r.u.b = v ? 1 : 0; return r; }
+Value val_byte(unsigned char v) { Value r; r.type = TYPE_BYTE; r.u.i = v; return r; }
 Value val_void(void)       { Value r; r.type = TYPE_VOID;  r.u.i = 0; return r; }
 
 Value val_string(const char *s) {
@@ -57,10 +58,12 @@ Value value_default(CimpleType t) {
     case TYPE_FLOAT:  return val_float(0.0);
     case TYPE_BOOL:   return val_bool(0);
     case TYPE_STRING: return val_string("");
+    case TYPE_BYTE:   return val_byte(0);
     case TYPE_INT_ARR:   return val_array(TYPE_INT);
     case TYPE_FLOAT_ARR: return val_array(TYPE_FLOAT);
     case TYPE_BOOL_ARR:  return val_array(TYPE_BOOL);
     case TYPE_STR_ARR:   return val_array(TYPE_STRING);
+    case TYPE_BYTE_ARR:  return val_array(TYPE_BYTE);
     default: { Value v; v.type = TYPE_VOID; v.u.i = 0; return v; }
     }
 }
@@ -89,6 +92,10 @@ static void arr_ensure(ArrayVal *a, int new_count) {
         a->data.strings = (char **)cimple_realloc(a->data.strings,
                                                     (size_t)new_cap * sizeof(char *));
         break;
+    case TYPE_BYTE:
+        a->data.bytes = (unsigned char *)cimple_realloc(a->data.bytes,
+                                                   (size_t)new_cap * sizeof(unsigned char));
+        break;
     default: break;
     }
     a->cap = new_cap;
@@ -101,6 +108,7 @@ void array_push(ArrayVal *a, Value v) {
     case TYPE_FLOAT:  a->data.floats[a->count]  = v.u.f; break;
     case TYPE_BOOL:   a->data.bools[a->count]   = v.u.b; break;
     case TYPE_STRING: a->data.strings[a->count] = cimple_strdup(v.u.s); break;
+    case TYPE_BYTE:   a->data.bytes[a->count]   = (unsigned char)v.u.i; break;
     default: break;
     }
     a->count++;
@@ -123,6 +131,9 @@ void array_push_owned(ArrayVal *a, Value *v) {
         v->u.s = NULL;
         v->type = TYPE_VOID;
         break;
+    case TYPE_BYTE:
+        a->data.bytes[a->count++] = (unsigned char)v->u.i;
+        break;
     default:
         break;
     }
@@ -141,6 +152,7 @@ Value array_pop(ArrayVal *a, int line, int col) {
         a->data.strings[a->count] = NULL;
         return val_string_own(s);
     }
+    case TYPE_BYTE:   return val_byte(a->data.bytes[a->count]);
     default: return val_void();
     }
 }
@@ -172,6 +184,11 @@ void array_insert(ArrayVal *a, int idx, Value v, int line, int col) {
                 (size_t)(a->count - idx) * sizeof(char *));
         a->data.strings[idx] = cimple_strdup(v.u.s);
         break;
+    case TYPE_BYTE:
+        memmove(&a->data.bytes[idx + 1], &a->data.bytes[idx],
+                (size_t)(a->count - idx) * sizeof(unsigned char));
+        a->data.bytes[idx] = (unsigned char)v.u.i;
+        break;
     default: break;
     }
     a->count++;
@@ -201,6 +218,10 @@ void array_remove(ArrayVal *a, int idx, int line, int col) {
         memmove(&a->data.strings[idx], &a->data.strings[idx + 1],
                 (size_t)(a->count - idx - 1) * sizeof(char *));
         break;
+    case TYPE_BYTE:
+        memmove(&a->data.bytes[idx], &a->data.bytes[idx + 1],
+                (size_t)(a->count - idx - 1) * sizeof(unsigned char));
+        break;
     default: break;
     }
     a->count--;
@@ -216,6 +237,7 @@ Value array_get(ArrayVal *a, int idx, int line, int col) {
     case TYPE_FLOAT:  return val_float(a->data.floats[idx]);
     case TYPE_BOOL:   return val_bool(a->data.bools[idx]);
     case TYPE_STRING: return val_string(a->data.strings[idx]);
+    case TYPE_BYTE:   return val_byte(a->data.bytes[idx]);
     default:          return val_void();
     }
 }
@@ -233,6 +255,7 @@ void array_set(ArrayVal *a, int idx, Value v, int line, int col) {
         free(a->data.strings[idx]);
         a->data.strings[idx] = cimple_strdup(v.u.s);
         break;
+    case TYPE_BYTE:   a->data.bytes[idx] = (unsigned char)v.u.i; break;
     default: break;
     }
 }
@@ -257,6 +280,9 @@ void array_set_owned(ArrayVal *a, int idx, Value *v, int line, int col) {
         a->data.strings[idx] = v->u.s;
         v->u.s = NULL;
         v->type = TYPE_VOID;
+        break;
+    case TYPE_BYTE:
+        a->data.bytes[idx] = (unsigned char)v->u.i;
         break;
     default:
         break;
@@ -289,6 +315,9 @@ Value value_copy(Value v) {
             for (int i = 0; i < src->count; i++) {
                 out->data.strings[i] = cimple_strdup(src->data.strings[i]);
             }
+            break;
+        case TYPE_BYTE:
+            memcpy(out->data.bytes, src->data.bytes, (size_t)src->count * sizeof(unsigned char));
             break;
         default:
             out->count = 0;
@@ -349,6 +378,9 @@ char *value_to_display(Value v) {
         return cimple_strdup(v.u.b ? "true" : "false");
     case TYPE_STRING:
         return cimple_strdup(v.u.s ? v.u.s : "");
+    case TYPE_BYTE:
+        snprintf(buf, sizeof(buf), "%u", (unsigned)v.u.i);
+        return cimple_strdup(buf);
     default:
         return cimple_strdup("<void>");
     }

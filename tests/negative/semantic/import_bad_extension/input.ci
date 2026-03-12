@@ -1,0 +1,2 @@
+import "utils.txt";
+void main(string[] args) {}

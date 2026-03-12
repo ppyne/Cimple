@@ -1,0 +1,4 @@
+import "math/add.ci";
+void main(string[] args) {
+    print(toString(addThree(4)) + "\n");
+}

@@ -1,0 +1,5 @@
+import "a.ci";
+import "b.ci";
+void main(string[] args) {
+    print(toString(fromA() + fromB()) + "\n");
+}

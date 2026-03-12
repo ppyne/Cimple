@@ -1,0 +1,2 @@
+Cannot assign 'int' to 'byte'
+Use intToByte() to convert.

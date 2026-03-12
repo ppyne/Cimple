@@ -1,0 +1,2 @@
+import "missing.ci";
+void main(string[] args) {}

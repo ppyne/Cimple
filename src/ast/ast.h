@@ -11,20 +11,22 @@ typedef enum {
     TYPE_FLOAT     = 1,
     TYPE_BOOL      = 2,
     TYPE_STRING    = 3,
-    TYPE_VOID      = 4,
+    TYPE_BYTE      = 4,
+    TYPE_VOID      = 5,
     /* Array variants */
-    TYPE_INT_ARR   = 5,
-    TYPE_FLOAT_ARR = 6,
-    TYPE_BOOL_ARR  = 7,
-    TYPE_STR_ARR   = 8,
+    TYPE_INT_ARR   = 6,
+    TYPE_FLOAT_ARR = 7,
+    TYPE_BOOL_ARR  = 8,
+    TYPE_STR_ARR   = 9,
+    TYPE_BYTE_ARR  = 10,
     /* Opaque */
-    TYPE_EXEC_RESULT = 9,
-    TYPE_UNKNOWN   = 10
+    TYPE_EXEC_RESULT = 11,
+    TYPE_UNKNOWN   = 12
 } CimpleType;
 
 /* Returns true if t is an array type. */
 static inline int type_is_array(CimpleType t) {
-    return t >= TYPE_INT_ARR && t <= TYPE_STR_ARR;
+    return t >= TYPE_INT_ARR && t <= TYPE_BYTE_ARR;
 }
 
 /* Returns the element type of an array type. */
@@ -34,6 +36,7 @@ static inline CimpleType type_elem(CimpleType t) {
     case TYPE_FLOAT_ARR: return TYPE_FLOAT;
     case TYPE_BOOL_ARR:  return TYPE_BOOL;
     case TYPE_STR_ARR:   return TYPE_STRING;
+    case TYPE_BYTE_ARR:  return TYPE_BYTE;
     default:             return TYPE_UNKNOWN;
     }
 }
@@ -45,6 +48,7 @@ static inline CimpleType type_make_array(CimpleType t) {
     case TYPE_FLOAT:  return TYPE_FLOAT_ARR;
     case TYPE_BOOL:   return TYPE_BOOL_ARR;
     case TYPE_STRING: return TYPE_STR_ARR;
+    case TYPE_BYTE:   return TYPE_BYTE_ARR;
     default:          return TYPE_UNKNOWN;
     }
 }

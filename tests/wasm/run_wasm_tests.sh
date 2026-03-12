@@ -107,23 +107,11 @@ for root in positive negative regression manual; do
     done < "$TMP_LIST"
 done
 
-wasm_exec_test="$TESTS_DIR/wasm/exec_not_supported"
-if [ -d "$wasm_exec_test" ]; then
-    if actual=$(node "$WASM_DRIVER" "$CIMPLE_WASM" run "$wasm_exec_test/input.ci" 2>"$TMP_WASM_ERR"); then
-        actual_exit=0
-    else
-        actual_exit=$?
-    fi
-    actual_stderr=$(cat "$TMP_WASM_ERR" 2>/dev/null || true)
-    assert_exit "2" "$actual_exit" "wasm:exec_not_supported:exit"
-    assert_stderr_contains "not supported on this platform" "$actual_stderr" "wasm:exec_not_supported"
-fi
-
-wasm_env_test="$TESTS_DIR/wasm/getenv_fallback"
-if [ -d "$wasm_env_test" ]; then
-    actual_stdout=$(node "$WASM_DRIVER" "$CIMPLE_WASM" run "$wasm_env_test/input.ci" 2>/dev/null)
-    assert_stdout "$wasm_env_test/expected_stdout" "$actual_stdout" "wasm:getenv_fallback"
-fi
+[ -d "$TESTS_DIR/wasm" ] || exit 0
+find "$TESTS_DIR/wasm" -mindepth 2 -maxdepth 2 -name input.ci | sort > "$TMP_LIST"
+while IFS= read -r src; do
+    run_wasm_case "$(dirname "$src")"
+done < "$TMP_LIST"
 
 rm -f "$TMP_LIST"
 print_summary

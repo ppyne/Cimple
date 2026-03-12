@@ -91,7 +91,7 @@ decl_list(L) ::= .
 decl_list(L) ::= decl_list(LL) decl(D).
 {
     L = LL;
-    nodelist_push(&L, D);
+    if (D) nodelist_push(&L, D);
 }
 
 /* -----------------------------------------------------------------------
@@ -197,6 +197,12 @@ decl(D) ::= KW_EXECRESULT IDENT(N) LPAREN param_list(PL) RPAREN block(B).
     free(N.v.sval);
 }
 
+decl(D) ::= KW_IMPORT STRING_LIT(S) SEMICOLON.
+{
+    D = NULL;
+    free(S.v.sval);
+}
+
 /* -----------------------------------------------------------------------
  * Types
  * ----------------------------------------------------------------------- */
@@ -208,11 +214,13 @@ scalar_type(T) ::= KW_INT.    { T = TYPE_INT;    }
 scalar_type(T) ::= KW_FLOAT.  { T = TYPE_FLOAT;  }
 scalar_type(T) ::= KW_BOOL.   { T = TYPE_BOOL;   }
 scalar_type(T) ::= KW_STRING. { T = TYPE_STRING; }
+scalar_type(T) ::= KW_BYTE.   { T = TYPE_BYTE;   }
 
 array_type(T) ::= KW_INT    LBRACKET RBRACKET. { T = TYPE_INT_ARR;   }
 array_type(T) ::= KW_FLOAT  LBRACKET RBRACKET. { T = TYPE_FLOAT_ARR; }
 array_type(T) ::= KW_BOOL   LBRACKET RBRACKET. { T = TYPE_BOOL_ARR;  }
 array_type(T) ::= KW_STRING LBRACKET RBRACKET. { T = TYPE_STR_ARR;   }
+array_type(T) ::= KW_BYTE   LBRACKET RBRACKET. { T = TYPE_BYTE_ARR;  }
 
 param_type(T) ::= scalar_type(S).  { T = S; }
 param_type(T) ::= array_type(A).   { T = A; }

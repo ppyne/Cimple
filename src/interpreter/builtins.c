@@ -23,6 +23,8 @@
 extern char **environ;
 #endif
 
+static int g_temp_path_counter = 0;
+
 /* -----------------------------------------------------------------------
  * Sentinel for "not a builtin"
  * ----------------------------------------------------------------------- */
@@ -52,6 +54,14 @@ typedef enum {
     BI_TO_INT,
     BI_TO_FLOAT,
     BI_TO_BOOL,
+    BI_BYTE_TO_INT,
+    BI_INT_TO_BYTE,
+    BI_STRING_TO_BYTES,
+    BI_BYTES_TO_STRING,
+    BI_INT_TO_BYTES,
+    BI_FLOAT_TO_BYTES,
+    BI_BYTES_TO_INT,
+    BI_BYTES_TO_FLOAT,
     BI_IS_INT_STRING,
     BI_IS_FLOAT_STRING,
     BI_IS_BOOL_STRING,
@@ -101,7 +111,24 @@ typedef enum {
     BI_READ_FILE,
     BI_WRITE_FILE,
     BI_APPEND_FILE,
+    BI_READ_FILE_BYTES,
+    BI_WRITE_FILE_BYTES,
+    BI_APPEND_FILE_BYTES,
     BI_FILE_EXISTS,
+    BI_TEMP_PATH,
+    BI_REMOVE,
+    BI_CHMOD,
+    BI_CWD,
+    BI_COPY,
+    BI_MOVE,
+    BI_IS_READABLE,
+    BI_IS_WRITABLE,
+    BI_IS_EXECUTABLE,
+    BI_IS_DIRECTORY,
+    BI_DIRNAME,
+    BI_BASENAME,
+    BI_FILENAME,
+    BI_EXTENSION,
     BI_READ_LINES,
     BI_WRITE_LINES,
     BI_EXEC,
@@ -140,14 +167,23 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"asin", BI_ASIN},
     {"atan", BI_ATAN},
     {"atan2", BI_ATAN2},
+    {"basename", BI_BASENAME},
+    {"byteToInt", BI_BYTE_TO_INT},
     {"byteAt", BI_BYTE_AT},
+    {"bytesToFloat", BI_BYTES_TO_FLOAT},
+    {"bytesToInt", BI_BYTES_TO_INT},
+    {"bytesToString", BI_BYTES_TO_STRING},
     {"ceil", BI_CEIL},
+    {"chmod", BI_CHMOD},
     {"clamp", BI_CLAMP},
     {"clampInt", BI_CLAMP_INT},
     {"concat", BI_CONCAT},
     {"contains", BI_CONTAINS},
+    {"copy", BI_COPY},
     {"cos", BI_COS},
     {"count", BI_COUNT},
+    {"cwd", BI_CWD},
+    {"dirname", BI_DIRNAME},
     {"endsWith", BI_ENDS_WITH},
     {"epochToDay", BI_EPOCH_TO_DAY},
     {"epochToHour", BI_EPOCH_TO_HOUR},
@@ -160,7 +196,9 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"execStderr", BI_EXEC_STDERR},
     {"execStdout", BI_EXEC_STDOUT},
     {"exp", BI_EXP},
+    {"extension", BI_EXTENSION},
     {"fileExists", BI_FILE_EXISTS},
+    {"filename", BI_FILENAME},
     {"floor", BI_FLOOR},
     {"fmod", BI_FMOD},
     {"format", BI_FORMAT},
@@ -170,8 +208,12 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"glyphLen", BI_GLYPH_LEN},
     {"indexOf", BI_INDEX_OF},
     {"input", BI_INPUT},
+    {"intToByte", BI_INT_TO_BYTE},
+    {"intToBytes", BI_INT_TO_BYTES},
     {"isBoolString", BI_IS_BOOL_STRING},
+    {"isDirectory", BI_IS_DIRECTORY},
     {"isEven", BI_IS_EVEN},
+    {"isExecutable", BI_IS_EXECUTABLE},
     {"isFinite", BI_IS_FINITE},
     {"isFloatString", BI_IS_FLOAT_STRING},
     {"isInfinite", BI_IS_INFINITE},
@@ -180,6 +222,8 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"isNegativeInfinity", BI_IS_NEGATIVE_INFINITY},
     {"isOdd", BI_IS_ODD},
     {"isPositiveInfinity", BI_IS_POSITIVE_INFINITY},
+    {"isReadable", BI_IS_READABLE},
+    {"isWritable", BI_IS_WRITABLE},
     {"join", BI_JOIN},
     {"len", BI_LEN},
     {"log", BI_LOG},
@@ -190,11 +234,14 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"maxInt", BI_MAX_INT},
     {"min", BI_MIN},
     {"minInt", BI_MIN_INT},
+    {"move", BI_MOVE},
     {"now", BI_NOW},
     {"pow", BI_POW},
     {"print", BI_PRINT},
     {"readFile", BI_READ_FILE},
+    {"readFileBytes", BI_READ_FILE_BYTES},
     {"readLines", BI_READ_LINES},
+    {"remove", BI_REMOVE},
     {"replace", BI_REPLACE},
     {"round", BI_ROUND},
     {"safeDivInt", BI_SAFE_DIV_INT},
@@ -205,30 +252,25 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"startsWith", BI_STARTS_WITH},
     {"substr", BI_SUBSTR},
     {"tan", BI_TAN},
+    {"tempPath", BI_TEMP_PATH},
     {"toBool", BI_TO_BOOL},
+    {"stringToBytes", BI_STRING_TO_BYTES},
     {"toFloat", BI_TO_FLOAT},
     {"toInt", BI_TO_INT},
     {"toString", BI_TO_STRING},
     {"trunc", BI_TRUNC},
     {"writeFile", BI_WRITE_FILE},
+    {"appendFileBytes", BI_APPEND_FILE_BYTES},
+    {"floatToBytes", BI_FLOAT_TO_BYTES},
+    {"writeFileBytes", BI_WRITE_FILE_BYTES},
     {"writeLines", BI_WRITE_LINES}
 };
 
-static int builtin_name_entry_cmp(const void *lhs, const void *rhs) {
-    const BuiltinNameEntry *a = (const BuiltinNameEntry *)lhs;
-    const BuiltinNameEntry *b = (const BuiltinNameEntry *)rhs;
-    return strcmp(a->name, b->name);
-}
-
 static BuiltinId builtin_lookup_id(const char *name) {
-    BuiltinNameEntry key = { name, BI_NONE };
-    const BuiltinNameEntry *entry = bsearch(
-        &key,
-        BUILTIN_NAME_TABLE,
-        sizeof(BUILTIN_NAME_TABLE) / sizeof(BUILTIN_NAME_TABLE[0]),
-        sizeof(BUILTIN_NAME_TABLE[0]),
-        builtin_name_entry_cmp);
-    return entry ? entry->id : BI_NONE;
+    for (size_t i = 0; i < sizeof(BUILTIN_NAME_TABLE) / sizeof(BUILTIN_NAME_TABLE[0]); i++) {
+        if (strcmp(BUILTIN_NAME_TABLE[i].name, name) == 0) return BUILTIN_NAME_TABLE[i].id;
+    }
+    return BI_NONE;
 }
 
 typedef struct {
@@ -361,6 +403,155 @@ static char *read_file_str(const char *path, int line, int col) {
     buf[size] = '\0';
     fclose(f);
     return buf;
+}
+
+static char *cwd_string(void) {
+#ifdef _WIN32
+    DWORD size = GetCurrentDirectoryA(0, NULL);
+    char *buf = (char *)cimple_malloc((size_t)size + 1);
+    GetCurrentDirectoryA(size, buf);
+    return buf;
+#else
+    size_t cap = 256;
+    for (;;) {
+        char *buf = (char *)cimple_malloc(cap);
+        if (getcwd(buf, cap)) return buf;
+        free(buf);
+        if (errno != ERANGE) return cimple_strdup("");
+        cap *= 2;
+    }
+#endif
+}
+
+static char *temp_path_string(void) {
+#ifdef _WIN32
+    const char *base = getenv("TEMP");
+    if (!base || !*base) base = getenv("TMP");
+    if (!base || !*base) base = ".";
+    int pid = (int)GetCurrentProcessId();
+#else
+    const char *base = getenv("TMPDIR");
+    if (!base || !*base) base = "/tmp";
+    int pid = (int)getpid();
+#endif
+    for (;;) {
+        int n = ++g_temp_path_counter;
+        size_t need = strlen(base) + 64;
+        char *out = (char *)cimple_malloc(need);
+        struct stat st;
+        snprintf(out, need, "%s/cimple_%d_%d.tmp", base, pid, n);
+        if (stat(out, &st) != 0) return out;
+        free(out);
+    }
+}
+
+static char *path_dirname_lexical(const char *path) {
+    size_t len = strlen(path);
+    while (len > 1 && path[len - 1] == '/') len--;
+    if (len == 1 && path[0] == '/') return cimple_strdup("/");
+    const char *slash = NULL;
+    for (size_t i = 0; i < len; i++) {
+        if (path[i] == '/') slash = path + i;
+    }
+    if (!slash) return cimple_strdup("");
+    if (slash == path) return cimple_strdup("/");
+    return cimple_strndup(path, (size_t)(slash - path));
+}
+
+static char *path_basename_lexical(const char *path) {
+    size_t len = strlen(path);
+    if (len == 0) return cimple_strdup("");
+    if (len > 1 && path[len - 1] == '/') return cimple_strdup("");
+    const char *slash = strrchr(path, '/');
+    return cimple_strdup(slash ? slash + 1 : path);
+}
+
+static char *parent_dir_for_write(const char *path) {
+    char *dir = path_dirname_lexical(path);
+    if (dir[0] == '\0') {
+        free(dir);
+        return cimple_strdup(".");
+    }
+    return dir;
+}
+
+static void copy_file_contents(const char *src, const char *dst, int line, int col) {
+    FILE *in = fopen(src, "rb");
+    if (!in) error_runtime(line, col, "Cannot read file: '%s'", src);
+    FILE *out = fopen(dst, "wb");
+    if (!out) {
+        fclose(in);
+        error_runtime(line, col, "Cannot write file: '%s'", dst);
+    }
+    char buf[4096];
+    for (;;) {
+        size_t n = fread(buf, 1, sizeof(buf), in);
+        if (n > 0 && fwrite(buf, 1, n, out) != n) {
+            fclose(in);
+            fclose(out);
+            error_runtime(line, col, "Cannot write file: '%s'", dst);
+        }
+        if (n < sizeof(buf)) {
+            if (ferror(in)) {
+                fclose(in);
+                fclose(out);
+                error_runtime(line, col, "Cannot read file: '%s'", src);
+            }
+            break;
+        }
+    }
+    fclose(in);
+    fclose(out);
+}
+
+static Value read_file_bytes(const char *path, int line, int col) {
+    FILE *f = fopen(path, "rb");
+    if (!f) error_runtime(line, col, "Cannot read file: '%s'", path);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        error_runtime(line, col, "Cannot read file: '%s'", path);
+    }
+    long size = ftell(f);
+    rewind(f);
+    Value out = val_array(TYPE_BYTE);
+    out.u.arr->cap = (int)size;
+    out.u.arr->data.bytes = size > 0 ? (unsigned char *)cimple_malloc((size_t)size) : NULL;
+    out.u.arr->count = (int)size;
+    if (size > 0 && fread(out.u.arr->data.bytes, 1, (size_t)size, f) != (size_t)size) {
+        fclose(f);
+        value_free(&out);
+        error_runtime(line, col, "Cannot read file: '%s'", path);
+    }
+    fclose(f);
+    return out;
+}
+
+static void write_file_bytes(const char *path, ArrayVal *arr, const char *mode, int line, int col) {
+    FILE *f = fopen(path, mode);
+    if (!f) error_runtime(line, col, "Cannot write file: '%s'", path);
+    if (arr->count > 0 && fwrite(arr->data.bytes, 1, (size_t)arr->count, f) != (size_t)arr->count) {
+        fclose(f);
+        error_runtime(line, col, "Cannot write file: '%s'", path);
+    }
+    fclose(f);
+}
+
+static char *bytes_to_string_lossy(ArrayVal *arr) {
+    StringBuilder sb;
+    sb_init(&sb, (size_t)arr->count + 1);
+    int i = 0;
+    while (i < arr->count) {
+        utf8proc_int32_t cp;
+        utf8proc_ssize_t n = utf8proc_iterate((const utf8proc_uint8_t *)&arr->data.bytes[i], arr->count - i, &cp);
+        if (n > 0) {
+            sb_append_mem(&sb, (const char *)&arr->data.bytes[i], (size_t)n);
+            i += (int)n;
+        } else {
+            sb_append_mem(&sb, "\xEF\xBF\xBD", 3);
+            i++;
+        }
+    }
+    return sb_take(&sb);
 }
 
 /* -----------------------------------------------------------------------
@@ -662,6 +853,23 @@ static void epoch_to_tm(int64_t epochMs, struct tm *out) {
 #endif
 }
 
+static int iso_weeks_in_year(int year) {
+    int jan1 = (int)((days_from_civil(year, 1, 1) + 4) % 7);
+    if (jan1 < 0) jan1 += 7;
+    int leap = ((year % 4 == 0) && (year % 100 != 0 || year % 400 == 0));
+    return (jan1 == 3 || (jan1 == 2 && leap)) ? 53 : 52;
+}
+
+static int iso_week_number(const struct tm *tm) {
+    int wday = tm->tm_wday == 0 ? 7 : tm->tm_wday;
+    int yday = tm->tm_yday;
+    int week = (yday - wday + 10) / 7;
+    int year = tm->tm_year + 1900;
+    if (week < 1) return iso_weeks_in_year(year - 1);
+    if (week > iso_weeks_in_year(year)) return 1;
+    return week;
+}
+
 /* -----------------------------------------------------------------------
  * formatDate
  * ----------------------------------------------------------------------- */
@@ -669,13 +877,31 @@ static char *format_date(int64_t epochMs, const char *fmt) {
     struct tm tm;
     epoch_to_tm(epochMs, &tm);
     size_t len   = strlen(fmt);
-    size_t buflen = len * 4 + 64;
+    size_t buflen = len * 8 + 64;
     char  *out   = (char *)cimple_malloc(buflen);
     size_t oi    = 0;
 
     for (size_t i = 0; i < len && oi < buflen - 10; i++) {
         /* Match tokens */
-        if (strncmp(fmt + i, "YYYY", 4) == 0) {
+        if (strncmp(fmt + i, "ISO", 3) == 0) {
+            int year = tm.tm_year + 1900;
+            if (year < 0 || year > 9999) {
+                strcpy(out + oi, "invalid");
+                oi += 7;
+            } else {
+                oi += (size_t)snprintf(out + oi, buflen - oi,
+                                       "%04d-%02d-%02dT%02d:%02d:%02dZ",
+                                       year, tm.tm_mon + 1, tm.tm_mday,
+                                       tm.tm_hour, tm.tm_min, tm.tm_sec);
+            }
+            i += 2;
+        } else if (strncmp(fmt + i, "yday", 4) == 0) {
+            oi += (size_t)snprintf(out + oi, buflen - oi, "%d", tm.tm_yday);
+            i += 3;
+        } else if (strncmp(fmt + i, "WW", 2) == 0) {
+            oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", iso_week_number(&tm));
+            i += 1;
+        } else if (strncmp(fmt + i, "YYYY", 4) == 0) {
             oi += (size_t)snprintf(out + oi, buflen - oi, "%04d", tm.tm_year + 1900);
             i += 3;
         } else if (strncmp(fmt + i, "MM", 2) == 0) {
@@ -693,6 +919,8 @@ static char *format_date(int64_t epochMs, const char *fmt) {
         } else if (strncmp(fmt + i, "ss", 2) == 0) {
             oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", tm.tm_sec);
             i += 1;
+        } else if (fmt[i] == 'w') {
+            oi += (size_t)snprintf(out + oi, buflen - oi, "%d", tm.tm_wday);
         } else {
             out[oi++] = fmt[i];
         }
@@ -717,6 +945,9 @@ static char *val_to_string(Value *v, int line, int col) {
         return cimple_strdup(buf);
     case TYPE_BOOL:
         return cimple_strdup(v->u.b ? "true" : "false");
+    case TYPE_BYTE:
+        snprintf(buf, sizeof(buf), "%u", (unsigned)v->u.i);
+        return cimple_strdup(buf);
     case TYPE_STRING:
         return cimple_strdup(v->u.s);
     default:
@@ -948,6 +1179,69 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         return val_string_own(sb_take(&sb));
     }
 
+    if (id == BI_BYTE_TO_INT) {
+        REQUIRE(1);
+        return val_int(args[0].u.i);
+    }
+    if (id == BI_INT_TO_BYTE) {
+        REQUIRE(1);
+        int64_t v = args[0].u.i;
+        if (v < 0) v = 0;
+        if (v > 255) v = 255;
+        return val_byte((unsigned char)v);
+    }
+    if (id == BI_STRING_TO_BYTES) {
+        REQUIRE(1);
+        const char *s = ARG_STR(0);
+        size_t n = strlen(s);
+        Value out = val_array(TYPE_BYTE);
+        out.u.arr->cap = (int)n;
+        out.u.arr->count = (int)n;
+        out.u.arr->data.bytes = n > 0 ? (unsigned char *)cimple_malloc(n) : NULL;
+        memcpy(out.u.arr->data.bytes, s, n);
+        return out;
+    }
+    if (id == BI_BYTES_TO_STRING) {
+        REQUIRE(1);
+        return val_string_own(bytes_to_string_lossy(ARG_ARR(0)));
+    }
+    if (id == BI_INT_TO_BYTES) {
+        REQUIRE(1);
+        Value out = val_array(TYPE_BYTE);
+        out.u.arr->cap = (int)sizeof(int64_t);
+        out.u.arr->count = (int)sizeof(int64_t);
+        out.u.arr->data.bytes = (unsigned char *)cimple_malloc(sizeof(int64_t));
+        memcpy(out.u.arr->data.bytes, &args[0].u.i, sizeof(int64_t));
+        return out;
+    }
+    if (id == BI_FLOAT_TO_BYTES) {
+        REQUIRE(1);
+        Value out = val_array(TYPE_BYTE);
+        out.u.arr->cap = (int)sizeof(double);
+        out.u.arr->count = (int)sizeof(double);
+        out.u.arr->data.bytes = (unsigned char *)cimple_malloc(sizeof(double));
+        memcpy(out.u.arr->data.bytes, &args[0].u.f, sizeof(double));
+        return out;
+    }
+    if (id == BI_BYTES_TO_INT) {
+        REQUIRE(1);
+        if (ARG_ARR(0)->count != (int)sizeof(int64_t)) {
+            error_runtime(line, col, "bytesToInt: expected INT_SIZE bytes, got %d", ARG_ARR(0)->count);
+        }
+        int64_t value;
+        memcpy(&value, ARG_ARR(0)->data.bytes, sizeof(int64_t));
+        return val_int(value);
+    }
+    if (id == BI_BYTES_TO_FLOAT) {
+        REQUIRE(1);
+        if (ARG_ARR(0)->count != (int)sizeof(double)) {
+            error_runtime(line, col, "bytesToFloat: expected FLOAT_SIZE bytes, got %d", ARG_ARR(0)->count);
+        }
+        double value;
+        memcpy(&value, ARG_ARR(0)->data.bytes, sizeof(double));
+        return val_float(value);
+    }
+
     /* ---- Conversions ---- */
     if (id == BI_TO_STRING) {
         REQUIRE(1);
@@ -1128,11 +1422,133 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         fclose(f);
         return val_void();
     }
+    if (id == BI_READ_FILE_BYTES) {
+        REQUIRE(1);
+        return read_file_bytes(ARG_STR(0), line, col);
+    }
+    if (id == BI_WRITE_FILE_BYTES) {
+        REQUIRE(2);
+        write_file_bytes(ARG_STR(0), ARG_ARR(1), "wb", line, col);
+        return val_void();
+    }
+    if (id == BI_APPEND_FILE_BYTES) {
+        REQUIRE(2);
+        write_file_bytes(ARG_STR(0), ARG_ARR(1), "ab", line, col);
+        return val_void();
+    }
     if (id == BI_FILE_EXISTS) {
         REQUIRE(1);
         struct stat st;
         if (stat(ARG_STR(0), &st) != 0) return val_bool(0);
         return val_bool(S_ISREG(st.st_mode) ? 1 : 0);
+    }
+    if (id == BI_TEMP_PATH) {
+        REQUIRE(0);
+        return val_string_own(temp_path_string());
+    }
+    if (id == BI_REMOVE) {
+        REQUIRE(1);
+        struct stat st;
+        if (stat(ARG_STR(0), &st) != 0) {
+            error_runtime(line, col, "Cannot remove file: '%s' (does not exist)", ARG_STR(0));
+        }
+        if (S_ISDIR(st.st_mode)) {
+            error_runtime(line, col, "Cannot remove file: '%s' (is a directory)", ARG_STR(0));
+        }
+        if (remove(ARG_STR(0)) != 0) {
+            error_runtime(line, col, "Cannot remove file: '%s'", ARG_STR(0));
+        }
+        return val_void();
+    }
+    if (id == BI_CHMOD) {
+        REQUIRE(2);
+#if defined(_WIN32) || defined(__EMSCRIPTEN__)
+        error_runtime(line, col, "chmod: not supported on this platform");
+#else
+        struct stat st;
+        if (stat(ARG_STR(0), &st) != 0) {
+            error_runtime(line, col, "Cannot chmod: '%s' (does not exist)", ARG_STR(0));
+        }
+        if (chmod(ARG_STR(0), (mode_t)ARG_INT(1)) != 0) {
+            error_runtime(line, col, "Cannot chmod: '%s'", ARG_STR(0));
+        }
+        return val_void();
+#endif
+    }
+    if (id == BI_CWD) {
+        REQUIRE(0);
+        return val_string_own(cwd_string());
+    }
+    if (id == BI_COPY) {
+        REQUIRE(2);
+        copy_file_contents(ARG_STR(0), ARG_STR(1), line, col);
+        return val_void();
+    }
+    if (id == BI_MOVE) {
+        REQUIRE(2);
+        if (rename(ARG_STR(0), ARG_STR(1)) != 0) {
+            if (errno != EXDEV) {
+                error_runtime(line, col, "Cannot move file: '%s'", ARG_STR(0));
+            }
+            copy_file_contents(ARG_STR(0), ARG_STR(1), line, col);
+            if (remove(ARG_STR(0)) != 0) {
+                error_runtime(line, col, "Cannot move file: '%s'", ARG_STR(0));
+            }
+        }
+        return val_void();
+    }
+    if (id == BI_IS_READABLE) {
+        REQUIRE(1);
+        return val_bool(access(ARG_STR(0), R_OK) == 0);
+    }
+    if (id == BI_IS_EXECUTABLE) {
+        REQUIRE(1);
+        return val_bool(access(ARG_STR(0), X_OK) == 0);
+    }
+    if (id == BI_IS_DIRECTORY) {
+        REQUIRE(1);
+        struct stat st;
+        return val_bool(stat(ARG_STR(0), &st) == 0 && S_ISDIR(st.st_mode));
+    }
+    if (id == BI_IS_WRITABLE) {
+        REQUIRE(1);
+        struct stat st;
+        if (stat(ARG_STR(0), &st) == 0) {
+            return val_bool(access(ARG_STR(0), W_OK) == 0);
+        }
+        char *parent = parent_dir_for_write(ARG_STR(0));
+        int ok = access(parent, W_OK) == 0;
+        free(parent);
+        return val_bool(ok);
+    }
+    if (id == BI_DIRNAME) {
+        REQUIRE(1);
+        return val_string_own(path_dirname_lexical(ARG_STR(0)));
+    }
+    if (id == BI_BASENAME) {
+        REQUIRE(1);
+        return val_string_own(path_basename_lexical(ARG_STR(0)));
+    }
+    if (id == BI_FILENAME) {
+        REQUIRE(1);
+        char *base = path_basename_lexical(ARG_STR(0));
+        char *dot = strrchr(base, '.');
+        if (!dot || dot == base) return val_string_own(base);
+        char *out = cimple_strndup(base, (size_t)(dot - base));
+        free(base);
+        return val_string_own(out);
+    }
+    if (id == BI_EXTENSION) {
+        REQUIRE(1);
+        char *base = path_basename_lexical(ARG_STR(0));
+        char *dot = strrchr(base, '.');
+        if (!dot || dot == base) {
+            free(base);
+            return val_string("");
+        }
+        char *out = cimple_strdup(dot + 1);
+        free(base);
+        return val_string_own(out);
     }
     if (id == BI_READ_LINES) {
         REQUIRE(1);

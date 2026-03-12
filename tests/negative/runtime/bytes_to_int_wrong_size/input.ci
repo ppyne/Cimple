@@ -1,0 +1,3 @@
+void main(string[] args) {
+    print(toString(bytesToInt([0x01, 0x02])) + "\n");
+}

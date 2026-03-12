@@ -22,6 +22,8 @@ typedef struct {
     TokenType type;
     int       line;
     int       col;
+    int       start_offset;
+    int       end_offset;
 
     /* Semantic payload */
     union {

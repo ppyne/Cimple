@@ -1,0 +1,4 @@
+void main(string[] args) {
+    int n = 10;
+    byte b = n;
+}

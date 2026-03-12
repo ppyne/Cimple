@@ -1,0 +1,2 @@
+import "more.ci";
+int addThree(int n) { return addOne(addOne(addOne(n))); }

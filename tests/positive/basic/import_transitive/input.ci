@@ -1,0 +1,4 @@
+import "a.ci";
+void main(string[] args) {
+    print(toString(getValue()) + "\n");
+}

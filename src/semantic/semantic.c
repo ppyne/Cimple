@@ -99,9 +99,34 @@ static const BuiltinSig BUILTINS[] = {
     { "readFile",    TYPE_STRING,   { TYPE_STRING },              1, 0, 0 },
     { "writeFile",   TYPE_VOID,     { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
     { "appendFile",  TYPE_VOID,     { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "readFileBytes", TYPE_BYTE_ARR, { TYPE_STRING },            1, 0, 0 },
+    { "writeFileBytes", TYPE_VOID, { TYPE_STRING, TYPE_BYTE_ARR }, 2, 0, 0 },
+    { "appendFileBytes", TYPE_VOID, { TYPE_STRING, TYPE_BYTE_ARR }, 2, 0, 0 },
     { "fileExists",  TYPE_BOOL,     { TYPE_STRING },              1, 0, 0 },
+    { "tempPath",    TYPE_STRING,   { TYPE_UNKNOWN },             0, 0, 0 },
+    { "remove",      TYPE_VOID,     { TYPE_STRING },              1, 0, 0 },
+    { "chmod",       TYPE_VOID,     { TYPE_STRING, TYPE_INT },    2, 0, 0 },
+    { "cwd",         TYPE_STRING,   { TYPE_UNKNOWN },             0, 0, 0 },
+    { "copy",        TYPE_VOID,     { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "move",        TYPE_VOID,     { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "isReadable",  TYPE_BOOL,     { TYPE_STRING },              1, 0, 0 },
+    { "isWritable",  TYPE_BOOL,     { TYPE_STRING },              1, 0, 0 },
+    { "isExecutable",TYPE_BOOL,     { TYPE_STRING },              1, 0, 0 },
+    { "isDirectory", TYPE_BOOL,     { TYPE_STRING },              1, 0, 0 },
+    { "dirname",     TYPE_STRING,   { TYPE_STRING },              1, 0, 0 },
+    { "basename",    TYPE_STRING,   { TYPE_STRING },              1, 0, 0 },
+    { "filename",    TYPE_STRING,   { TYPE_STRING },              1, 0, 0 },
+    { "extension",   TYPE_STRING,   { TYPE_STRING },              1, 0, 0 },
     { "readLines",   TYPE_STR_ARR,  { TYPE_STRING },              1, 0, 0 },
     { "writeLines",  TYPE_VOID,     { TYPE_STRING, TYPE_STR_ARR }, 2, 0, 0 },
+    { "byteToInt",   TYPE_INT,      { TYPE_BYTE },                1, 0, 0 },
+    { "intToByte",   TYPE_BYTE,     { TYPE_INT },                 1, 0, 0 },
+    { "stringToBytes", TYPE_BYTE_ARR, { TYPE_STRING },            1, 0, 0 },
+    { "bytesToString", TYPE_STRING, { TYPE_BYTE_ARR },            1, 0, 0 },
+    { "intToBytes",  TYPE_BYTE_ARR, { TYPE_INT },                 1, 0, 0 },
+    { "floatToBytes",TYPE_BYTE_ARR, { TYPE_FLOAT },               1, 0, 0 },
+    { "bytesToInt",  TYPE_INT,      { TYPE_BYTE_ARR },            1, 0, 0 },
+    { "bytesToFloat",TYPE_FLOAT,    { TYPE_BYTE_ARR },            1, 0, 0 },
 
     /* exec */
     { "exec",        TYPE_EXEC_RESULT, { TYPE_STR_ARR, TYPE_STR_ARR }, 2, 0, 0 },
@@ -149,9 +174,9 @@ static void error_operator_type(int line, int col, const char *op,
 CimpleType builtin_resolve_intrinsic(const char *name, CimpleType arg_type,
                                       int line, int col) {
     if (strcmp(name, "toString") == 0) {
-        if (arg_type == TYPE_INT || arg_type == TYPE_FLOAT || arg_type == TYPE_BOOL)
+        if (arg_type == TYPE_INT || arg_type == TYPE_FLOAT || arg_type == TYPE_BOOL || arg_type == TYPE_BYTE)
             return TYPE_STRING;
-        error_operator_type(line, col, "toString()", "int, float or bool", arg_type);
+        error_operator_type(line, col, "toString()", "int, float, bool or byte", arg_type);
         return TYPE_UNKNOWN;
     }
     if (strcmp(name, "toInt") == 0) {
@@ -180,6 +205,75 @@ CimpleType builtin_resolve_intrinsic(const char *name, CimpleType arg_type,
  * ----------------------------------------------------------------------- */
 static int types_equal(CimpleType a, CimpleType b) {
     return a == b;
+}
+
+static int is_int_like(CimpleType t) {
+    return t == TYPE_INT || t == TYPE_BYTE;
+}
+
+static int extract_int_literal_expr(AstNode *n, int64_t *out) {
+    if (!n) return 0;
+    if (n->kind == NODE_INT_LIT) {
+        *out = n->u.int_lit.value;
+        return 1;
+    }
+    if (n->kind == NODE_UNOP &&
+        n->u.unop.op == OP_NEG &&
+        n->u.unop.operand &&
+        n->u.unop.operand->kind == NODE_INT_LIT) {
+        *out = -n->u.unop.operand->u.int_lit.value;
+        return 1;
+    }
+    return 0;
+}
+
+static int is_byte_compatible_literal_expr(AstNode *n) {
+    int64_t value;
+    return extract_int_literal_expr(n, &value) && value >= 0 && value <= 255;
+}
+
+static void error_byte_literal_out_of_range(int line, int col, int64_t value) {
+    error_semantic_hint(line, col,
+                        "Valid range: 0 to 255.",
+                        "Byte literal out of range: %lld",
+                        (long long)value);
+}
+
+static int array_lit_matches_declared_type(AstNode *lit, CimpleType target_type) {
+    if (!lit || lit->kind != NODE_ARRAY_LIT || !type_is_array(target_type)) return 0;
+    CimpleType elem = type_elem(target_type);
+    NodeList *elems = &lit->u.array_lit.elems;
+    for (int i = 0; i < elems->count; i++) {
+        CimpleType got = elems->items[i]->type;
+        if (elem == TYPE_BYTE) {
+            if (got == TYPE_BYTE || is_byte_compatible_literal_expr(elems->items[i])) continue;
+            return 0;
+        }
+        if (got != elem) return 0;
+    }
+    return 1;
+}
+
+static void coerce_array_lit_to_type(AstNode *lit, CimpleType target_type) {
+    if (!lit || lit->kind != NODE_ARRAY_LIT || !type_is_array(target_type)) return;
+    lit->u.array_lit.elem_type = type_elem(target_type);
+    lit->type = target_type;
+}
+
+static int report_first_invalid_byte_array_literal(AstNode *lit) {
+    if (!lit || lit->kind != NODE_ARRAY_LIT) return 0;
+    NodeList *elems = &lit->u.array_lit.elems;
+    for (int i = 0; i < elems->count; i++) {
+        int64_t literal_value;
+        if (extract_int_literal_expr(elems->items[i], &literal_value) &&
+            (literal_value < 0 || literal_value > 255)) {
+            error_byte_literal_out_of_range(elems->items[i]->line,
+                                            elems->items[i]->col,
+                                            literal_value);
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static void error_type_mismatch(int line, int col, const char *context,
@@ -266,6 +360,18 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         CimpleType elem_t = check_expr(ctx, elems->items[0]);
         for (int i = 1; i < elems->count; i++) {
             CimpleType t = check_expr(ctx, elems->items[i]);
+            if (elem_t == TYPE_BYTE) {
+                int64_t literal_value;
+                if (extract_int_literal_expr(elems->items[i], &literal_value)) {
+                    if (literal_value < 0 || literal_value > 255) {
+                        error_byte_literal_out_of_range(elems->items[i]->line,
+                                                        elems->items[i]->col,
+                                                        literal_value);
+                    }
+                    continue;
+                }
+                if (t == TYPE_BYTE) continue;
+            }
             if (t != elem_t) {
                 char hint[160];
                 snprintf(hint, sizeof(hint), "Expected '%s', got '%s' at index %d.",
@@ -307,7 +413,7 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         /* Comparison */
         if (op == OP_EQ || op == OP_NEQ || op == OP_LT ||
             op == OP_LEQ || op == OP_GT || op == OP_GEQ) {
-            if (!types_equal(lt, rt))
+            if (!(is_int_like(lt) && is_int_like(rt)) && !types_equal(lt, rt))
                 error_type_mismatch(n->line, n->col, "comparison", lt, rt);
             n->type = TYPE_BOOL;
             return TYPE_BOOL;
@@ -316,7 +422,7 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         /* Arithmetic (+, -, *, /, %) */
         if (op == OP_ADD || op == OP_SUB || op == OP_MUL ||
             op == OP_DIV || op == OP_MOD) {
-            if (lt == TYPE_INT && rt == TYPE_INT) {
+            if (is_int_like(lt) && is_int_like(rt)) {
                 n->type = TYPE_INT; return TYPE_INT;
             }
             if (lt == TYPE_FLOAT && rt == TYPE_FLOAT) {
@@ -335,13 +441,18 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         /* Bitwise */
         if (op == OP_BAND || op == OP_BOR || op == OP_BXOR ||
             op == OP_LSHIFT || op == OP_RSHIFT) {
-            if (lt != TYPE_INT || rt != TYPE_INT)
+            if (!is_int_like(lt) || !is_int_like(rt))
                 error_operator_type(n->line, n->col,
                                     op == OP_BAND ? "&" :
                                     op == OP_BOR ? "|" :
                                     op == OP_BXOR ? "^" :
                                     op == OP_LSHIFT ? "<<" : ">>",
-                                    "int operands", lt != TYPE_INT ? lt : rt);
+                                    "int operands", !is_int_like(lt) ? lt : rt);
+            if ((op == OP_BAND || op == OP_BOR || op == OP_BXOR) &&
+                lt == TYPE_BYTE && rt == TYPE_BYTE) {
+                n->type = TYPE_BYTE;
+                return TYPE_BYTE;
+            }
             n->type = TYPE_INT;
             return TYPE_INT;
         }
@@ -359,14 +470,14 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
             n->type = TYPE_BOOL; return TYPE_BOOL;
         }
         if (op == OP_NEG) {
-            if (t != TYPE_INT && t != TYPE_FLOAT)
+            if (!is_int_like(t) && t != TYPE_FLOAT)
                 error_operator_type(n->line, n->col, "-", "a numeric operand", t);
             n->type = t; return t;
         }
         if (op == OP_BNOT) {
-            if (t != TYPE_INT)
+            if (!is_int_like(t))
                 error_operator_type(n->line, n->col, "~", "an int operand", t);
-            n->type = TYPE_INT; return TYPE_INT;
+            n->type = (t == TYPE_BYTE) ? TYPE_BYTE : TYPE_INT; return n->type;
         }
         n->type = TYPE_UNKNOWN; return TYPE_UNKNOWN;
     }
@@ -426,7 +537,9 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                         (strcmp(fname, "arraySet") == 0 && nargs > 2)) {
                         int value_index = strcmp(fname, "arrayPush") == 0 ? 1 : 2;
                         CimpleType value_t = arg_types[value_index];
-                        if (value_t != TYPE_UNKNOWN && !types_equal(value_t, elem)) {
+                        if (elem == TYPE_BYTE && is_byte_compatible_literal_expr(args->items[value_index])) {
+                            /* ok */
+                        } else if (value_t != TYPE_UNKNOWN && !types_equal(value_t, elem)) {
                             if (strcmp(fname, "arraySet") == 0) {
                                 error_type_mismatch(args->items[value_index]->line,
                                                     args->items[value_index]->col,
@@ -460,6 +573,17 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                 /* Check arg types */
                 for (int i = 0; i < nargs && i < sig->param_count; i++) {
                     CimpleType expected = sig->param_types[i];
+                    if (expected == TYPE_BYTE_ARR &&
+                        args->items[i]->kind == NODE_ARRAY_LIT &&
+                        array_lit_matches_declared_type(args->items[i], expected)) {
+                        coerce_array_lit_to_type(args->items[i], expected);
+                        continue;
+                    }
+                    if (expected == TYPE_BYTE_ARR &&
+                        args->items[i]->kind == NODE_ARRAY_LIT &&
+                        report_first_invalid_byte_array_literal(args->items[i])) {
+                        continue;
+                    }
                     if (expected != TYPE_UNKNOWN &&
                         arg_types[i] != TYPE_UNKNOWN &&
                         !types_equal(arg_types[i], expected)) {
@@ -613,7 +737,31 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
             if (n->u.var_decl.init->kind == NODE_ARRAY_LIT &&
                 n->u.var_decl.init->u.array_lit.elems.count == 0) {
                 /* ok — typed by declaration */
+            } else if (t == TYPE_BYTE && is_byte_compatible_literal_expr(n->u.var_decl.init)) {
+                /* ok */
+            } else if (t == TYPE_BYTE_ARR &&
+                       array_lit_matches_declared_type(n->u.var_decl.init, t)) {
+                coerce_array_lit_to_type(n->u.var_decl.init, t);
+                /* ok */
             } else if (it != TYPE_UNKNOWN && !types_equal(it, t)) {
+                int64_t literal_value;
+                if (t == TYPE_BYTE && extract_int_literal_expr(n->u.var_decl.init, &literal_value)) {
+                    error_byte_literal_out_of_range(n->u.var_decl.init->line,
+                                                    n->u.var_decl.init->col,
+                                                    literal_value);
+                    break;
+                }
+                if (t == TYPE_BYTE && it == TYPE_INT) {
+                    error_semantic_hint(n->u.var_decl.init->line,
+                                        n->u.var_decl.init->col,
+                                        "Use intToByte() to convert.",
+                                        "Cannot assign 'int' to 'byte'");
+                    break;
+                }
+                if (t == TYPE_BYTE_ARR &&
+                    report_first_invalid_byte_array_literal(n->u.var_decl.init)) {
+                    break;
+                }
                 char hint[160];
                 snprintf(hint, sizeof(hint),
                          "Expected '%s', got '%s'.", type_name(t), type_name(it));
@@ -652,10 +800,25 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
             break;
         }
         CimpleType vt = check_expr(ctx, n->u.assign.value);
-        if (vt != TYPE_UNKNOWN && !types_equal(vt, sym->type))
-            error_semantic_hint(n->line, n->col,
-                                "Use toInt(), toFloat(), toString() or toBool() to convert.",
-                                "Type mismatch in assignment");
+        if (sym->type == TYPE_BYTE && is_byte_compatible_literal_expr(n->u.assign.value)) {
+            break;
+        }
+        if (vt != TYPE_UNKNOWN && !types_equal(vt, sym->type)) {
+            int64_t literal_value;
+            if (sym->type == TYPE_BYTE && extract_int_literal_expr(n->u.assign.value, &literal_value)) {
+                error_byte_literal_out_of_range(n->u.assign.value->line,
+                                                n->u.assign.value->col,
+                                                literal_value);
+            } else if (sym->type == TYPE_BYTE && vt == TYPE_INT) {
+                error_semantic_hint(n->line, n->col,
+                                    "Use intToByte() to convert.",
+                                    "Cannot assign 'int' to 'byte'");
+            } else {
+                error_semantic_hint(n->line, n->col,
+                                    "Use toInt(), toFloat(), toString() or toBool() to convert.",
+                                    "Type mismatch in assignment");
+            }
+        }
         break;
     }
 
@@ -686,10 +849,26 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                                 "index expression", TYPE_INT, idx_t);
         CimpleType val_t = check_expr(ctx, n->u.index_assign.value);
         CimpleType elem  = type_elem(sym->type);
-        if (val_t != TYPE_UNKNOWN && !types_equal(val_t, elem))
-            error_type_mismatch(n->u.index_assign.value->line,
-                                n->u.index_assign.value->col,
-                                "array assignment", elem, val_t);
+        if (elem == TYPE_BYTE && is_byte_compatible_literal_expr(n->u.index_assign.value)) {
+            break;
+        }
+        if (val_t != TYPE_UNKNOWN && !types_equal(val_t, elem)) {
+            int64_t literal_value;
+            if (elem == TYPE_BYTE && extract_int_literal_expr(n->u.index_assign.value, &literal_value)) {
+                error_byte_literal_out_of_range(n->u.index_assign.value->line,
+                                                n->u.index_assign.value->col,
+                                                literal_value);
+            } else if (elem == TYPE_BYTE && val_t == TYPE_INT) {
+                error_semantic_hint(n->u.index_assign.value->line,
+                                    n->u.index_assign.value->col,
+                                    "Use intToByte() to convert.",
+                                    "Cannot assign 'int' to 'byte'");
+            } else {
+                error_type_mismatch(n->u.index_assign.value->line,
+                                    n->u.index_assign.value->col,
+                                    "array assignment", elem, val_t);
+            }
+        }
         break;
     }
 
