@@ -1,4 +1,4 @@
-# Cimple — spécification version 1.0
+# Cimple — spécification version 1.1
 
 > **Version : 1.0**
 > Tout ce qui est décrit dans ce document est **obligatoire et doit être implémenté intégralement**.
@@ -305,13 +305,14 @@ Cimple inclut les types scalaires suivants :
 
 ### 6.2 Types tableaux
 
-Cimple inclut cinq types tableaux homogènes, un par type scalaire non-`void` :
+Cimple inclut cinq types tableaux homogènes pour les types scalaires non-`void`, plus un type tableau par structure définie par l'utilisateur :
 
 - `int[]`
 - `float[]`
 - `bool[]`
 - `string[]`
 - `byte[]`
+- `NomDeStructure[]` — tableau de structures (voir section 6.8)
 
 Un type tableau est toujours associé à un type d'élément fixe. Il est interdit de mélanger les types d'éléments au sein d'un même tableau. `void[]` n'existe pas.
 
@@ -324,7 +325,6 @@ Propriétés :
 - `ExecResult` est un type de première classe : une variable de type `ExecResult` peut être déclarée, affectée et passée en argument à une fonction ;
 - `ExecResult` est **opaque** : son contenu interne n'est pas directement accessible ; il ne peut être manipulé qu'au travers des fonctions `execStatus`, `execStdout` et `execStderr` ;
 - `ExecResult` ne peut être produit que par un appel à `exec` ; il n'existe pas de littéral `ExecResult` ;
-- l'utilisateur ne peut pas déclarer ses propres types ; `ExecResult` est le seul type composite existant dans Cimple, entièrement géré par le runtime ;
 - `ExecResult[]` n'existe pas ; on ne peut pas créer de tableau de `ExecResult` ;
 - une variable `ExecResult` non initialisée (déclarée sans appel à `exec`) est une **erreur sémantique**.
 
@@ -503,6 +503,239 @@ bool bright = r > 200;        // true
 // Décalage : résultat int
 int shifted = r << 2;         // int(1020)
 ```
+
+---
+
+### 6.8 Structures (Cimple 1.1)
+
+Une **structure** est un type composite défini par l'utilisateur, regroupant des champs typés et des méthodes. Les structures constituent le seul mécanisme d'abstraction de données en Cimple. Elles sont **entièrement statiques** : leur taille est fixe et connue à la compilation.
+
+#### 6.8.1 Déclaration
+
+```
+structure NomDeStructure {
+    <type> <champ> = <valeur_par_défaut>;
+    ...
+    <type_retour> <méthode>(<paramètres>) { ... }
+    ...
+}
+```
+
+Règles normatives :
+
+- le mot-clé est `structure` ;
+- le nom d'une structure commence par une lettre majuscule ; un nom commençant par une minuscule est une **erreur sémantique** ;
+- chaque champ peut avoir une **valeur par défaut** explicite ou implicite selon son type ; un champ de type structure doit avoir une valeur par défaut explicite `clone NomDeStructure` (voir tableau ci-dessous) ;
+- valeurs par défaut implicites (applicables si le champ ne précise pas de valeur) :
+
+  | Type | Valeur implicite |
+  |---|---|
+  | `int` | `0` |
+  | `float` | `0.0` |
+  | `bool` | `false` |
+  | `string` | `""` |
+  | `byte` | `0` |
+  | `int[]`, `float[]`, `bool[]`, `string[]`, `byte[]`, `NomDeStructure[]` | `[]` |
+  | `NomDeStructure` | **obligatoire** — `clone NomDeStructure` doit être déclaré explicitement |
+- les champs et les méthodes peuvent apparaître dans n'importe quel ordre au sein de la structure ;
+- une structure doit être déclarée **avant** toute utilisation dans le fichier (ordre textuel strict) ; référencer une structure non encore déclarée est une **erreur sémantique** ;
+- les noms de champs et de méthodes sont locaux à la structure ; ils ne peuvent pas entrer en conflit avec des variables globales ou des fonctions globales ;
+- un champ récursif (champ dont le type est la structure elle-même, directement ou indirectement) est une **erreur sémantique** ;
+- un champ peut être de type structure à condition que la structure référencée soit déjà déclarée et ne forme pas de cycle de dépendance ;
+- `void[]` et `ExecResult[]` ne sont pas des types valides pour un champ.
+
+```c
+structure Point {
+    float x = 0.0;
+    float y = 0.0;
+
+    void move(float dx, float dy) {
+        self.x = self.x + dx;
+        self.y = self.y + dy;
+    }
+
+    float distanceToOrigin() {
+        return sqrt(self.x * self.x + self.y * self.y);
+    }
+}
+```
+
+#### 6.8.2 Héritage
+
+Une structure peut hériter d'une autre via la syntaxe `: NomDeBase` :
+
+```
+structure NomDérivé : NomDeBase {
+    ...
+}
+```
+
+Règles normatives :
+
+- l'héritage est **simple** : une structure ne peut hériter que d'une seule base ;
+- l'héritage en chaîne est autorisé : `A : B`, `B : C` est valide ; la profondeur n'est pas limitée ;
+- une structure hérite de tous les champs et méthodes de sa base, dans l'ordre de déclaration de la base ;
+- la base doit être déclarée avant la structure dérivée (ordre textuel) ;
+- les cycles d'héritage (`A : B, B : A`) sont une **erreur sémantique**.
+
+**Redéfinition de champ :** une sous-structure peut redéclarer un champ hérité à condition que le **type soit identique**. La valeur par défaut peut être différente de celle de la base — c'est précisément l'intérêt de la redéfinition. `self.champ` accède toujours au champ de la structure courante avec sa propre valeur par défaut.
+
+**Redéfinition de méthode (override) :** une sous-structure peut redéfinir une méthode héritée à condition que la signature (nom, types des paramètres, type de retour) soit **identique**. Redéfinir avec une signature différente est une **erreur sémantique**.
+
+```c
+structure Animal {
+    string name = "animal";
+    void speak() {
+        print("...\n");
+    }
+}
+
+structure Dog : Animal {
+    string name = "dog";   // redéfinition valide — même type, valeur par défaut différente autorisée
+    void speak() {         // override valide — signature identique
+        print("Woof!\n");
+    }
+}
+
+Dog d = clone Dog;
+print(d.name + "\n");  // → "dog"
+d.speak();             // → "Woof!"
+```
+
+#### 6.8.3 `self`
+
+À l'intérieur d'une méthode, `self` désigne l'instance courante de la structure. `self` est implicitement disponible dans toutes les méthodes.
+
+Règles normatives :
+
+- `self.champ` accède en lecture et en écriture au champ `champ` de l'instance courante ;
+- `self.méthode(...)` appelle la méthode `méthode` sur l'instance courante ;
+- `self` ne peut pas être réaffecté : `self = clone AutreStructure` est une **erreur sémantique** ;
+- `self` ne peut pas être passé directement comme argument à une fonction globale attendant un type scalaire ; il peut en revanche être passé à une fonction attendant le type de la structure courante (passage par référence).
+
+#### 6.8.4 `super`
+
+À l'intérieur d'une méthode d'une sous-structure, `super` permet d'appeler explicitement la méthode de la base qui a été redéfinie.
+
+Règles normatives :
+
+- `super.méthode(...)` appelle la méthode `méthode` telle que définie dans la **base directe** de la structure courante ;
+- `super` est uniquement disponible si la structure courante hérite d'une base et que la méthode appelée existe dans cette base ;
+- `super.champ` est une **erreur sémantique** — l'accès aux champs de la base se fait toujours via `self` ;
+- utiliser `super` dans une structure sans base est une **erreur sémantique**.
+
+```c
+structure MyBase {
+    float f = 2.0;
+    void compute() {
+        self.f = self.f + 0.1;
+    }
+}
+
+structure MyDerived : MyBase {
+    void compute() {
+        super.compute();       // appelle MyBase.compute() → f devient 2.1
+        self.f = self.f + 0.1; // puis f devient 2.2
+    }
+}
+```
+
+#### 6.8.5 `clone`
+
+`clone` est l'opérateur de construction d'une instance de structure. Il crée une nouvelle instance avec les valeurs par défaut de tous les champs.
+
+Syntaxe :
+
+```c
+NomDeStructure s = clone NomDeStructure;
+```
+
+Règles normatives :
+
+- l'opérande de `clone` est toujours un **nom de structure** (identifiant de type) ; `clone` sur une variable est une **erreur sémantique** ;
+- `clone` initialise tous les champs à leur valeur par défaut — explicite si déclarée, implicite selon le type sinon (voir tableau section 6.8.1) ; les champs hérités utilisent la valeur par défaut de la structure courante si redéfinis, sinon celle de la base ;
+- il n'existe pas de constructeur : `clone` applique uniquement les valeurs par défaut ;
+- `clone` peut être utilisé comme valeur initiale d'un champ de structure : `AutreStructure inner = clone AutreStructure;` ;
+- `clone` peut être utilisé dans `arrayPush` pour ajouter une instance à un tableau de structures.
+
+```c
+Point p = clone Point;          // p.x == 0.0, p.y == 0.0
+p.move(3.0, 4.0);
+print(toString(p.distanceToOrigin()) + "\n");  // → "5.0"
+
+// Tableau de structures
+Point[] points = [];
+arrayPush(points, clone Point);
+arrayPush(points, clone Point);
+points[1].move(1.0, 1.0);
+```
+
+#### 6.8.6 Champs de type structure
+
+Un champ peut être de type structure à condition que :
+
+- la structure référencée soit **déjà déclarée** (ordre textuel) ;
+- il n'y ait pas de cycle de dépendance entre structures (détecté à la compilation) ;
+- la valeur par défaut du champ soit `clone NomDeStructure`.
+
+```c
+structure Color {
+    float r = 1.0;
+    float g = 0.0;
+    float b = 0.0;
+}
+
+structure Pixel {
+    float x = 0.0;
+    float y = 0.0;
+    Color color = clone Color;   // champ de type structure
+}
+
+Pixel px = clone Pixel;
+px.color.r = 0.5;
+```
+
+#### 6.8.7 Structures et fonctions globales
+
+Une structure peut être passée à une fonction globale et retournée par une fonction globale.
+
+Règles normatives :
+
+- le passage est **par référence** : les modifications apportées à l'intérieur de la fonction sont visibles à l'extérieur ;
+- une fonction globale peut déclarer un paramètre de type structure : `void process(Point p)` ;
+- une fonction globale peut retourner une structure : `Point makePoint(float x, float y)` ; la valeur retournée est une copie ;
+- une fonction globale ne peut pas retourner un type structure si ce type n'est pas encore déclaré à l'endroit de l'appel.
+
+```c
+void resetPoint(Point p) {
+    p.x = 0.0;
+    p.y = 0.0;
+}
+
+Point p = clone Point;
+p.move(5.0, 5.0);
+resetPoint(p);
+print(toString(p.x) + "\n");  // → "0.0"
+```
+
+#### 6.8.8 Tableaux de structures
+
+Un tableau de structures se comporte comme tous les autres tableaux Cimple.
+
+```c
+Point[] pts = [];
+arrayPush(pts, clone Point);
+arrayPush(pts, clone Point);
+pts[0].move(1.0, 2.0);
+pts[1].move(3.0, 4.0);
+int n = count(pts);   // → 2
+```
+
+Règles normatives :
+
+- `NomDeStructure[]` est un type valide partout où un type tableau est attendu ;
+- les fonctions `arrayPush`, `arrayPop`, `arrayInsert`, `arrayRemove`, `arrayGet`, `arraySet`, `count` fonctionnent sur les tableaux de structures ;
+- `arrayGet` retourne une **copie** de l'élément ; pour modifier l'élément en place, utiliser l'accès direct par index `arr[i].champ = ...`.
 
 ---
 
@@ -2691,7 +2924,7 @@ string week  = formatDate(ts, "WW");                    // "11" (semaine ISO 11)
 string iso   = formatDate(ts, "ISO");                   // "2025-03-11T14:32:07Z"
 
 // Combinaisons
-string label = formatDate(ts, "YYYY-Www-w");            // "2025-W22-2"  (W littéral, w=weekday 2, w=weekday 2)
+string label = formatDate(ts, "YYYY-Www-w");            // "2025-W22-2"  (W littéral, w=weekday 2)
 string log2  = formatDate(ts, "[ISO] ");                // "[2025-03-11T14:32:07Z] "
 
 // Horodatage d'un fichier de log
@@ -3173,6 +3406,10 @@ Mots-clés réservés :
 - `true`
 - `false`
 - `import`
+- `structure`
+- `clone`
+- `self`
+- `super`
 
 `ExecResult` est un mot-clé réservé désignant le type opaque de résultat d'exécution (voir section 6.3). Il ne peut pas être utilisé comme nom de variable, de fonction ou de paramètre.
 
@@ -3204,7 +3441,7 @@ Le lexer doit reconnaître et produire les tokens suivants :
 **Identifiants et mots-clés**
 
 - identifiants : séquence de lettres, chiffres et `_`, commençant par une lettre ou `_`
-- mots-clés réservés (voir section 14) : `int`, `float`, `bool`, `string`, `byte`, `void`, `ExecResult`, `if`, `else`, `while`, `for`, `return`, `break`, `continue`, `true`, `false`, `import`
+- mots-clés réservés (voir section 14) : `int`, `float`, `bool`, `string`, `byte`, `void`, `ExecResult`, `if`, `else`, `while`, `for`, `return`, `break`, `continue`, `true`, `false`, `import`, `structure`, `clone`, `self`, `super`
 - les mots-clés sont reconnus dans le même scanner que les identifiants ; la distinction est faite dans l'action C associée par comparaison de la valeur lexicale
 
 **Littéraux entiers**
@@ -3441,6 +3678,48 @@ L'analyse sémantique doit vérifier :
 Les conditions de `if`, `while`, `for` doivent être de type `bool`.
 
 Pas de vérité implicite à la C sur les `int`.
+
+### 19.2c Vérifications spécifiques sur les structures
+
+L'analyse sémantique doit vérifier :
+
+**Déclaration :**
+- que le nom d'une structure commence par une lettre majuscule ; un nom en minuscule est une **erreur sémantique** ;
+- que les champs de type scalaire (`int`, `float`, `bool`, `string`, `byte`) et tableau sans valeur par défaut explicite reçoivent leur valeur implicite (`0`, `0.0`, `false`, `""`, `0`, `[]`) ; aucune erreur n'est levée dans ce cas ;
+- que les champs de type structure ont une valeur par défaut explicite `clone NomDeStructure` ; l'absence de valeur par défaut pour un champ de type structure est une **erreur sémantique** ;
+- qu'aucun champ n'est de type récursif direct ou indirect (cycle de dépendance entre structures) ;
+- qu'un champ de type structure référence une structure déjà déclarée (ordre textuel) ;
+- que la valeur par défaut d'un champ de type structure est `clone NomDeStructure` ;
+- qu'il n'y a pas deux champs de même nom dans une structure (héritage inclus, sauf redéfinition valide) ;
+- qu'il n'y a pas deux méthodes avec la même signature dans une structure.
+
+**Héritage :**
+- que la base déclarée dans `: NomDeBase` existe et est déclarée avant la sous-structure ;
+- qu'il n'y a pas de cycle d'héritage ;
+- qu'une redéfinition de champ a le **même type** que dans la base ; la valeur par défaut peut différer ; une redéfinition avec un type différent est une **erreur sémantique** ;
+- qu'un override de méthode a une signature identique (nom, types des paramètres, type de retour) à celle de la base ; une signature différente est une **erreur sémantique**.
+
+**`clone` :**
+- que l'opérande de `clone` est un nom de structure (type) et non une variable ; `clone variable` est une **erreur sémantique** ;
+- que le nom de structure passé à `clone` est déclaré.
+
+**`self` :**
+- que `self` n'est utilisé qu'à l'intérieur d'une méthode de structure ; utiliser `self` hors d'une méthode est une **erreur sémantique** ;
+- que `self = ...` est une **erreur sémantique**.
+
+**`super` :**
+- que `super` n'est utilisé qu'à l'intérieur d'une méthode d'une structure qui hérite d'une base ;
+- que `super.méthode(...)` référence une méthode existant dans la base directe ;
+- que `super.champ` est une **erreur sémantique**.
+
+**Accès membre :**
+- que `instance.champ` référence un champ existant dans la structure (ou hérité) ;
+- que `instance.méthode(...)` référence une méthode existante avec les bons types d'arguments ;
+- que le type de `instance` est bien une structure déclarée.
+
+**Tableaux de structures :**
+- que `NomDeStructure[]` est résolu correctement comme type tableau ;
+- que les fonctions de tableau (`arrayPush`, etc.) acceptent des éléments du bon type de structure.
 
 ### 19.2b Vérifications spécifiques sur `byte`
 
@@ -3724,7 +4003,7 @@ Catalogue des erreurs syntaxiques et messages associés :
 | `)` manquant | `Missing ')' to close expression` | `Opening '(' at line <N>, column <N>.` |
 | `}` manquant | `Missing '}' to close block` | `Opening '{' at line <N>, column <N>.` |
 | `]` manquant | `Missing ']' to close array literal` | `Opening '[' at line <N>, column <N>.` |
-| Type inconnu | `Unknown type: '<name>'` | `Valid types: int, float, bool, string, byte, void, ExecResult.` |
+| Type inconnu | `Unknown type: '<name>'` | `Valid types: int, float, bool, string, byte, void, ExecResult, or a declared structure name.` |
 | Expression attendue | `Expected expression` | `Found '<tok>' which cannot start an expression.` |
 
 ### 21.5 Erreurs sémantiques
@@ -3758,6 +4037,18 @@ Catalogue des erreurs sémantiques et messages associés :
 | Littéral `byte` hors plage | `Byte literal out of range: <N>` | `Valid range: 0 to 255.` |
 | Affectation `int` → `byte` sans conversion | `Cannot assign 'int' to 'byte'` | `Use intToByte() to convert.` |
 | Opérateur `&&` / `\|\|` / `!` sur `byte` | `Operator '<op>' cannot be applied to type 'byte'` | `Logical operators require 'bool' operands.` |
+| Nom de structure en minuscule | `Structure name must start with an uppercase letter: '<n>'` | — |
+| Champ de type structure sans `clone` | `Field '<n>' in structure '<S>' has no default value` | `Fields of structure type must be explicitly initialized with 'clone StructureName'.` |
+| Champ récursif | `Recursive field '<n>' in structure '<S>'` | `Structures cannot contain fields of their own type (direct or indirect).` |
+| `clone` sur variable | `Cannot clone a variable: '<n>'` | `Use 'clone StructureName' to create an instance.` |
+| Override avec signature différente | `Method '<m>' in '<S>' overrides '<Base>.<m>' with a different signature` | `Signatures must be identical to override a method.` |
+| `super` hors méthode / sans base | `'super' used outside of a derived structure method` | — |
+| `super.champ` | `Cannot access field via 'super'` | `Use 'self.<field>' to access fields.` |
+| `self` hors méthode | `'self' used outside of a structure method` | — |
+| `self = ...` | `Cannot reassign 'self'` | — |
+| Cycle d'héritage | `Inheritance cycle detected involving '<S>'` | — |
+| Base inconnue | `Unknown base structure: '<n>'` | — |
+| Champ redéfini avec type différent | `Field '<n>' in '<S>' redefines '<Base>.<n>' with a different type` | `Redefined fields must have the same type (default value may differ).` |
 | `main` dans un fichier importé | `'main' cannot be defined in an imported file` | `Define 'main' only in the root source file.` |
 | Fichier importé introuvable | `Cannot import file: '<path>'` | `File not found or not readable.` |
 | Extension import invalide | `Import path must end with '.ci'` | `Only .ci files can be imported.` |
@@ -3873,7 +4164,28 @@ import_decl
 top_level_item
     = function_decl
     | var_decl ";"
-    | array_decl ";" ;
+    | array_decl ";"
+    | structure_decl ;
+
+structure_decl
+    = "structure" IDENT [ ":" IDENT ] "{" { structure_member } "}" ;
+
+structure_member
+    = field_decl ";"
+    | method_decl ;
+
+field_decl
+    = type IDENT "=" expr
+    | struct_type IDENT "=" clone_expr ;
+
+method_decl
+    = type IDENT "(" [ param_list ] ")" block ;
+
+clone_expr
+    = "clone" IDENT ;
+
+struct_type
+    = IDENT ;   (* nom d'une structure déclarée *)
 
 function_decl
     = type IDENT "(" [ param_list ] ")" block
@@ -3885,10 +4197,13 @@ param_list
 
 param
     = type IDENT
-    | array_type IDENT ;
+    | array_type IDENT
+    | struct_type IDENT
+    | struct_array_type IDENT ;
 
 type
-    = "int" | "float" | "bool" | "string" | "byte" | "void" | "ExecResult" ;
+    = "int" | "float" | "bool" | "string" | "byte" | "void" | "ExecResult" | IDENT ;
+    (* IDENT désigne un nom de structure déclaré *)
 
 array_type
     = "int" "[" "]"
@@ -3896,6 +4211,9 @@ array_type
     | "bool" "[" "]"
     | "string" "[" "]"
     | "byte" "[" "]" ;
+
+struct_array_type
+    = IDENT "[" "]" ;   (* tableau de structures *)
 
 block
     = "{" { statement } "}" ;
@@ -4026,6 +4344,9 @@ primary_expr
     | array_literal
     | call_expr
     | index_expr
+    | member_expr
+    | clone_expr
+    | "self"
     | PREDEFINED_CONST
     | IDENT
     | "(" expr ")" ;
@@ -4036,11 +4357,28 @@ primary_expr
    M_PI  M_E  M_TAU  M_SQRT2  M_LN2  M_LN10
    Reconnus dans la phase sémantique, pas lexicale *)
 
+member_expr
+    = IDENT { "." ( IDENT | method_call ) }
+    | "self" "." ( IDENT | method_call ) { "." ( IDENT | method_call ) }
+    | "super" "." method_call ;
+
+method_call
+    = IDENT "(" [ arg_list ] ")" ;
+
 index_expr
-    = IDENT "[" expr "]" ;
+    = IDENT "[" expr "]"
+    | member_expr "[" expr "]" ;
 
 call_expr
     = IDENT "(" [ arg_list ] ")" ;
+
+assign_stmt
+    = IDENT "=" expr
+    | index_assign_stmt
+    | member_assign_stmt ;
+
+member_assign_stmt
+    = member_expr "=" expr ;
 
 arg_list
     = expr { "," expr } ;
@@ -4872,6 +5210,7 @@ Les décisions suivantes sont **normatives** et s'appliquent sans exception :
 36. la directive `import` est le seul mécanisme d'inclusion de fichiers ; `import` est un mot-clé du langage reconnu par le lexer ; les imports sont résolus avant l'analyse sémantique par fusion récursive en profondeur d'abord ; les imports circulaires sont une erreur sémantique ; la profondeur maximale est 32 ; les fichiers importés ne peuvent pas définir `main` ; les redéfinitions de fonctions ou variables globales via import sont des erreurs sémantiques ; un fichier importé plusieurs fois est traité une seule fois (déduplication par chemin absolu résolu) ; les messages d'erreur indiquent toujours le fichier source d'origine ;
 37. `byte` est un type scalaire entier non signé 8 bits (0–255) ; les opérateurs `+ - * / %` et `<< >>` sur `byte` produisent un `int` ; les opérateurs `& | ^ ~` sur deux `byte` produisent un `byte` ; les opérations mixtes `byte op int` produisent un `int` ; `intToByte(n)` applique un clamp (n<0→0, n>255→255) sans erreur runtime ; les littéraux entiers dans `[0,255]` sont affectables directement à un `byte` ; l'affectation d'une variable `int` à un `byte` sans `intToByte()` est une erreur sémantique ; `bytesToString` remplace les séquences UTF-8 invalides par U+FFFD sans erreur runtime ; `intToBytes` et `floatToBytes` sont des dumps mémoire bruts (`memcpy`) dans l'ordre natif de la machine hôte, sans interprétation ni transformation ; `bytesToInt` et `bytesToFloat` sont les opérations symétriques ; la taille du tableau est vérifiée (4 octets pour `int`, 8 pour `float`), toute autre taille est une erreur runtime ; NaN et ±Infinity sont valides comme résultat de `bytesToFloat` ; le round-trip est garanti sur la même machine.
 
+38. les structures sont des types composites définis par l'utilisateur, entièrement statiques, de taille fixe connue à la compilation ; le mot-clé est `structure` ; les noms de structure commencent par une majuscule ; les champs de type scalaire ou tableau ont une valeur par défaut implicite (`0`, `0.0`, `false`, `""`, `0`, `[]`) si non précisée ; les champs de type structure doivent être explicitement initialisés avec `clone NomDeStructure` ; l'héritage est simple (une seule base), en chaîne autorisé, sans cycle ; la redéfinition de champ dans une sous-structure exige le même type mais autorise une valeur par défaut différente ; l'override de méthode exige une signature identique ; `super.méthode()` appelle la méthode de la base directe ; `super.champ` est interdit ; `clone NomDeStructure` est le seul opérateur de construction — `clone variable` est une erreur sémantique ; les champs récursifs sont interdits ; les structures sont passées par référence ; `NomDeStructure[]` est un type tableau valide.
 ---
 
 ## 26. Livrables attendus
@@ -4964,6 +5303,7 @@ tests/
     unicode/
     main_signatures/
     byte/                 # type byte, byte[], opérateurs, conversions
+    structures/           # déclaration, héritage, clone, self, super, tableaux
     stdlib/
       binary/             # readFileBytes, writeFileBytes, appendFileBytes
     imports/                # programmes utilisant import (positifs)
@@ -5357,6 +5697,22 @@ Chaque ligne ci-dessous correspond à au moins un répertoire de test dans `test
 - `toBool(string)` : `"true"`, `"false"`, `"1"`, `"0"`, non reconnu → `false`
 - `isIntString`, `isFloatString`, `isBoolString`
 
+**Structures**
+- déclaration simple : champs avec valeurs par défaut, méthodes, `self`
+- `clone` : instance créée avec valeurs par défaut ; deux `clone` indépendants
+- modification de champ via `self` : `self.f = self.f + 1.0`
+- appel de méthode : `s.myMethod()`
+- accès en lecture : `s.myField`
+- héritage simple : sous-structure hérite des champs et méthodes de la base
+- override : méthode redéfinie dans la sous-structure masque celle de la base
+- `super.myMethod()` : appelle la méthode de la base depuis la sous-structure
+- héritage en chaîne : `A : B : C`, méthodes et champs hérités correctement
+- redéfinition de champ valide : même type, même valeur par défaut
+- champ de type structure : `inner = clone InnerStruct`, accès `outer.inner.field`
+- tableau de structures : `MyStruct[] arr = []`, `arrayPush(arr, clone MyStruct)`, `arr[0].field`
+- passage par référence : modification d'un champ dans une fonction globale visible à l'extérieur
+- exemple complet du résumé : `MyBasicStructure` / `MyStructure`, `s.myFunction()` → `s.f == 2.3`
+
 **Type `byte` et `byte[]`**
 - déclaration : `byte b = 0xFF;`, `byte b = 255;`, `byte b = intToByte(128);`
 - arithmétique : `byte + byte` → `int`, `byte + int` → `int` ; valeur correcte sans overflow
@@ -5433,6 +5789,21 @@ Chaque test négatif vérifie : code de sortie `1` ou `2` selon le niveau, et pr
 | Signature `main` invalide | `[SEMANTIC ERROR]` + `Invalid signature for 'main'` |
 | 11 erreurs : arrêt à 10 | `Further analysis aborted.` |
 | Accumulation : message récapitulatif | `semantic error(s) found` |
+
+**Erreurs sémantiques — structures (code 1)**
+
+| Test | Fragment attendu dans `stderr` |
+|---|---|
+| `structure myStruct { ... }` | `[SEMANTIC ERROR]` + `must start with an uppercase letter` |
+| Champ sans valeur par défaut | `[SEMANTIC ERROR]` + `has no default value` |
+| `clone s` (variable) | `[SEMANTIC ERROR]` + `Cannot clone a variable` |
+| `self` hors méthode | `[SEMANTIC ERROR]` + `'self' used outside` |
+| `self = clone MyStruct` | `[SEMANTIC ERROR]` + `Cannot reassign 'self'` |
+| `super.myField` | `[SEMANTIC ERROR]` + `Cannot access field via 'super'` |
+| Override signature différente | `[SEMANTIC ERROR]` + `overrides` + `different signature` |
+| Cycle d'héritage `A : B, B : A` | `[SEMANTIC ERROR]` + `Inheritance cycle` |
+| Champ récursif `structure A { A x = clone A; }` | `[SEMANTIC ERROR]` + `Recursive field` |
+| Utilisation avant déclaration | `[SEMANTIC ERROR]` + `Unknown` |
 
 **Erreurs sémantiques — `byte` (code 1)**
 
@@ -6138,6 +6509,30 @@ The manual version number must match the specification version number. A changel
 
 ```
 ## Changelog
+
+### v41
+- Fixed: redéfinition de champ dans une sous-structure — même type obligatoire, **valeur par défaut peut différer** (sections 6.8.2, 19.2c, 21.5, décision 38)
+- Fixed: valeurs par défaut des champs — implicites pour les types scalaires (`0`, `0.0`, `false`, `""`, `0`) et tableaux (`[]`) ; seuls les champs de type structure restent obligatoirement initialisés avec `clone` (sections 6.8.1, 6.8.5, 19.2c, 21.5, décision 38)
+- Fixed (errata) : `formatDate(ts, "YYYY-Www-w")` — commentaire corrigé en `"2025-W22-2" (W littéral, w=weekday 2)` (section 9.13)
+- Fixed (errata) : test `formatDate("YYYY-Www-w")` corrigé en `formatDate("YYYY-WW-w")` avec exemple `"2025-11-2"` (section 28.8)
+
+### v40 — Cimple 1.1
+- **Version du langage : 1.0 → 1.1**
+- Added: type composite `structure` — déclaration, champs avec valeurs par défaut, méthodes, `self` (section 6.8)
+- Added: héritage simple en chaîne, redéfinition de champ (même type/valeur), override de méthode (même signature) (section 6.8.2)
+- Added: `super.méthode()` — appel de la méthode de la base directe depuis une sous-structure (section 6.8.4)
+- Added: opérateur `clone NomDeStructure` — construction d'instance avec valeurs par défaut ; `clone variable` interdit (section 6.8.5)
+- Added: champs de type structure initialisés via `clone` (section 6.8.6)
+- Added: passage des structures par référence, retour par copie (section 6.8.7)
+- Added: `NomDeStructure[]` — tableaux de structures (section 6.8.8)
+- Added: mots-clés `structure`, `clone`, `self`, `super` (sections 14, 16.2)
+- Added: règles sémantiques structures (section 19.2c)
+- Added: 15 nouvelles erreurs sémantiques dans le catalogue 21.5
+- Updated: grammaire EBNF — `structure_decl`, `member_expr`, `clone_expr`, `super`, `struct_array_type` (section 22)
+- Updated: section 6.2 — `NomDeStructure[]` comme type tableau valide
+- Updated: section 6.3 — retrait de "seul type composite"
+- Added: décision normative 38
+- Updated: catalogues de tests 28.8 et 28.9
 
 ### v39
 - Added: note d'implémentation en section 6.1 — `int` doit être `int64_t` ; justification : `now()` retourne une epoch Unix en millisecondes (~1,7 × 10¹² ms), incompatible avec `int32_t` ; `INT_SIZE = 8` sur toutes les plateformes cibles
