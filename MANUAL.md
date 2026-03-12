@@ -99,7 +99,7 @@ preprocessor, and no pointers.
 
 `//` starts a line comment; everything from `//` to the end of the line is ignored:
 
-```ci
+```c
 // This is a comment.
 int x = 42;    // inline comment
 ```
@@ -108,7 +108,7 @@ There are no block comments.
 
 ### Hello, world
 
-```ci
+```c
 void main() {
     print("Hello, world!\n");
 }
@@ -116,7 +116,7 @@ void main() {
 
 ### Reading a command-line argument
 
-```ci
+```c
 void main(string[] args) {
     if (count(args) == 0) {
         print("No argument given.\n");
@@ -128,7 +128,7 @@ void main(string[] args) {
 
 ### Using an integer return code
 
-```ci
+```c
 int main(string[] args) {
     if (count(args) == 0) {
         print("usage: prog <name>\n");
@@ -181,13 +181,13 @@ There is no `ExecResult` literal. A variable of type `ExecResult` must be initia
 
 Cimple does not perform implicit conversions. The following is a **semantic error**:
 
-```ci
+```c
 string s = "age=" + 42;        // ERROR: cannot concatenate string and int
 ```
 
 Use an explicit conversion instead:
 
-```ci
+```c
 string s = "age=" + toString(42);   // OK
 ```
 
@@ -201,7 +201,7 @@ semantic analyser based on the declared type of the argument.
 - assigning an `int` variable or expression to `byte` is a semantic error
 - use `intToByte()` when you want an explicit clamp
 
-```ci
+```c
 byte ok = 255;
 byte alsoOk = intToByte(300);   // 255
 
@@ -219,7 +219,7 @@ The logical operators `&&`, `||`, and `!` are **not defined on `byte`**; using t
 
 ### 4.1 Scalar declarations
 
-```ci
+```c
 int x;                 // x is 0 (default)
 int y = 10;
 float pi = 3.14159;
@@ -234,7 +234,7 @@ Uninitialized variables receive default values: `0` for `int` and `byte`, `0.0` 
 
 ### 4.2 Array declarations
 
-```ci
+```c
 int[] scores = [10, 20, 30];
 float[] temps = [0.1, 0.2, 0.3];
 bool[] flags = [true, false, true];
@@ -249,7 +249,7 @@ An array declared without an initialiser is empty (length 0).
 
 Arrays **cannot** be reassigned as a whole after declaration:
 
-```ci
+```c
 int[] xs = [1, 2, 3];
 xs = [4, 5, 6];        // ERROR: array reassignment is forbidden
 ```
@@ -260,7 +260,7 @@ To modify an array, use the array mutation functions (`arrayPush`, `arraySet`, e
 
 Assignment uses `=` and must be type-compatible:
 
-```ci
+```c
 x = 42;
 name = "Bob";
 scores[1] = 99;        // element assignment is a standalone statement
@@ -270,7 +270,7 @@ scores[1] = 99;        // element assignment is a standalone statement
 
 `++` and `--` are **postfix-only** and **standalone statements only**:
 
-```ci
+```c
 i++;    // equivalent to i = i + 1
 i--;    // equivalent to i = i - 1
 ```
@@ -299,7 +299,7 @@ of a literal.
 
 ### 5.2 Float literals
 
-```ci
+```c
 float f1 = 1.5;
 float f2 = 1e-3;      // 0.001
 float f3 = 2.5e4;     // 25000.0
@@ -324,7 +324,7 @@ Strings are enclosed in double quotes. Supported escape sequences:
 | `\f` | form feed |
 | `\uXXXX` | Unicode code point (exactly 4 hex digits) |
 
-```ci
+```c
 string greeting = "Hello!\n";
 string path     = "C:\\Users\\Alice";
 string heart    = "\u2665";
@@ -335,14 +335,14 @@ A raw newline inside a string literal is a lexical error; use `\n` instead.
 
 ### 5.4 Boolean literals
 
-```ci
+```c
 bool t = true;
 bool f = false;
 ```
 
 ### 5.5 Array literals
 
-```ci
+```c
 int[]    xs = [1, 2, 3];
 string[] ys = ["a", "b"];
 int[]    empty = [];
@@ -403,7 +403,7 @@ The result type depends on the operand types:
 | `~int` | `int` |
 | `byte << int`, `byte >> int` | `int` |
 
-```ci
+```c
 // int bitwise
 print(toString(6 & 3)   + "\n");   // 2
 print(toString(6 | 3)   + "\n");   // 7
@@ -449,7 +449,7 @@ From highest to lowest:
 
 All binary operators are left-associative. Assignment is a statement, not an expression.
 
-```ci
+```c
 print(toString(2 + 3 * 4)              + "\n");  // 14  (* before +)
 print(toString((2 + 3) * 4)            + "\n");  // 20
 print(toString(1 + 2 << 3)             + "\n");  // 24  (+ before <<)
@@ -471,7 +471,7 @@ print(toString(true || false && false)  + "\n");  // true (&& before ||)
 
 ### 6.1 `if` / `else`
 
-```ci
+```c
 if (x > 0) {
     print("positive\n");
 } else if (x < 0) {
@@ -484,14 +484,14 @@ if (x > 0) {
 The body of `if` or `else` may be a block `{ ... }` or a single statement without braces.
 A dangling `else` binds to the nearest unmatched `if`.
 
-```ci
+```c
 if (ok) print("yes\n");
 if (ok) x = 1; else x = 2;
 ```
 
 ### 6.2 `while`
 
-```ci
+```c
 int i = 0;
 while (i < 5) {
     print(toString(i) + "\n");
@@ -501,13 +501,13 @@ while (i < 5) {
 
 A single-statement body without braces is allowed:
 
-```ci
+```c
 while (x > 0) x--;
 ```
 
 ### 6.3 `for`
 
-```ci
+```c
 for (int i = 0; i < 10; i++) {
     print(toString(i) + " ");
 }
@@ -523,13 +523,13 @@ Rules:
 
 A single-statement body without braces is allowed:
 
-```ci
+```c
 for (int j = 0; j < 3; j++) print(toString(j) + "\n");
 ```
 
 ### 6.4 `break` and `continue`
 
-```ci
+```c
 for (int i = 0; i < 10; i++) {
     if (i == 2) { continue; }
     if (i == 6) { break; }
@@ -543,7 +543,7 @@ for (int i = 0; i < 10; i++) {
 
 ### 6.5 `return`
 
-```ci
+```c
 int add(int a, int b) {
     return a + b;
 }
@@ -565,7 +565,7 @@ void greet(string name) {
 
 ### 7.1 Declaration
 
-```ci
+```c
 int add(int a, int b) {
     return a + b;
 }
@@ -592,7 +592,7 @@ Every function declares its return type and the type and name of each parameter 
 - **Array parameters** are passed by reference: modifications inside the function are visible
   in the caller.
 
-```ci
+```c
 void addToAll(int[] xs, int delta) {
     for (int i = 0; i < count(xs); i++) {
         xs[i] = xs[i] + delta;
@@ -608,7 +608,7 @@ void main() {
 
 ### 7.3 Recursion
 
-```ci
+```c
 int fibonacci(int n) {
     if (n <= 1) { return n; }
     return fibonacci(n - 1) + fibonacci(n - 2);
@@ -619,7 +619,7 @@ int fibonacci(int n) {
 
 `main` must match exactly one of these four signatures:
 
-```ci
+```c
 int  main()
 void main()
 int  main(string[] args)
@@ -642,26 +642,26 @@ Built-in functions are ordinary names known to the runtime — they are not keyw
 
 #### `print`
 
-```ci
+```c
 void print(string value)
 ```
 
 Writes `value` to standard output. Only accepts `string`; use `toString` for other types.
 
-```ci
+```c
 print("x = " + toString(42) + "\n");
 ```
 
 #### `input`
 
-```ci
+```c
 string input()
 ```
 
 Reads one line from standard input. The trailing newline is stripped. Returns `""` on EOF or
 read error. Takes no arguments.
 
-```ci
+```c
 print("Enter your name: ");
 string name = input();
 print("Hello, " + name + "\n");
@@ -673,7 +673,7 @@ print("Hello, " + name + "\n");
 
 #### `len`
 
-```ci
+```c
 int len(string s)
 ```
 
@@ -682,13 +682,13 @@ For multi-byte UTF-8 strings, `len(s) >= glyphLen(s)`.
 
 #### `glyphLen`
 
-```ci
+```c
 int glyphLen(string s)
 ```
 
 Returns the number of Unicode code points after NFC normalisation.
 
-```ci
+```c
 string s = "élève";
 print(toString(len(s))      + "\n");  // 7  (bytes)
 print(toString(glyphLen(s)) + "\n");  // 5  (code points after NFC)
@@ -696,14 +696,14 @@ print(toString(glyphLen(s)) + "\n");  // 5  (code points after NFC)
 
 #### `glyphAt`
 
-```ci
+```c
 string glyphAt(string s, int index)
 ```
 
 Returns the Unicode code point at position `index` (zero-based NFC code-point index) as a
 single-code-point `string`. Out-of-bounds access is a runtime error.
 
-```ci
+```c
 string s = "hé!";
 print(glyphAt(s, 0) + "\n");  // h
 print(glyphAt(s, 1) + "\n");  // é
@@ -712,13 +712,13 @@ print(glyphAt(s, 2) + "\n");  // !
 
 #### `byteAt`
 
-```ci
+```c
 int byteAt(string s, int index)
 ```
 
 Returns the byte value (0–255) at byte position `index`. Out-of-bounds access is a runtime error.
 
-```ci
+```c
 print(toString(byteAt("A", 0))  + "\n");  // 65
 print(toString(byteAt("é", 0))  + "\n");  // 195  (0xC3, first byte of U+00E9)
 print(toString(byteAt("é", 1))  + "\n");  // 169  (0xA9, second byte)
@@ -729,7 +729,7 @@ print(toString(byteAt("é", 1))  + "\n");  // 169  (0xA9, second byte)
 `s[i]` returns the single byte at position `i` as a one-byte `string`. It is the string
 equivalent of `byteAt`, with `string` rather than `int` as the return type.
 
-```ci
+```c
 string s = "hello";
 for (int i = 0; i < len(s); i++) {
     print(s[i]);
@@ -751,34 +751,34 @@ Assignment through indexing (`s[i] = ...`) is forbidden; strings are immutable.
 
 #### `substr`
 
-```ci
+```c
 string substr(string s, int start, int length)
 ```
 
 Returns at most `length` **bytes** starting at byte offset `start`. If the slice would
 exceed the string length it is clamped silently.
 
-```ci
+```c
 print(substr("Hello, world", 7, 5) + "\n");  // world
 ```
 
 #### `indexOf`
 
-```ci
+```c
 int indexOf(string s, string needle)
 ```
 
 Returns the byte offset of the first occurrence of `needle` in `s`, or `-1` if not found.
 An empty `needle` always returns `0`.
 
-```ci
+```c
 print(toString(indexOf("banana", "na")) + "\n");  // 2
 print(toString(indexOf("banana", "xy")) + "\n");  // -1
 ```
 
 #### `contains` / `startsWith` / `endsWith`
 
-```ci
+```c
 bool contains(string s, string needle)
 bool startsWith(string s, string prefix)
 bool endsWith(string s, string suffix)
@@ -786,7 +786,7 @@ bool endsWith(string s, string suffix)
 
 All three are case-sensitive.
 
-```ci
+```c
 print(toString(contains("foobar", "oba"))    + "\n");  // true
 print(toString(startsWith("foobar", "foo"))  + "\n");  // true
 print(toString(endsWith("foobar", "bar"))    + "\n");  // true
@@ -794,14 +794,14 @@ print(toString(endsWith("foobar", "bar"))    + "\n");  // true
 
 #### `replace`
 
-```ci
+```c
 string replace(string s, string old, string new)
 ```
 
 Replaces **all** occurrences of `old` with `new`. Returns `s` unchanged if `old` is absent.
 An empty `old` is a runtime error.
 
-```ci
+```c
 print(replace("banana", "na", "X")          + "\n");  // baXX
 print(replace("hello world", "world", "Cimple") + "\n");  // hello Cimple
 print(replace("hello", "xyz", "abc")        + "\n");  // hello  (unchanged)
@@ -809,7 +809,7 @@ print(replace("hello", "xyz", "abc")        + "\n");  // hello  (unchanged)
 
 #### `format`
 
-```ci
+```c
 string format(string template, string[] args)
 ```
 
@@ -817,21 +817,21 @@ Substitutes `{}` markers in order with elements of `args`. The number of markers
 `count(args)` exactly; a mismatch is a runtime error. All arguments must be `string`; convert
 with `toString` beforehand.
 
-```ci
+```c
 string msg = format("Name: {}, age: {}.", ["Alice", toString(30)]);
 print(msg + "\n");  // Name: Alice, age: 30.
 ```
 
 #### `join`
 
-```ci
+```c
 string join(string[] array, string separator)
 ```
 
 Concatenates all elements of `array` with `separator` between consecutive elements.
 Returns `""` for an empty array. A single-element array returns that element.
 
-```ci
+```c
 string[] parts = ["one", "two", "three"];
 print(join(parts, ", ")  + "\n");  // one, two, three
 print(join(parts, "")    + "\n");  // onetwothree
@@ -840,14 +840,14 @@ print(join([], "-")      + "\n");  // (empty)
 
 #### `split`
 
-```ci
+```c
 string[] split(string value, string separator)
 ```
 
 Splits `value` on each occurrence of `separator`. Consecutive separators produce empty
 strings. An empty `separator` is a runtime error. An empty `value` returns `[""]`.
 
-```ci
+```c
 string[] parts = split("a,b,,c", ",");
 // ["a", "b", "", "c"]
 
@@ -857,19 +857,19 @@ string[] words = split("hello world", " ");
 
 #### `concat`
 
-```ci
+```c
 string concat(string[] array)
 ```
 
 Concatenates all elements with no separator. Equivalent to `join(array, "")`.
 
-```ci
+```c
 print(concat(["x", "=", "42"]) + "\n");  // x=42
 ```
 
 #### Whitespace helpers
 
-```ci
+```c
 string trim(string s)
 string trimLeft(string s)
 string trimRight(string s)
@@ -879,7 +879,7 @@ bool isBlank(string s)
 These helpers use the ASCII whitespace set: space, tab, carriage return, newline,
 vertical tab, and form feed.
 
-```ci
+```c
 print("[" + trim("  bonjour  ") + "]\n");      // [bonjour]
 print("[" + trimLeft("\t hello\n") + "]\n");   // [hello\n]
 print("[" + trimRight("\t hello\n") + "]\n");  // [\t hello]
@@ -888,7 +888,7 @@ print(toString(isBlank("\t\n")) + "\n");       // true
 
 #### Case helpers
 
-```ci
+```c
 string toUpper(string s)
 string toLower(string s)
 string capitalize(string s)
@@ -898,7 +898,7 @@ string capitalize(string s)
 - `toLower` lowercases every Unicode code point
 - `capitalize` uppercases only the first code point and leaves the remainder unchanged
 
-```ci
+```c
 print(toUpper("straße") + "\n");    // STRASSE
 print(toLower("HÉLLO") + "\n");     // héllo
 print(capitalize("été") + "\n");    // Été
@@ -906,7 +906,7 @@ print(capitalize("été") + "\n");    // Été
 
 #### Padding and repetition
 
-```ci
+```c
 string padLeft(string s, int width, string pad)
 string padRight(string s, int width, string pad)
 string repeat(string s, int n)
@@ -917,7 +917,7 @@ string repeat(string s, int n)
 - if `pad == ""`, padding returns `s` unchanged
 - negative `width` or negative repeat counts are runtime errors
 
-```ci
+```c
 print("[" + padLeft("42", 6, " ") + "]\n");   // [    42]
 print("[" + padRight("hi", 5, "+-") + "]\n"); // [hi+-+]
 print(repeat("-", 5) + "\n");                 // -----
@@ -925,7 +925,7 @@ print(repeat("-", 5) + "\n");                 // -----
 
 #### Reverse search and counting
 
-```ci
+```c
 int lastIndexOf(string s, string needle)
 int countOccurrences(string s, string needle)
 ```
@@ -934,7 +934,7 @@ int countOccurrences(string s, string needle)
 - `countOccurrences` counts non-overlapping matches
 - `countOccurrences(..., "")` is a runtime error
 
-```ci
+```c
 print(toString(lastIndexOf("abcabc", "abc")) + "\n");     // 3
 print(toString(countOccurrences("aaaa", "aa")) + "\n");   // 2
 ```
@@ -948,14 +948,14 @@ types and the correct overload is resolved statically by the semantic analyser.
 
 #### `toString`
 
-```ci
+```c
 string toString(int value)
 string toString(float value)
 string toString(bool value)
 string toString(byte value)
 ```
 
-```ci
+```c
 print(toString(42)              + "\n");  // 42
 print(toString(3.14)            + "\n");  // 3.14
 print(toString(true)            + "\n");  // true
@@ -964,7 +964,7 @@ print(toString(intToByte(65))   + "\n");  // 65   (decimal, 0–255)
 
 #### `toInt`
 
-```ci
+```c
 int toInt(float value)
 int toInt(string value)
 ```
@@ -972,7 +972,7 @@ int toInt(string value)
 - `toInt(float)` truncates toward zero: `toInt(3.9)` → `3`, `toInt(-2.7)` → `-2`.
 - `toInt(string)` returns `0` for unparseable input.
 
-```ci
+```c
 print(toString(toInt(3.9))    + "\n");  // 3
 print(toString(toInt("-12"))  + "\n");  // -12
 print(toString(toInt("bad"))  + "\n");  // 0
@@ -980,27 +980,27 @@ print(toString(toInt("bad"))  + "\n");  // 0
 
 #### `toFloat`
 
-```ci
+```c
 float toFloat(int value)
 float toFloat(string value)
 ```
 
 `toFloat(string)` returns `NaN` for unparseable input.
 
-```ci
+```c
 print(toString(toFloat(5))      + "\n");  // 5
 print(toString(toFloat("1.5"))  + "\n");  // 1.5
 ```
 
 #### `toBool`
 
-```ci
+```c
 bool toBool(string value)
 ```
 
 Accepts `"true"`, `"false"`, `"1"`, `"0"`. Returns `false` for unrecognised input.
 
-```ci
+```c
 print(toString(toBool("true"))  + "\n");  // true
 print(toString(toBool("0"))     + "\n");  // false
 ```
@@ -1009,7 +1009,7 @@ print(toString(toBool("0"))     + "\n");  // false
 
 ### 8.4 String validation predicates
 
-```ci
+```c
 bool isIntString(string value)
 bool isFloatString(string value)
 bool isBoolString(string value)
@@ -1018,7 +1018,7 @@ bool isBoolString(string value)
 Return `true` if `value` is a valid representation of the respective type. Useful for safe
 parsing before calling `toInt` / `toFloat` / `toBool`.
 
-```ci
+```c
 if (isIntString(s)) {
     int n = toInt(s);
     // use n
@@ -1029,7 +1029,7 @@ if (isIntString(s)) {
 
 ### 8.5 Float predicates
 
-```ci
+```c
 bool isNaN(float value)
 bool isInfinite(float value)
 bool isFinite(float value)
@@ -1037,7 +1037,7 @@ bool isPositiveInfinity(float value)
 bool isNegativeInfinity(float value)
 ```
 
-```ci
+```c
 float x = toFloat("not-a-number");
 if (isNaN(x)) {
     print("parse failed\n");
@@ -1076,7 +1076,7 @@ All trigonometric functions take and return angles in **radians**.
 | `atan` | `float atan(float x)` | arc tangent |
 | `atan2` | `float atan2(float y, float x)` | two-argument arc tangent |
 
-```ci
+```c
 void main() {
     float angle = M_PI / 4.0;
     print(toString(sin(angle))      + "\n");  // ~0.7071
@@ -1104,7 +1104,7 @@ void main() {
 | `safeDivInt` | `int safeDivInt(int a, int b, int fallback)` | `a/b`, or `fallback` when `b==0` |
 | `safeModInt` | `int safeModInt(int a, int b, int fallback)` | `a%b`, or `fallback` when `b==0` |
 
-```ci
+```c
 print(toString(absInt(-7))           + "\n");  // 7
 print(toString(clampInt(15, 0, 10))  + "\n");  // 10
 print(toString(safeDivInt(10, 0, -1))+ "\n");  // -1
@@ -1132,7 +1132,7 @@ These polymorphic intrinsics work with any element type (`T` stands for `int`, `
 `a[i]` and `arrayGet(a, i)` are interchangeable for reads.
 `a[i] = v` and `arraySet(a, i, v)` are interchangeable for writes.
 
-```ci
+```c
 void main() {
     int[] xs = [1, 2, 3];
     arrayPush(xs, 4);           // [1, 2, 3, 4]
@@ -1150,7 +1150,7 @@ current length, and the source location.
 
 ### 8.9 File I/O
 
-```ci
+```c
 string   readFile(string path)
 void     writeFile(string path, string content)
 void     appendFile(string path, string content)
@@ -1167,7 +1167,7 @@ void     writeLines(string path, string[] lines)
 - `readLines` returns each line as a `string[]` element (newlines stripped).
 - `writeLines` writes each element followed by `\n`.
 
-```ci
+```c
 void main() {
     writeFile("note.txt", "First line\n");
     appendFile("note.txt", "Second line\n");
@@ -1182,7 +1182,7 @@ void main() {
 
 ### 8.10 External commands
 
-```ci
+```c
 ExecResult exec(string[] command, string[] env)
 int        execStatus(ExecResult result)
 string     execStdout(ExecResult result)
@@ -1196,7 +1196,7 @@ variables in `"NAME=VALUE"` format.
 A non-zero exit code is a valid result, not a Cimple runtime error. A runtime error is raised
 only if the executable cannot be found or launched.
 
-```ci
+```c
 void main() {
     ExecResult r = exec(["git", "log", "--oneline", "-5"], []);
     if (execStatus(r) == 0) {
@@ -1214,7 +1214,7 @@ void main() {
 
 Passing environment variables to the child process:
 
-```ci
+```c
 ExecResult r = exec(["python3", "script.py"], ["DEBUG=1", "LANG=en_US.UTF-8"]);
 ```
 
@@ -1224,7 +1224,7 @@ ExecResult r = exec(["python3", "script.py"], ["DEBUG=1", "LANG=en_US.UTF-8"]);
 
 ### 8.11 Environment variables
 
-```ci
+```c
 string getEnv(string name, string fallback)
 ```
 
@@ -1232,7 +1232,7 @@ Returns the value of environment variable `name`, or `fallback` if it is not set
 A variable set to an empty string returns `""`, not the fallback — the variable exists,
 it is just empty.
 
-```ci
+```c
 string home  = getEnv("HOME", "/tmp");
 string port  = getEnv("PORT", "8080");
 string debug = getEnv("DEBUG", "0");
@@ -1252,7 +1252,7 @@ On WebAssembly, `getEnv` always returns `fallback`.
 All functions operate in **UTC**. Time is represented as **epoch milliseconds** (`int64_t`):
 milliseconds elapsed since 1970-01-01 00:00:00 UTC.
 
-```ci
+```c
 int now()
 int epochToYear(int epochMs)
 int epochToMonth(int epochMs)        // 1 = January, 12 = December
@@ -1290,7 +1290,7 @@ match a token is copied verbatim.
   belong to the previous or next year's week.
 - **`ISO`** — returns `"invalid"` if the year of the epoch falls outside the range `0`–`9999`.
 
-```ci
+```c
 void main() {
     int ts = makeEpoch(2025, 3, 11, 14, 32, 7);
     print(formatDate(ts, "YYYY-MM-DD")        + "\n");  // 2025-03-11
@@ -1317,7 +1317,7 @@ To get the current time in seconds: `now() / 1000`.
 
 #### `cwd`
 
-```ci
+```c
 string cwd()
 ```
 
@@ -1325,7 +1325,7 @@ Returns the current working directory as an absolute path.
 
 #### `tempPath`
 
-```ci
+```c
 string tempPath()
 ```
 
@@ -1333,7 +1333,7 @@ Returns a unique path string that does not currently exist on disk. It does **no
 the file. Two successive calls always return different paths. The path is located in the
 system's temporary directory (`$TMPDIR` on POSIX, `%TEMP%` on Windows).
 
-```ci
+```c
 string tmp = tempPath();
 writeFile(tmp, "scratch data");
 // ... use tmp ...
@@ -1342,7 +1342,7 @@ remove(tmp);
 
 #### `remove`
 
-```ci
+```c
 void remove(string path)
 ```
 
@@ -1352,7 +1352,7 @@ Deletes the file at `path`. Both of the following are **runtime errors**:
 
 #### `chmod`
 
-```ci
+```c
 void chmod(string path, int mode)
 ```
 
@@ -1360,13 +1360,13 @@ Changes the permission bits of `path` to `mode` (octal integer, e.g. `0o644`). A
 on **POSIX platforms only** (macOS, Linux). Raises a runtime error on Windows and
 WebAssembly with the message `chmod: not supported on this platform`.
 
-```ci
+```c
 chmod("script.sh", 0x1ED);  // 0755 octal — owner rwx, group rx, other rx
 ```
 
 #### `copy`
 
-```ci
+```c
 void copy(string src, string dst)
 ```
 
@@ -1378,7 +1378,7 @@ Runtime errors:
 
 #### `move`
 
-```ci
+```c
 void move(string src, string dst)
 ```
 
@@ -1390,7 +1390,7 @@ overwritten. Runtime errors:
 
 #### `isReadable` / `isWritable` / `isExecutable`
 
-```ci
+```c
 bool isReadable(string path)
 bool isWritable(string path)
 bool isExecutable(string path)
@@ -1401,7 +1401,7 @@ Return `true` if the current process has the corresponding permission on `path`.
 
 #### `isDirectory`
 
-```ci
+```c
 bool isDirectory(string path)
 ```
 
@@ -1410,7 +1410,7 @@ path does not exist or names a regular file).
 
 #### Path decomposition helpers
 
-```ci
+```c
 string dirname(string path)    // parent directory
 string basename(string path)   // file name with extension
 string filename(string path)   // file name without extension
@@ -1428,7 +1428,7 @@ string extension(string path)  // extension without leading dot
 | `extension(".gitignore")` | `""` | leading-dot file has no extension |
 | `extension("makefile")` | `""` | no extension |
 
-```ci
+```c
 void main() {
     string src = tempPath();
     string dst = tempPath();
@@ -1453,7 +1453,7 @@ void main() {
 
 ### 8.14 Binary I/O and `byte`
 
-```ci
+```c
 int byteToInt(byte b)
 byte intToByte(int n)
 byte[] stringToBytes(string s)
@@ -1482,7 +1482,7 @@ Rules:
 - `bytesToInt()` requires exactly `INT_SIZE` bytes
 - `bytesToFloat()` requires exactly `FLOAT_SIZE` bytes
 
-```ci
+```c
 void main(string[] args) {
     byte[] raw = [0x48, 0x69];
     print(bytesToString(raw) + "\n");           // Hi
@@ -1503,7 +1503,7 @@ void main(string[] args) {
 
 Use top-level imports to split a program across multiple files:
 
-```ci
+```c
 import "math/add.ci";
 import "utils/strings.ci";
 ```
@@ -1525,7 +1525,7 @@ Rules:
 - imported files may not define `main`
 - circular imports are semantic errors
 
-```ci
+```c
 // main.ci
 import "math/add.ci";
 
@@ -1534,7 +1534,7 @@ void main(string[] args) {
 }
 ```
 
-```ci
+```c
 // math/add.ci
 import "more.ci";      // resolved relative to math/, not to the project root
 
@@ -1543,7 +1543,7 @@ int addThree(int n) {
 }
 ```
 
-```ci
+```c
 // math/more.ci
 int addOne(int n) { return n + 1; }
 ```
@@ -1583,7 +1583,7 @@ These identifiers are reserved; they cannot be redeclared or assigned.
 | `M_LN2` | 0.6931471805599453 | ln 2 |
 | `M_LN10` | 2.302585092994046 | ln 10 |
 
-```ci
+```c
 void main() {
     print("π = " + toString(M_PI) + "\n");
 
@@ -1612,7 +1612,7 @@ Cimple uses **lexical (block) scoping**.
 - All function declarations are globally visible; a function may be called before its textual
   definition.
 
-```ci
+```c
 int x = 1;      // global
 
 void demo() {
@@ -1702,7 +1702,7 @@ The implementation reports four categories of error, each with a source location
 
 ### 14.1 FizzBuzz
 
-```ci
+```c
 void main() {
     for (int i = 1; i <= 30; i++) {
         if (i % 15 == 0) {
@@ -1720,7 +1720,7 @@ void main() {
 
 ### 14.2 Recursive Fibonacci
 
-```ci
+```c
 int fibonacci(int n) {
     if (n <= 1) { return n; }
     return fibonacci(n - 1) + fibonacci(n - 2);
@@ -1735,7 +1735,7 @@ void main(string[] args) {
 
 ### 14.3 Count words in a line
 
-```ci
+```c
 void main() {
     print("Enter a sentence: ");
     string line = input();
@@ -1746,7 +1746,7 @@ void main() {
 
 ### 14.4 Sum an array with a helper function
 
-```ci
+```c
 int sumArray(int[] xs) {
     int total = 0;
     for (int i = 0; i < count(xs); i++) {
@@ -1763,7 +1763,7 @@ void main() {
 
 ### 14.5 File processing
 
-```ci
+```c
 void main(string[] args) {
     if (count(args) < 1) {
         print("usage: prog <file>\n");
@@ -1784,7 +1784,7 @@ void main(string[] args) {
 
 ### 14.6 Running an external command
 
-```ci
+```c
 void main() {
     ExecResult r = exec(["git", "rev-parse", "--short", "HEAD"], []);
     if (execStatus(r) != 0) {
@@ -1798,7 +1798,7 @@ void main() {
 
 ### 14.7 Formatted timestamp
 
-```ci
+```c
 void main() {
     int ts = now();
     string stamp = formatDate(ts, "YYYY-MM-DD HH:mm:ss");
@@ -1808,7 +1808,7 @@ void main() {
 
 ### 14.8 Bitwise permission flags
 
-```ci
+```c
 int FLAG_READ    = 0x1;
 int FLAG_WRITE   = 0x2;
 int FLAG_EXECUTE = 0x4;
@@ -1826,7 +1826,7 @@ void main() {
 
 ### 14.9 CSV line parser
 
-```ci
+```c
 string[] parseCSV(string line) {
     string[] fields = split(line, ",");
     for (int i = 0; i < count(fields); i++) {
