@@ -1,7 +1,3 @@
-<img src="logo_cimple_full.svg" height="150" title="Cimple" alt="Cimple" />
-
----
-
 # Cimple — spécification version 1.0
 
 > **Version : 1.0**
@@ -163,11 +159,93 @@ Cimple doit fonctionner sans modification sur les plateformes suivantes :
 
 ## 5. Modèle source
 
-### 5.1 Fichier source
+### 5.1 Fichier source et imports
 
-Un programme Cimple est contenu dans un seul fichier source.
+Un programme Cimple est défini par un **fichier racine** (le fichier passé à `cimple run` ou `cimple check`). Ce fichier racine peut importer des fichiers `.ci` supplémentaires via la directive `import`. Les fichiers importés peuvent eux-mêmes importer d'autres fichiers. L'ensemble forme un **graphe acyclique dirigé de fichiers sources** ; l'exécution reste un programme unique sans notion de module ni d'espace de noms.
 
-### 5.2 Point d'entrée obligatoire
+### 5.2 Directive `import`
+
+#### Syntaxe
+
+```c
+import "utils.ci";
+import "math/vectors.ci";
+```
+
+#### Règles normatives
+
+- `import` est un **mot-clé du langage**, reconnu par le lexer et la grammaire ;
+- une directive `import` doit apparaître **avant toute déclaration** de fonction, variable ou autre `import` dans le fichier courant — en d'autres termes, toutes les directives `import` d'un fichier doivent être groupées en tête, avant le premier `top_level_item` non-import ;
+- le chemin est une **chaîne littérale** `"..."` ; les variables et expressions ne sont pas autorisées ;
+- le chemin est résolu **relativement au répertoire du fichier qui importe** ; les chemins absolus sont autorisés mais déconseillés ;
+- le chemin doit se terminer par l'extension `.ci` ; toute autre extension est une erreur sémantique ;
+- les séparateurs de chemin `/` et `\` sont tous deux acceptés ; `..` et `.` sont résolus normalement ;
+- `import` est suivi d'un `;` obligatoire ;
+- un fichier ne peut être importé **qu'une seule fois** dans l'ensemble du programme (déduplication par chemin absolu résolu) ; les imports redondants sont silencieusement ignorés sans erreur ;
+- les inclusions **circulaires** sont une **erreur sémantique** fatale ; exemple : `a.ci` importe `b.ci` qui importe `a.ci` ;
+- la profondeur d'imbrication maximale est **32 niveaux** ; toute chaîne d'imports plus profonde est une erreur sémantique ;
+- `import` n'est autorisé **qu'au niveau supérieur** (`top_level_item`) ; un `import` à l'intérieur d'une fonction ou d'un bloc est une erreur syntaxique.
+
+#### Sémantique de fusion
+
+Le compilateur résout les imports **avant l'analyse sémantique**, en produisant un AST fusionné unique. L'ordre de résolution est :
+
+1. le fichier courant est lu et ses `import` sont collectés dans l'ordre d'apparition ;
+2. chaque fichier importé est résolu récursivement selon le même algorithme ;
+3. les déclarations des fichiers importés sont intégrées dans la portée globale **avant** les déclarations du fichier qui importe ;
+4. si un fichier est référencé plusieurs fois dans le graphe, il n'est traité qu'une fois (déduplication par chemin absolu).
+
+L'ordre effectif des déclarations dans l'AST fusionné est donc : imports résolus récursivement en profondeur d'abord, puis déclarations du fichier courant.
+
+#### Portée et visibilité
+
+- toutes les fonctions et variables globales déclarées dans un fichier importé sont **visibles dans l'ensemble du programme**, y compris dans le fichier racine et dans les autres fichiers importés ;
+- il n'existe pas d'espace de noms : les noms sont globaux ; toute **redéfinition de fonction ou de variable globale** est une **erreur sémantique** (décision normative 2 étendue) ;
+- les fichiers importés ne doivent **pas** déclarer `main` ; tout fichier importé contenant une définition de `main` produit une **erreur sémantique** ;
+- `main` ne peut être défini que dans le fichier racine.
+
+#### Exemple
+
+```
+project/
+  main.ci
+  utils/
+    strings.ci
+    math.ci
+```
+
+`main.ci` :
+```c
+import "utils/strings.ci";
+import "utils/math.ci";
+
+void main() {
+    string result = repeat("abc", 3);
+    float area = circleArea(5.0);
+    print(result + "\n");
+    print(toString(area) + "\n");
+}
+```
+
+`utils/strings.ci` :
+```c
+string repeat(string s, int n) {
+    string result = "";
+    for (int i = 0; i < n; i++) {
+        result = result + s;
+    }
+    return result;
+}
+```
+
+`utils/math.ci` :
+```c
+float circleArea(float r) {
+    return M_PI * r * r;
+}
+```
+
+### 5.3 Point d'entrée obligatoire
 
 Un programme exécutable doit définir une fonction spéciale `main`. Quatre formes sont autorisées :
 
@@ -220,16 +298,20 @@ Cimple inclut les types scalaires suivants :
 - `float`
 - `bool`
 - `string`
+- `byte`
 - `void`
+
+> **Note d'implémentation — `int` :** le type `int` de Cimple **doit** être implémenté en `int64_t` (C99 `<stdint.h>`). Cette contrainte est imposée par la fonction `now()` qui retourne une epoch Unix en **millisecondes** : la valeur courante (~1,7 × 10¹² ms) dépasse la capacité d'un `int32_t` (max ~2,1 × 10⁹), et un `int32_t` déborderait définitivement en janvier 2038 (problème Y2K38). Tout implémenteur qui choisirait `int32_t` obtiendrait un comportement incorrect pour `now()` et toutes les fonctions de date. En conséquence, `INT_SIZE` vaut `8` sur toutes les plateformes cibles de Cimple.
 
 ### 6.2 Types tableaux
 
-Cimple inclut quatre types tableaux homogènes, un par type scalaire :
+Cimple inclut cinq types tableaux homogènes, un par type scalaire non-`void` :
 
 - `int[]`
 - `float[]`
 - `bool[]`
 - `string[]`
+- `byte[]`
 
 Un type tableau est toujours associé à un type d'élément fixe. Il est interdit de mélanger les types d'éléments au sein d'un même tableau. `void[]` n'existe pas.
 
@@ -350,6 +432,77 @@ Règles normatives :
 - `toBool(string value)` accepte au minimum `"true"`, `"false"`, `"1"`, `"0"` et retourne `false` si l'entrée n'est pas reconnue ;
 - appeler une fonction de conversion avec un type non supporté (ex. `toInt(bool)`) est une **erreur sémantique** ;
 - la résolution est effectuée statiquement ; il n'y a aucune dispatch dynamique.
+
+---
+
+### 6.6 Sémantique de `byte`
+
+`byte` est un type scalaire représentant un entier **non signé sur 8 bits**, dont les valeurs valides sont comprises entre `0` et `255` inclus.
+
+**Littéraux et affectation :**
+
+- un littéral entier dans l'intervalle `[0, 255]` peut être affecté directement à une variable `byte` sans conversion explicite : `byte b = 0xFF;` est valide ; `byte c = 256;` est une **erreur sémantique** (littéral hors plage) ;
+- l'affectation d'une variable ou expression de type `int` à un `byte` est une **erreur sémantique** ; la conversion explicite `intToByte()` est requise.
+
+**Opérateurs arithmétiques `+ - * / %` :**
+
+- une expression `byte op byte` ou `byte op int` ou `int op byte` produit un résultat de type **`int`** ;
+- il n'y a pas d'overflow ni de wrapping : le résultat est un entier signé standard ;
+- `byte(200) + byte(100)` → `int(300)` ; `intToByte(byte(200) + byte(100))` → `byte(255)` (clamp).
+
+**Opérateurs bitwise `& | ^ ~` :**
+
+- une expression `byte & byte`, `byte | byte`, `byte ^ byte` produit un résultat de type **`byte`** ; le résultat est toujours dans `[0, 255]` par nature ;
+- `~byte` (complément à un) produit un `byte` : `~byte(0x0F)` → `byte(0xF0)` ;
+- `byte & int`, `byte | int`, `byte ^ int` produit un **`int`**.
+
+**Opérateurs de décalage `<< >>` :**
+
+- `byte << int` et `byte >> int` produisent un **`int`** ; le résultat peut dépasser 255.
+
+**Comparaisons `== != < <= > >=` :**
+
+- comparaisons valides entre deux `byte`, ou entre `byte` et `int` (promotion implicite de `byte` vers `int` pour la comparaison) ; résultat `bool`.
+
+**Opérateurs non autorisés sur `byte` :**
+
+- `&&`, `||`, `!` — non définis sur `byte` ; erreur sémantique.
+
+**Conversion :**
+
+- `byteToInt(byte b)` → `int` : retourne la valeur entière de `b` (0–255) ;
+- `intToByte(int n)` → `byte` : clamp — si `n < 0` retourne `byte(0)`, si `n > 255` retourne `byte(255)`.
+
+**`byte[]` :**
+
+- tableau dynamique et homogène de `byte`, passé par référence comme les autres tableaux ;
+- `count(b[])` retourne le nombre d'éléments, comme pour tous les tableaux ;
+- `b[i]` en lecture retourne un `byte` ; `b[i] = v` en écriture accepte un `byte` ou un littéral entier `[0,255]` ; affecter un `int` variable nécessite `intToByte()` ;
+- les littéraux `byte[]` utilisent la même syntaxe que les autres tableaux : `byte[] px = [255, 0, 128, 255];` ; chaque élément doit être un littéral dans `[0,255]` ou une expression de type `byte`.
+
+```c
+byte r = 0xFF;
+byte g = intToByte(128);
+byte b = 0x00;
+byte a = 255;
+
+byte[] pixel = [r, g, b, a];
+
+// Arithmétique : résultat int
+int sum = r + g;              // int(383)
+byte clamped = intToByte(r + g);  // byte(255)
+
+// Bitwise : résultat byte
+byte masked = r & 0x0F;       // byte(0x0F)
+byte flipped = ~b;            // byte(0xFF)
+byte combined = r | g;        // byte(0xFF)
+
+// Comparaison
+bool bright = r > 200;        // true
+
+// Décalage : résultat int
+int shifted = r << 2;         // int(1020)
+```
 
 ---
 
@@ -600,15 +753,27 @@ string glyphAt(string value, int index);
 int byteAt(string value, int index);
 string input();
 string substr(string s, int start, int length);
-int indexOf(string s, string needle);
-bool contains(string s, string needle);
-bool startsWith(string s, string prefix);
-bool endsWith(string s, string suffix);
+int    indexOf(string s, string needle);
+bool   contains(string s, string needle);
+bool   startsWith(string s, string prefix);
+bool   endsWith(string s, string suffix);
 string replace(string s, string old, string new);
 string format(string template, string[] args);
 string join(string[] array, string separator);
 string[] split(string value, string separator);
 string concat(string[] array);
+string trim(string s);
+string trimLeft(string s);
+string trimRight(string s);
+string toUpper(string s);
+string toLower(string s);
+string capitalize(string s);
+string padLeft(string s, int width, string pad);
+string padRight(string s, int width, string pad);
+string repeat(string s, int n);
+int    lastIndexOf(string s, string needle);
+int    countOccurrences(string s, string needle);
+bool   isBlank(string s);
 
 // Conversions intrinsèques — résolution statique par type de l'argument
 string toString(int value);
@@ -670,6 +835,21 @@ void    arrayRemove(T[] array, int index);
 T       arrayGet(T[] array, int index);
 void    arraySet(T[] array, int index, T value);
 
+// Entrées/sorties fichiers binaires
+byte[]   readFileBytes(string path);
+void     writeFileBytes(string path, byte[] data);
+void     appendFileBytes(string path, byte[] data);
+
+// Conversions byte
+int      byteToInt(byte b);
+byte     intToByte(int n);
+byte[]   stringToBytes(string s);
+string   bytesToString(byte[] data);
+byte[]   intToBytes(int n);
+byte[]   floatToBytes(float f);
+int      bytesToInt(byte[] data);
+float    bytesToFloat(byte[] data);
+
 // Entrées/sorties fichiers
 string   readFile(string path);
 void     writeFile(string path, string content);
@@ -677,6 +857,20 @@ void     appendFile(string path, string content);
 bool     fileExists(string path);
 string[] readLines(string path);
 void     writeLines(string path, string[] lines);
+string   tempPath();
+void     remove(string path);
+void     chmod(string path, int mode);
+string   cwd();
+void     copy(string src, string dst);
+void     move(string src, string dst);
+bool     isReadable(string path);
+bool     isWritable(string path);
+bool     isExecutable(string path);
+bool     isDirectory(string path);
+string   dirname(string path);
+string   basename(string path);
+string   filename(string path);
+string   extension(string path);
 
 // Exécution de commandes externes
 ExecResult exec(string[] command, string[] env);
@@ -1012,6 +1206,245 @@ string row = format("{} + {} = {}", data);
 // string bad = format("x={}, y={}", [toString(x)]);  // erreur runtime
 ```
 
+#### `trim`
+
+```c
+string trim(string s)
+```
+
+Retourne une copie de `s` dont les caractères d'espacement en début et en fin ont été supprimés. Les caractères supprimés sont : espace (`U+0020`), tabulation (`\t`), retour chariot (`\r`), saut de ligne (`\n`), tabulation verticale (`\v`), saut de page (`\f`).
+
+Règles normatives :
+
+- si `s` est entièrement composée de caractères d'espacement, retourne `""` ;
+- si `s` ne contient aucun caractère d'espacement en début ni en fin, retourne `s` inchangée ;
+- `s` doit être de type `string` ; tout autre type est une erreur sémantique.
+
+```c
+trim("  bonjour  ")      // → "bonjour"
+trim("\t hello\n")       // → "hello"
+trim("rien à faire")     // → "rien à faire"
+trim("   ")              // → ""
+```
+
+#### `trimLeft`
+
+```c
+string trimLeft(string s)
+```
+
+Identique à `trim`, mais supprime uniquement les caractères d'espacement en **début** de chaîne.
+
+```c
+trimLeft("  bonjour  ")  // → "bonjour  "
+trimLeft("\t hello\n")   // → "hello\n"
+```
+
+#### `trimRight`
+
+```c
+string trimRight(string s)
+```
+
+Identique à `trim`, mais supprime uniquement les caractères d'espacement en **fin** de chaîne.
+
+```c
+trimRight("  bonjour  ")  // → "  bonjour"
+trimRight("\t hello\n")   // → "\t hello"
+```
+
+#### `toUpper`
+
+```c
+string toUpper(string s)
+```
+
+Retourne une copie de `s` dans laquelle chaque point de code Unicode en minuscule a été converti en sa forme majuscule, selon les mappings de conversion de casse Unicode standard, indépendamment de la locale du système.
+
+Règles normatives :
+
+- la conversion est **locale-agnostique** : les mappings Unicode standard sont utilisés sans tenir compte de la locale du système ;
+- les caractères sans forme majuscule sont copiés inchangés ;
+- la conversion peut modifier la longueur en octets de la chaîne : `toUpper("ß")` → `"SS"` (1 point de code → 2) ; le résultat peut donc avoir un `len` supérieur à celui de l'entrée ;
+- `s` doit être de type `string` ; tout autre type est une erreur sémantique.
+
+```c
+toUpper("bonjour")    // → "BONJOUR"
+toUpper("héllo")      // → "HÉLLO"
+toUpper("straße")     // → "STRASSE"   (ß → SS)
+toUpper("DÉJÀ")       // → "DÉJÀ"      (inchangé)
+```
+
+#### `toLower`
+
+```c
+string toLower(string s)
+```
+
+Retourne une copie de `s` dans laquelle chaque point de code Unicode en majuscule a été converti en sa forme minuscule, selon les mappings Unicode standard, indépendamment de la locale du système.
+
+Règles normatives :
+
+- la conversion est **locale-agnostique** ;
+- les caractères sans forme minuscule sont copiés inchangés ;
+- `s` doit être de type `string` ; tout autre type est une erreur sémantique.
+
+```c
+toLower("BONJOUR")    // → "bonjour"
+toLower("HÉLLO")      // → "héllo"
+toLower("déjà")       // → "déjà"      (inchangé)
+```
+
+#### `capitalize`
+
+```c
+string capitalize(string s)
+```
+
+Retourne une copie de `s` dont le premier point de code Unicode a été converti en majuscule selon les mappings Unicode standard. Le reste de la chaîne est copié **inchangé**.
+
+Règles normatives :
+
+- seul le **premier point de code** est affecté ; les suivants ne sont pas modifiés ;
+- si `s` est vide, retourne `""` ;
+- si le premier point de code n'a pas de forme majuscule, retourne `s` inchangée ;
+- `s` doit être de type `string` ; tout autre type est une erreur sémantique.
+
+```c
+capitalize("bonjour")   // → "Bonjour"
+capitalize("hELLO")     // → "HELLO"    (H majuscule, ELLO inchangé)
+capitalize("été")       // → "Été"
+capitalize("")          // → ""
+```
+
+#### `padLeft`
+
+```c
+string padLeft(string s, int width, string pad)
+```
+
+Retourne une chaîne de largeur `width` glyphes en ajoutant le caractère (ou la séquence) `pad` à **gauche** de `s` jusqu'à atteindre la largeur souhaitée. Si `glyphLen(s) >= width`, retourne `s` inchangée.
+
+Règles normatives :
+
+- `width` est mesuré en **glyphes** (points de code NFC, cohérent avec `glyphLen`) ;
+- si `pad` est `""`, retourne `s` inchangée ;
+- si `pad` contient plusieurs glyphes, il est répété puis tronqué à gauche pour tomber exactement à `width` glyphes (comportement PHP `str_pad`) ;
+- si `glyphLen(s) >= width`, retourne `s` inchangée sans erreur ;
+- `width` doit être ≥ 0 ; une valeur négative est une **erreur runtime** ;
+- tous les arguments doivent respecter leurs types ; tout autre type est une erreur sémantique.
+
+```c
+padLeft("42", 6, " ")     // → "    42"
+padLeft("hi", 6, "-")     // → "----hi"
+padLeft("hello", 3, " ")  // → "hello"   (déjà plus long)
+padLeft("x", 5, "ab")     // → "ababx"   (pad "ab" répété puis tronqué)
+padLeft("x", 6, "ab")     // → "ababax"  (tronqué pour tomber pile)
+```
+
+#### `padRight`
+
+```c
+string padRight(string s, int width, string pad)
+```
+
+Identique à `padLeft`, mais le padding est ajouté à **droite** de `s`.
+
+Règles normatives : identiques à `padLeft`, mutatis mutandis.
+
+```c
+padRight("hi", 6, "-")    // → "hi----"
+padRight("hi", 6, "+-")   // → "hi+-+-"  (pad répété)
+padRight("hi", 5, "+-")   // → "hi+-+"   (tronqué à droite)
+padRight("hello", 3, " ") // → "hello"   (déjà plus long)
+```
+
+#### `repeat`
+
+```c
+string repeat(string s, int n)
+```
+
+Retourne une chaîne constituée de `n` répétitions de `s` bout à bout.
+
+Règles normatives :
+
+- si `n == 0`, retourne `""` ;
+- si `n < 0`, c'est une **erreur runtime** ;
+- si `s` est `""`, retourne `""` quel que soit `n` ;
+- `s` doit être de type `string` et `n` de type `int` ; tout autre type est une erreur sémantique.
+
+```c
+repeat("ab", 3)    // → "ababab"
+repeat("-", 5)     // → "-----"
+repeat("", 10)     // → ""
+repeat("x", 0)     // → ""
+```
+
+#### `lastIndexOf`
+
+```c
+int lastIndexOf(string s, string needle)
+```
+
+Retourne la position en octets de la **dernière** occurrence de `needle` dans `s`. Retourne `-1` si `needle` est absente.
+
+Règles normatives :
+
+- la position retournée est un index d'octet (base 0), cohérent avec `indexOf` ;
+- si `needle` est `""`, retourne `len(s)` (cohérent avec `indexOf("", "")` → `0`) ;
+- si `needle` n'apparaît pas dans `s`, retourne `-1` ;
+- les deux arguments doivent être de type `string` ; tout autre type est une erreur sémantique.
+
+```c
+lastIndexOf("abcabc", "b")   // → 4
+lastIndexOf("abcabc", "x")   // → -1
+lastIndexOf("abcabc", "abc") // → 3
+lastIndexOf("hello", "l")    // → 3
+```
+
+#### `countOccurrences`
+
+```c
+int countOccurrences(string s, string needle)
+```
+
+Retourne le nombre d'occurrences **non chevauchantes** de `needle` dans `s`.
+
+Règles normatives :
+
+- les occurrences sont comptées de gauche à droite sans chevauchement : après une correspondance, la recherche reprend après la fin de l'occurrence trouvée ;
+- si `needle` est `""`, c'est une **erreur runtime** (cohérent avec `replace`) ;
+- si `needle` n'apparaît pas, retourne `0` ;
+- les deux arguments doivent être de type `string` ; tout autre type est une erreur sémantique.
+
+```c
+countOccurrences("abcabc", "abc")  // → 2
+countOccurrences("aaaa", "aa")     // → 2   (non chevauchant : "aa|aa")
+countOccurrences("hello", "x")     // → 0
+countOccurrences("aaa", "a")       // → 3
+```
+
+#### `isBlank`
+
+```c
+bool isBlank(string s)
+```
+
+Retourne `true` si `s` est vide ou ne contient que des caractères d'espacement (espace, `\t`, `\r`, `\n`, `\v`, `\f`), `false` sinon. Équivalent à `trim(s) == ""`.
+
+Règles normatives :
+
+- `s` doit être de type `string` ; tout autre type est une erreur sémantique ;
+- ne lève jamais d'erreur runtime.
+
+```c
+isBlank("")         // → true
+isBlank("   ")      // → true
+isBlank("\t\n")     // → true
+isBlank("  x  ")   // → false
+```
+
 ### 9.4 Conversions depuis `string`
 
 - `toInt(string value)` retourne `0` si la chaîne n'est pas un entier valide ;
@@ -1277,7 +1710,236 @@ Règles :
 - le type de `value` doit être identique au type d'élément du tableau ; tout type incompatible est une erreur sémantique ;
 - un indice hors bornes est une **erreur runtime** avec message clair.
 
-### 9.9 Entrées/sorties fichiers
+### 9.9 Entrées/sorties binaires et conversions `byte`
+
+#### `readFileBytes`
+
+```c
+byte[] readFileBytes(string path)
+```
+
+Lit l'intégralité du fichier situé à `path` et retourne son contenu sous forme de `byte[]`. Aucune interprétation ni conversion : les octets bruts sont retournés tels quels.
+
+Règles normatives :
+
+- si le fichier est vide, retourne `[]` ;
+- si `path` ne désigne pas un fichier lisible, c'est une **erreur runtime** ;
+- le résultat est de type `byte[]` ; `count()` retourne le nombre d'octets lus.
+
+```c
+byte[] img = readFileBytes("photo.rgba");
+print("Taille : " + toString(count(img)) + " octets\n");
+```
+
+#### `writeFileBytes`
+
+```c
+void writeFileBytes(string path, byte[] data)
+```
+
+Écrit le contenu de `data` dans le fichier situé à `path`. Si le fichier existe, son contenu est **entièrement remplacé**. Si le fichier n'existe pas, il est **créé**.
+
+Règles normatives :
+
+- les octets sont écrits tels quels, sans interprétation UTF-8 ni ajout de fin de ligne ;
+- si le répertoire parent n'existe pas ou si les permissions sont insuffisantes, c'est une **erreur runtime**.
+
+```c
+byte[] rgba = [255, 0, 0, 255,   // pixel rouge opaque
+               0, 255, 0, 255];  // pixel vert opaque
+writeFileBytes("image.raw", rgba);
+```
+
+#### `appendFileBytes`
+
+```c
+void appendFileBytes(string path, byte[] data)
+```
+
+Ajoute le contenu de `data` à la fin du fichier situé à `path`. Si le fichier n'existe pas, il est **créé**.
+
+Règles normatives :
+
+- identiques à `writeFileBytes`, le contenu existant n'est pas modifié ;
+- si les permissions sont insuffisantes, c'est une **erreur runtime**.
+
+```c
+appendFileBytes("stream.bin", [0xDE, 0xAD, 0xBE, 0xEF]);
+```
+
+#### `byteToInt`
+
+```c
+int byteToInt(byte b)
+```
+
+Retourne la valeur entière de `b` dans l'intervalle `[0, 255]`.
+
+```c
+byte b = 0xFF;
+int n = byteToInt(b);   // → 255
+```
+
+#### `intToByte`
+
+```c
+byte intToByte(int n)
+```
+
+Convertit `n` en `byte` avec **clamp** : si `n < 0` retourne `byte(0)` ; si `n > 255` retourne `byte(255)`.
+
+Règles normatives :
+
+- ne lève jamais d'erreur runtime ;
+- c'est le seul mécanisme de conversion explicite `int` → `byte`.
+
+```c
+intToByte(200)    // → byte(200)
+intToByte(300)    // → byte(255)   (clamp)
+intToByte(-5)     // → byte(0)     (clamp)
+intToByte(0xFF)   // → byte(255)
+```
+
+#### `stringToBytes`
+
+```c
+byte[] stringToBytes(string s)
+```
+
+Retourne les octets UTF-8 bruts de `s` sous forme de `byte[]`. La longueur du résultat est `len(s)`.
+
+Règles normatives :
+
+- chaque octet de la représentation UTF-8 de `s` devient un élément du tableau résultant ;
+- ne lève jamais d'erreur runtime ;
+- `count(stringToBytes(s)) == len(s)` est toujours vrai.
+
+```c
+byte[] bytes = stringToBytes("ABC");
+// → [65, 66, 67]
+
+byte[] utf8 = stringToBytes("é");
+// → [0xC3, 0xA9]   (2 octets UTF-8)
+```
+
+#### `bytesToString`
+
+```c
+string bytesToString(byte[] data)
+```
+
+Interprète `data` comme une séquence d'octets UTF-8 et retourne la chaîne correspondante.
+
+Règles normatives :
+
+- les séquences d'octets non valides en UTF-8 sont remplacées par le caractère de remplacement Unicode **U+FFFD** (`�`) ;
+- ne lève jamais d'erreur runtime ;
+- `bytesToString(stringToBytes(s)) == s` est toujours vrai pour toute chaîne `s` valide.
+
+```c
+string s = bytesToString([72, 101, 108, 108, 111]);   // → "Hello"
+string t = bytesToString([0xC3, 0xA9]);               // → "é"
+string u = bytesToString([0xFF]);                     // → "�"  (U+FFFD)
+```
+
+#### `intToBytes`
+
+```c
+byte[] intToBytes(int n)
+```
+
+Retourne un `byte[]` de **`INT_SIZE` octets** contenant la représentation mémoire brute de `n`, dans l'ordre natif de la machine hôte (endianness non définie par le langage).
+
+Règles normatives :
+
+- le résultat a toujours exactement `count == INT_SIZE` ;
+- aucune transformation n'est appliquée : les `INT_SIZE` octets sont ceux que la machine utilise pour stocker `n` en mémoire (`memcpy` depuis `&n`) ;
+- l'endianness du résultat dépend de la plateforme d'exécution ; l'utilisateur qui a besoin d'un ordre précis doit réorganiser les octets lui-même ;
+- ne lève jamais d'erreur runtime.
+
+```c
+byte[] b = intToBytes(1);
+// Sur une machine little-endian : [0x01, 0x00, 0x00, 0x00]
+// Sur une machine big-endian    : [0x00, 0x00, 0x00, 0x01]
+
+// Vérifier l'endianness de la machine courante :
+bool isLittleEndian = intToBytes(1)[0] == 1;
+```
+
+#### `floatToBytes`
+
+```c
+byte[] floatToBytes(float f)
+```
+
+Retourne un `byte[]` de **`FLOAT_SIZE` octets** contenant la représentation mémoire brute de `f` (IEEE 754 double précision), dans l'ordre natif de la machine hôte.
+
+Règles normatives :
+
+- le résultat a toujours exactement `count == FLOAT_SIZE` ;
+- aucune transformation n'est appliquée : les `FLOAT_SIZE` octets sont ceux que la machine utilise pour stocker `f` en mémoire (`memcpy` depuis `&f`) ;
+- `NaN`, `+Infinity` et `-Infinity` produisent leurs représentations IEEE 754 brutes respectives, sans erreur runtime ;
+- ne lève jamais d'erreur runtime.
+
+```c
+byte[] b = floatToBytes(1.0);
+// 8 octets bruts de 1.0 en IEEE 754 double, ordre natif
+```
+
+#### `bytesToInt`
+
+```c
+int bytesToInt(byte[] data)
+```
+
+Recopie les `INT_SIZE` octets de `data` dans un `int` et retourne la valeur résultante. Opération symétrique de `intToBytes`.
+
+Règles normatives :
+
+- `data` doit avoir exactement `count(data) == INT_SIZE` ; tout autre nombre d'octets est une **erreur runtime** ;
+- aucune interprétation n'est effectuée : les octets sont copiés tels quels dans la zone mémoire de l'entier résultat (`memcpy` vers `&result`) ;
+- le résultat peut être négatif si le pattern de bits correspond à une valeur négative en représentation signée sur la machine hôte ; c'est le comportement attendu ;
+- le round-trip `bytesToInt(intToBytes(n)) == n` est garanti sur la même machine.
+
+```c
+byte[] b = intToBytes(42);
+int n = bytesToInt(b);    // → 42   (round-trip garanti)
+
+// Mauvaise taille → erreur runtime
+// int bad = bytesToInt([0x01, 0x02]);
+```
+
+#### `bytesToFloat`
+
+```c
+float bytesToFloat(byte[] data)
+```
+
+Recopie les `FLOAT_SIZE` octets de `data` dans un `float` et retourne la valeur résultante. Opération symétrique de `floatToBytes`.
+
+Règles normatives :
+
+- `data` doit avoir exactement `count(data) == FLOAT_SIZE` ; tout autre nombre d'octets est une **erreur runtime** ;
+- aucune interprétation n'est effectuée : les octets sont copiés tels quels dans la zone mémoire du flottant résultat (`memcpy` vers `&result`) ;
+- tout pattern de `FLOAT_SIZE` octets est un double IEEE 754 valide sur les plateformes cibles de Cimple ; le résultat peut donc être `NaN`, `+Infinity` ou `-Infinity` si les octets le représentent — c'est le comportement attendu ; l'utilisateur peut utiliser `isNaN`, `isInfinite` pour inspecter le résultat ;
+- le round-trip `bytesToFloat(floatToBytes(f)) == f` est garanti sur la même machine (y compris pour `NaN` en termes de pattern de bits, bien que `NaN != NaN` soit vrai par définition IEEE 754) ;
+- ne lève jamais d'erreur runtime si `count(data) == FLOAT_SIZE`.
+
+```c
+byte[] b = floatToBytes(3.14);
+float f = bytesToFloat(b);    // → 3.14   (round-trip garanti)
+
+// Inspecter le résultat si les octets viennent d'une source externe
+float x = bytesToFloat(externalData);
+if (isNaN(x) || isInfinite(x)) {
+    print("valeur non finie\n");
+}
+
+// Mauvaise taille → erreur runtime
+// float bad = bytesToFloat([0x01, 0x02, 0x03, 0x04]);
+```
+
+### 9.10 Entrées/sorties fichiers
 
 Cimple fournit six fonctions natives pour lire et écrire des fichiers texte. Ces fonctions suivent les principes du reste du langage : pas de handle, pas de gestion de ressources manuelle, pas d'ouverture/fermeture explicite.
 
@@ -1412,7 +2074,342 @@ string[] lines = ["ligne 1", "ligne 2", "ligne 3"];
 writeLines("output.txt", lines);
 ```
 
-### 9.10 Exécution de commandes externes
+#### `tempPath`
+
+```c
+string tempPath()
+```
+
+Retourne un chemin de fichier temporaire **unique et inexistant** dans le répertoire temporaire du système.
+
+Règles normatives :
+
+- retourne une `string` contenant un chemin **valide** pour le système de fichiers courant ;
+- le chemin retourné **ne désigne pas un fichier existant** au moment du retour ;
+- la fonction **ne crée pas** le fichier ni aucune ressource sur le disque ;
+- deux appels successifs à `tempPath()` **retournent deux chemins distincts** ; l'unicité est garantie pour la durée du processus Cimple courant ;
+- ne prend aucun argument ; tout argument est une erreur sémantique ;
+- ne lève jamais d'erreur runtime.
+
+**Répertoire temporaire utilisé :**
+
+| Plateforme | Répertoire |
+|---|---|
+| POSIX (macOS, Linux, Unix) | Valeur de `$TMPDIR` si définie et non vide ; sinon `/tmp` |
+| Windows | Comportement défini par l'implémenteur |
+| WebAssembly | Comportement défini par l'implémenteur |
+
+**Propriétés assumées — limites du contrat :**
+
+- aucune **réservation durable** n'est effectuée : entre le retour de `tempPath()` et l'utilisation effective du chemin, un autre processus peut créer un fichier au même emplacement ; c'est une race condition inhérente à ce type de fonction et Cimple n'y remédie pas ;
+- aucune **suppression implicite** n'est effectuée : si l'appelant crée un fichier à ce chemin, il est responsable de sa suppression ; Cimple ne nettoie pas les fichiers temporaires en fin de programme ;
+- `tempPath()` ne garantit pas la persistance du chemin au-delà du processus courant ; le répertoire temporaire peut être vidé par le système à tout moment.
+
+```c
+// Utilisation typique : fichier temporaire pour stocker un résultat intermédiaire
+string tmp = tempPath();
+writeFile(tmp, "données intermédiaires\n");
+
+ExecResult r = exec(["traitement", tmp], []);
+print(execStdout(r));
+
+// Nettoyage à la charge de l'appelant
+// (Cimple ne fournit pas de deleteFile dans cette version)
+
+// Deux chemins distincts garantis
+string a = tempPath();
+string b = tempPath();
+// a != b est toujours vrai
+```
+
+#### `remove`
+
+```c
+void remove(string path)
+```
+
+Supprime le fichier situé à `path`.
+
+Règles normatives :
+
+- si `path` désigne un fichier existant et accessible, il est supprimé ;
+- si `path` désigne un fichier **inexistant**, c'est une **erreur runtime** ;
+- si `path` désigne un **répertoire**, c'est une **erreur runtime** ; `remove` n'opère que sur les fichiers réguliers ;
+- si les permissions sont insuffisantes pour supprimer le fichier, c'est une **erreur runtime** ;
+- ne lève pas d'erreur runtime pour toute autre raison que celles listées ci-dessus.
+
+```c
+string tmp = tempPath();
+writeFile(tmp, "temporaire");
+// ... utilisation ...
+remove(tmp);
+```
+
+#### `chmod`
+
+```c
+void chmod(string path, int mode)
+```
+
+Modifie les droits d'accès du fichier situé à `path`. `mode` est un entier dont les bits représentent les permissions Unix au format octal standard (ex. `0644`, `0755`).
+
+Règles normatives :
+
+- `path` doit désigner un fichier ou un répertoire existant et accessible ; si le chemin n'existe pas, c'est une **erreur runtime** ;
+- `mode` est interprété comme un masque de permissions POSIX sur 12 bits (bits `setuid`, `setgid`, `sticky`, puis les 9 bits `rwxrwxrwx`) ; les valeurs typiques sont des littéraux octaux Cimple : `0644`, `0755`, `0600`, `0400` ;
+- si les permissions courantes du processus sont insuffisantes pour modifier les droits du fichier, c'est une **erreur runtime** ;
+- **portabilité :**
+  - sur **macOS, Linux, Unix** : appel direct à `chmod(2)` avec `mode` ; comportement POSIX standard ;
+  - sur **Windows** : `chmod` n'est pas disponible — lève une **erreur runtime** avec le message `chmod: not supported on this platform` ;
+  - sur **WebAssembly** : `chmod` n'est pas disponible — lève une **erreur runtime** avec le message `chmod: not supported on this platform`.
+
+```c
+string path = "script.sh";
+writeFile(path, "#!/bin/sh\necho hello\n");
+chmod(path, 0755);   // rend le fichier exécutable
+
+chmod("config.txt", 0600);   // lecture/écriture propriétaire seulement
+chmod("public.txt", 0644);   // lecture/écriture propriétaire, lecture groupe et autres
+```
+
+#### `cwd`
+
+```c
+string cwd()
+```
+
+Retourne le chemin absolu du répertoire de travail courant du processus.
+
+Règles normatives :
+
+- ne prend aucun argument ; tout argument est une erreur sémantique ;
+- retourne toujours un chemin absolu se terminant sans séparateur, sauf sur la racine `/` ;
+- ne lève jamais d'erreur runtime.
+
+```c
+print(cwd() + "\n");   // ex. "/home/user/project"
+```
+
+#### `copy`
+
+```c
+void copy(string src, string dst)
+```
+
+Copie le fichier situé à `src` vers `dst`. Si `dst` existe déjà, son contenu est **écrasé silencieusement**. Si `dst` n'existe pas, il est créé.
+
+Règles normatives :
+
+- seuls les fichiers réguliers sont copiés ; si `src` désigne un répertoire, c'est une **erreur runtime** ;
+- si `src` n'existe pas ou n'est pas lisible, c'est une **erreur runtime** ;
+- si le répertoire parent de `dst` n'existe pas, c'est une **erreur runtime** ;
+- si les permissions sont insuffisantes (lecture sur `src` ou écriture sur `dst`), c'est une **erreur runtime** ;
+- le contenu est copié octet par octet ; les métadonnées (permissions, dates) ne sont pas copiées.
+
+```c
+copy("config.txt", "config.bak");
+copy("template.html", "/tmp/output.html");
+```
+
+#### `move`
+
+```c
+void move(string src, string dst)
+```
+
+Déplace ou renomme le fichier situé à `src` vers `dst`. Si `dst` existe déjà, il est **écrasé silencieusement**. Si `dst` n'existe pas, il est créé.
+
+Règles normatives :
+
+- seuls les fichiers réguliers sont déplacés ; si `src` désigne un répertoire, c'est une **erreur runtime** ;
+- si `src` n'existe pas, c'est une **erreur runtime** ;
+- si le répertoire parent de `dst` n'existe pas, c'est une **erreur runtime** ;
+- si `src` et `dst` sont sur le même système de fichiers, l'opération est effectuée par renommage atomique ; si les deux chemins sont sur des systèmes de fichiers différents, l'implémentation effectue une copie suivie d'une suppression de `src` de manière transparente pour le code Cimple ;
+- si les permissions sont insuffisantes, c'est une **erreur runtime** ;
+- après succès, `src` n'existe plus.
+
+```c
+move("draft.txt", "final.txt");
+move("/tmp/result.csv", "data/result.csv");
+```
+
+#### `isReadable`
+
+```c
+bool isReadable(string path)
+```
+
+Retourne `true` si le chemin `path` désigne un fichier ou un répertoire existant et accessible en lecture par le processus courant, `false` sinon.
+
+Règles normatives :
+
+- retourne `false` si `path` n'existe pas, si les permissions sont insuffisantes, ou si le chemin est invalide ;
+- ne lève jamais d'erreur runtime.
+
+```c
+if (isReadable("config.txt")) {
+    string cfg = readFile("config.txt");
+}
+```
+
+#### `isWritable`
+
+```c
+bool isWritable(string path)
+```
+
+Retourne `true` si le processus courant peut écrire à l'emplacement `path`, `false` sinon. Le comportement dépend de l'existence du fichier :
+
+- si `path` désigne un **fichier existant** : teste si le fichier lui-même est accessible en écriture (`access(path, W_OK)`) ;
+- si `path` désigne un chemin **inexistant** : teste si le **répertoire parent** est accessible en écriture, c'est-à-dire si un fichier pourrait être créé à cet emplacement ;
+- si le répertoire parent de `path` n'existe pas : retourne `false`.
+
+Règles normatives :
+
+- ne lève jamais d'erreur runtime ;
+- retourne `false` pour tout chemin invalide ou inaccessible ;
+- si `path` désigne un **répertoire existant** : teste si le répertoire lui-même est accessible en écriture.
+
+```c
+if (isWritable("output.txt")) {
+    writeFile("output.txt", result);
+}
+
+if (isWritable("/tmp/newfile.txt")) {
+    // /tmp est accessible en écriture
+}
+```
+
+#### `isExecutable`
+
+```c
+bool isExecutable(string path)
+```
+
+Retourne `true` si le chemin `path` désigne un fichier existant et exécutable par le processus courant, `false` sinon.
+
+Règles normatives :
+
+- retourne `false` si `path` n'existe pas, si les permissions sont insuffisantes, si le fichier n'est pas exécutable, ou si le chemin est invalide ;
+- retourne `false` si `path` désigne un répertoire ;
+- ne lève jamais d'erreur runtime.
+
+```c
+if (isExecutable("/usr/bin/git")) {
+    ExecResult r = exec(["/usr/bin/git", "status"], []);
+}
+```
+
+#### `isDirectory`
+
+```c
+bool isDirectory(string path)
+```
+
+Retourne `true` si `path` désigne un répertoire existant et accessible, `false` sinon.
+
+Règles normatives :
+
+- retourne `false` si `path` désigne un fichier régulier, un lien symbolique cassé, ou un chemin inexistant ;
+- retourne `false` si le chemin est invalide ou inaccessible ;
+- ne lève jamais d'erreur runtime.
+
+```c
+if (isDirectory("output")) {
+    // le répertoire output existe
+} else {
+    print("Répertoire output absent.\n");
+}
+```
+
+#### `dirname`
+
+```c
+string dirname(string path)
+```
+
+Retourne la partie répertoire du chemin `path`, c'est-à-dire tout ce qui précède le dernier séparateur de chemin.
+
+Règles normatives (calcul purement lexical, sans accès au système de fichiers) :
+
+- si `path` ne contient aucun séparateur, retourne `""` : `dirname("file.txt")` → `""` ;
+- si `path` est la racine `"/"`, retourne `"/"` : `dirname("/")` → `"/"` ;
+- si `path` est vide `""`, retourne `""` ;
+- les séparateurs `/` et `\` sont tous deux reconnus ; le séparateur de la plateforme courante est utilisé dans le résultat ;
+- le résultat ne contient pas de séparateur final, sauf pour la racine `"/"`.
+
+```c
+print(dirname("/path/to/my.file.txt") + "\n");  // "/path/to"
+print(dirname("file.txt") + "\n");              // ""
+print(dirname("/") + "\n");                     // "/"
+print(dirname("a/b") + "\n");                   // "a"
+```
+
+#### `basename`
+
+```c
+string basename(string path)
+```
+
+Retourne le nom de fichier avec son extension, c'est-à-dire la dernière composante du chemin après le dernier séparateur.
+
+Règles normatives (calcul purement lexical) :
+
+- si `path` est vide `""`, retourne `""` ;
+- si `path` se termine par un séparateur, le séparateur final est ignoré : `basename("/path/to/")` → `""` ;
+- les séparateurs `/` et `\` sont tous deux reconnus.
+
+```c
+print(basename("/path/to/my.file.txt") + "\n");  // "my.file.txt"
+print(basename("/path/to/") + "\n");             // ""
+print(basename("file.txt") + "\n");              // "file.txt"
+```
+
+#### `filename`
+
+```c
+string filename(string path)
+```
+
+Retourne le nom de fichier sans sa dernière extension, c'est-à-dire `basename(path)` privé du dernier point et de ce qui suit.
+
+Règles normatives (calcul purement lexical) :
+
+- si `basename(path)` ne contient aucun point, retourne `basename(path)` intégralement : `filename("makefile")` → `"makefile"` ;
+- si `basename(path)` commence par un point et ne contient pas d'autre point, le fichier est considéré comme un fichier caché sans extension : `filename(".gitignore")` → `".gitignore"` ;
+- si `basename(path)` est vide, retourne `""`.
+
+```c
+print(filename("/path/to/my.file.txt") + "\n");  // "my.file"
+print(filename("archive.tar.gz") + "\n");        // "archive.tar"
+print(filename("makefile") + "\n");              // "makefile"
+print(filename(".gitignore") + "\n");            // ".gitignore"
+```
+
+#### `extension`
+
+```c
+string extension(string path)
+```
+
+Retourne la dernière extension du fichier, sans le point. Retourne `""` si le fichier n'a pas d'extension.
+
+Règles normatives (calcul purement lexical) :
+
+- l'extension est la partie après le dernier point du `basename(path)` ;
+- si `basename(path)` ne contient aucun point, retourne `""` : `extension("makefile")` → `""` ;
+- si `basename(path)` commence par un point et ne contient pas d'autre point, retourne `""` : `extension(".gitignore")` → `""` ;
+- si `basename(path)` est vide, retourne `""` ;
+- le point lui-même n'est pas inclus dans le résultat.
+
+```c
+print(extension("/path/to/my.file.txt") + "\n");  // "txt"
+print(extension("archive.tar.gz") + "\n");        // "gz"
+print(extension("makefile") + "\n");              // ""
+print(extension(".gitignore") + "\n");            // ""
+```
+
+### 9.11 Exécution de commandes externes
 
 Cimple permet d'exécuter des commandes système via la fonction `exec`. Le résultat est encapsulé dans un `ExecResult` opaque, accessible via trois fonctions dédiées.
 
@@ -1496,7 +2493,7 @@ if (len(err) > 0) {
 }
 ```
 
-### 9.11 Environnement du processus
+### 9.12 Environnement du processus
 
 #### `getEnv`
 
@@ -1529,7 +2526,7 @@ if (debug == "1") {
 print("Port : " + port + "\n");
 ```
 
-### 9.12 Temps et dates
+### 9.13 Temps et dates
 
 Toutes les fonctions de cette section opèrent en **UTC**. Les fuseaux horaires locaux ne sont pas pris en charge ; si un offset est nécessaire, l'utilisateur l'applique manuellement en ajustant l'epoch.
 
@@ -1643,33 +2640,59 @@ Formate un epoch en millisecondes en chaîne de caractères selon le gabarit `fm
 
 **Tokens reconnus dans `fmt` :**
 
-| Token | Description | Exemple |
-|---|---|---|
-| `YYYY` | Année sur 4 chiffres | `2025` |
-| `MM` | Mois sur 2 chiffres | `03` |
-| `DD` | Jour sur 2 chiffres | `11` |
-| `HH` | Heure sur 2 chiffres (00–23) | `14` |
-| `mm` | Minutes sur 2 chiffres | `32` |
-| `ss` | Secondes sur 2 chiffres | `07` |
+| Token | Description | Plage / Format | Exemple |
+|---|---|---|---|
+| `YYYY` | Année sur 4 chiffres | `0000`–`9999` | `2025` |
+| `MM` | Mois sur 2 chiffres, zéro-paddé | `01`–`12` | `03` |
+| `DD` | Jour du mois sur 2 chiffres, zéro-paddé | `01`–`31` | `11` |
+| `HH` | Heure sur 2 chiffres (00–23), zéro-paddé | `00`–`23` | `14` |
+| `mm` | Minutes sur 2 chiffres, zéro-paddé | `00`–`59` | `32` |
+| `ss` | Secondes sur 2 chiffres, zéro-paddé | `00`–`59` | `07` |
+| `w` | Jour de la semaine, numérique | `0` (dimanche) – `6` (samedi) | `2` |
+| `yday` | Jour de l'année, base 0, sans padding | `0`–`365` | `69` |
+| `WW` | Numéro de semaine ISO 8601, zéro-paddé | `01`–`53` | `42` |
+| `ISO` | Date et heure complètes ISO 8601 en UTC | `YYYY-MM-DDTHH:mm:ssZ` | `2025-03-11T14:32:07Z` |
 
 Tout autre caractère dans `fmt` est copié tel quel dans la sortie.
+
+**Détail des nouveaux tokens :**
+
+- **`w`** — retourne un entier non paddé représentant le jour de la semaine selon la convention ISO/POSIX : `0` pour dimanche, `1` pour lundi, …, `6` pour samedi ;
+
+- **`yday`** — retourne le jour de l'année compté depuis `0` : le 1er janvier vaut `0`, le 31 décembre d'une année non bissextile vaut `364`, le 31 décembre d'une année bissextile vaut `365` ; la valeur n'est pas zéro-paddée ;
+
+- **`WW`** — retourne le numéro de semaine ISO 8601, zéro-paddé sur 2 chiffres : les semaines commencent le lundi ; la semaine contenant le premier jeudi de l'année est la semaine `01` ; les premiers/derniers jours d'une année peuvent appartenir à la semaine `52` ou `53` de l'année précédente, ou à la semaine `01` de l'année suivante, conformément à ISO 8601 ;
+
+- **`ISO`** — retourne la représentation complète ISO 8601 en UTC sous la forme `YYYY-MM-DDTHH:mm:ssZ` ; ce token est équivalent au template `"YYYY-MM-DDTHH:mm:ssZ"` mais fourni pour commodité et lisibilité ; il n'est valide que pour les années `0000`–`9999` (le format ISO 8601 non étendu) — pour un epoch correspondant à une année hors de cette plage, le résultat est la chaîne `"invalid"`.
 
 Règles normatives :
 
 - `epochMs` doit être de type `int` ; `fmt` doit être de type `string` ; tout autre type est une erreur sémantique ;
-- les tokens sont sensibles à la casse : `yyyy` n'est pas reconnu, seul `YYYY` l'est ;
+- les tokens sont sensibles à la casse : `yyyy`, `ww`, `iso` ne sont pas reconnus ; seules les formes exactes du tableau ci-dessus le sont ;
 - un token non reconnu est copié tel quel sans erreur ;
+- les tokens sont substitués dans l'ordre de leur apparition dans `fmt`, de gauche à droite, par correspondance du préfixe le plus long en premier ; ainsi `WW` est reconnu avant un `W` hypothétique qui serait copié tel quel ;
 - `fmt` peut être vide `""` : retourne `""` ;
-- ne lève pas d'erreur runtime sur un epoch négatif ; formate la date correspondante.
+- ne lève pas d'erreur runtime sur un epoch négatif ; formate la date correspondante, sauf `ISO` qui retourne `"invalid"` si l'année est hors de `[0, 9999]`.
 
 ```c
-int ts = now();
+int ts = now();  // ex. 2025-03-11 14:32:07 UTC, mardi
 
-string date  = formatDate(ts, "YYYY-MM-DD");           // "2025-03-11"
-string heure = formatDate(ts, "HH:mm:ss");             // "14:32:07"
-string dt    = formatDate(ts, "YYYY-MM-DD HH:mm:ss");  // "2025-03-11 14:32:07"
-string slash = formatDate(ts, "DD/MM/YYYY");           // "11/03/2025"
+// Tokens existants
+string date  = formatDate(ts, "YYYY-MM-DD");            // "2025-03-11"
+string heure = formatDate(ts, "HH:mm:ss");              // "14:32:07"
+string dt    = formatDate(ts, "YYYY-MM-DD HH:mm:ss");   // "2025-03-11 14:32:07"
+string slash = formatDate(ts, "DD/MM/YYYY");            // "11/03/2025"
 string log   = formatDate(ts, "[YYYY-MM-DD HH:mm:ss]"); // "[2025-03-11 14:32:07]"
+
+// Nouveaux tokens
+string dow   = formatDate(ts, "w");                     // "2"  (mardi)
+string doy   = formatDate(ts, "yday");                  // "69" (70e jour, base 0)
+string week  = formatDate(ts, "WW");                    // "11" (semaine ISO 11)
+string iso   = formatDate(ts, "ISO");                   // "2025-03-11T14:32:07Z"
+
+// Combinaisons
+string label = formatDate(ts, "YYYY-Www-w");            // "2025-W11-2"  (format ISO semaine)
+string log2  = formatDate(ts, "[ISO] ");                // "[2025-03-11T14:32:07Z] "
 
 // Horodatage d'un fichier de log
 string ligne = formatDate(now(), "[YYYY-MM-DD HH:mm:ss] ") + "Démarrage\n";
@@ -2137,6 +3160,7 @@ Mots-clés réservés :
 - `float`
 - `bool`
 - `string`
+- `byte`
 - `void`
 - `ExecResult`
 - `if`
@@ -2148,6 +3172,7 @@ Mots-clés réservés :
 - `continue`
 - `true`
 - `false`
+- `import`
 
 `ExecResult` est un mot-clé réservé désignant le type opaque de résultat d'exécution (voir section 6.3). Il ne peut pas être utilisé comme nom de variable, de fonction ou de paramètre.
 
@@ -2179,7 +3204,7 @@ Le lexer doit reconnaître et produire les tokens suivants :
 **Identifiants et mots-clés**
 
 - identifiants : séquence de lettres, chiffres et `_`, commençant par une lettre ou `_`
-- mots-clés réservés (voir section 14) : `int`, `float`, `bool`, `string`, `void`, `ExecResult`, `if`, `else`, `while`, `for`, `return`, `break`, `continue`, `true`, `false`
+- mots-clés réservés (voir section 14) : `int`, `float`, `bool`, `string`, `byte`, `void`, `ExecResult`, `if`, `else`, `while`, `for`, `return`, `break`, `continue`, `true`, `false`, `import`
 - les mots-clés sont reconnus dans le même scanner que les identifiants ; la distinction est faite dans l'action C associée par comparaison de la valeur lexicale
 
 **Littéraux entiers**
@@ -2243,10 +3268,11 @@ typedef struct {
     int         len;    // longueur en octets
     int         line;   // numéro de ligne (base 1)
     int         col;    // colonne (base 1)
+    const char *file;   // chemin du fichier source d'origine (pour les messages d'erreur multi-fichiers)
 } TokenValue;
 ```
 
-La position (`line`, `col`) doit être maintenue par le lexer re2c et propagée à chaque token pour permettre des messages d'erreur précis dans toutes les phases.
+La position (`line`, `col`) doit être maintenue par le lexer re2c et propagée à chaque token pour permettre des messages d'erreur précis dans toutes les phases. Le champ `file` contient le chemin du fichier source tel que passé à `cimple run` pour le fichier racine, ou le chemin résolu du fichier importé pour les tokens issus d'un `import` ; il permet d'afficher dans les messages d'erreur le fichier d'origine réel plutôt que le fichier fusionné.
 
 **Gestion du buffer source :**
 
@@ -2416,6 +3442,30 @@ Les conditions de `if`, `while`, `for` doivent être de type `bool`.
 
 Pas de vérité implicite à la C sur les `int`.
 
+### 19.2b Vérifications spécifiques sur `byte`
+
+L'analyse sémantique doit vérifier :
+
+- que les déclarations `byte b = <littéral>` utilisent un littéral entier dans `[0, 255]` ; un littéral hors plage est une **erreur sémantique** ;
+- que l'affectation d'une expression ou variable de type `int` à un `byte` est une **erreur sémantique** sauf si c'est un littéral entier dans `[0, 255]` ; la conversion `intToByte()` est requise ;
+- que les opérateurs `+`, `-`, `*`, `/`, `%` appliqués à deux `byte` ou à un `byte` et un `int` produisent un résultat de type `int` ;
+- que les opérateurs `&`, `|`, `^` appliqués à deux `byte` produisent un résultat de type `byte` ; appliqués à `byte` et `int`, produisent `int` ;
+- que `~` appliqué à un `byte` produit un `byte` ;
+- que `<<` et `>>` appliqués à un `byte` produisent un `int` ;
+- que les opérateurs `&&`, `||`, `!` ne sont pas autorisés sur des opérandes de type `byte` ;
+- que `byteToInt` reçoit exactement un argument de type `byte` et retourne `int` ;
+- que `intToByte` reçoit exactement un argument de type `int` et retourne `byte` ;
+- que `stringToBytes` reçoit exactement un argument de type `string` et retourne `byte[]` ;
+- que `bytesToString` reçoit exactement un argument de type `byte[]` et retourne `string` ;
+- que `readFileBytes` reçoit un `string` et retourne `byte[]` ;
+- que `writeFileBytes` et `appendFileBytes` reçoivent un `string` et un `byte[]` ;
+- que `intToBytes` reçoit exactement un argument de type `int` et retourne `byte[]` ;
+- que `floatToBytes` reçoit exactement un argument de type `float` et retourne `byte[]` ;
+- que `bytesToInt` reçoit exactement un argument de type `byte[]` et retourne `int` ;
+- que `bytesToFloat` reçoit exactement un argument de type `byte[]` et retourne `float` ;
+- que dans un littéral `byte[]`, chaque élément est soit de type `byte`, soit un littéral entier dans `[0, 255]` ;
+- que `b[i] = v` sur un `byte[]` accepte un `byte` ou un littéral entier `[0, 255]` ; affecter une variable `int` est une erreur sémantique.
+
 ### 19.3 Vérifications spécifiques sur les chaînes
 
 L'analyse sémantique doit vérifier :
@@ -2432,7 +3482,13 @@ L'analyse sémantique doit vérifier :
 - que `format` reçoit exactement deux arguments : un `string` et un `string[]` ; tout autre type est une erreur sémantique ; la correspondance entre le nombre de `{}` et le nombre d'arguments est vérifiée à l'exécution et non à la compilation ;
 - que `join` reçoit un `string[]` comme premier argument et un `string` comme second argument ; tout autre type est une erreur sémantique ;
 - que `split` reçoit deux arguments de type `string` ; tout autre type est une erreur sémantique ;
-- que `concat` reçoit un argument de type `string[]` ; tout autre type de tableau est une erreur sémantique.
+- que `concat` reçoit un argument de type `string[]` ; tout autre type de tableau est une erreur sémantique ;
+- que `trim`, `trimLeft`, `trimRight`, `isBlank` reçoivent exactement un argument de type `string` ; `trim`/`trimLeft`/`trimRight` retournent `string` ; `isBlank` retourne `bool` ;
+- que `toUpper`, `toLower`, `capitalize` reçoivent exactement un argument de type `string` et retournent `string` ;
+- que `padLeft` et `padRight` reçoivent exactement trois arguments : `string`, `int`, `string` ; retournent `string` ; `width < 0` est une erreur runtime et non sémantique ;
+- que `repeat` reçoit exactement deux arguments : `string` et `int` ; retourne `string` ; `n < 0` est une erreur runtime et non sémantique ;
+- que `lastIndexOf` reçoit exactement deux arguments de type `string` et retourne `int` ;
+- que `countOccurrences` reçoit exactement deux arguments de type `string` et retourne `int` ; `needle == ""` est une erreur runtime et non sémantique.
 
 ### 19.4 Vérifications spécifiques sur les flottants
 
@@ -2489,6 +3545,13 @@ L'analyse sémantique doit vérifier :
 - que le résultat de `readFile` est utilisé dans un contexte attendant un `string` ;
 - que le résultat de `readLines` est utilisé dans un contexte attendant un `string[]` ;
 - que le résultat de `fileExists` est utilisé dans un contexte attendant un `bool` ;
+- que `tempPath` est appelé sans argument ; tout argument est une erreur sémantique ; le résultat est de type `string` ;
+- que `remove` reçoit exactement un argument de type `string` ; tout autre type est une erreur sémantique ; `remove` ne retourne pas de valeur utilisable (`void`) ;
+- que `chmod` reçoit exactement deux arguments : un `string` (`path`) et un `int` (`mode`) ; tout autre type est une erreur sémantique ; `chmod` ne retourne pas de valeur utilisable (`void`) ;
+- que `cwd` est appelé sans argument ; tout argument est une erreur sémantique ; le résultat est de type `string` ;
+- que `copy` et `move` reçoivent exactement deux arguments de type `string` (`src` et `dst`) ; tout autre type est une erreur sémantique ; ces fonctions ne retournent pas de valeur utilisable (`void`) ;
+- que `isReadable`, `isWritable`, `isExecutable`, `isDirectory` reçoivent exactement un argument de type `string` ; tout autre type est une erreur sémantique ; le résultat est de type `bool` ;
+- que `dirname`, `basename`, `filename`, `extension` reçoivent exactement un argument de type `string` ; tout autre type est une erreur sémantique ; le résultat est de type `string` ;
 - que `getEnv` reçoit exactement deux arguments de type `string` (`name` et `fallback`) ; tout autre type est une erreur sémantique ;
 - que le résultat de `getEnv` est utilisé dans un contexte attendant un `string`.
 
@@ -2528,6 +3591,22 @@ Règles de détection :
 - une vérification conservative est acceptable : si l'analyseur ne peut pas garantir statiquement qu'un `return` est atteint, il doit signaler une erreur ;
 - en particulier, une fonction dont le seul `return` est à l'intérieur d'un `if` sans `else` doit être signalée comme potentiellement incomplète ;
 - `int main()` et `int main(string[] args)` sont soumis à la même règle : l'absence de `return` est une erreur sémantique.
+
+### 19.12 Vérifications spécifiques sur les imports
+
+L'analyse sémantique doit vérifier, pour chaque directive `import` rencontrée dans le graphe de fichiers :
+
+- que le chemin spécifié se termine par `.ci` ; toute autre extension est une **erreur sémantique** ;
+- que le fichier désigné par le chemin résolu existe et est lisible ; dans le cas contraire, c'est une **erreur sémantique** avec le message `Cannot import file: '<path>'` ;
+- qu'il n'existe pas de cycle dans le graphe d'imports ; un cycle est détecté en maintenant la pile des fichiers en cours de traitement ; la détection se fait lors de la résolution récursive, avant la fusion de l'AST ;
+- que la profondeur d'imbrication n'excède pas **32 niveaux** ; la profondeur est comptée comme la longueur du chemin le plus long depuis le fichier racine jusqu'au fichier courant dans le graphe d'imports ;
+- qu'aucun fichier importé ne définit `main` ; la présence de `main` dans un fichier importé est une **erreur sémantique** signalée avec le nom du fichier fautif ;
+- que toutes les directives `import` sont en tête du fichier, avant toute déclaration ; le non-respect de cette contrainte doit avoir déjà été signalé par le parseur comme **erreur syntaxique** ;
+- qu'aucune fonction ni variable globale n'est définie deux fois à travers le graphe d'imports ; une redéfinition est une **erreur sémantique** indiquant les deux fichiers en cause et les numéros de ligne respectifs.
+
+**Déduplication :** un fichier importé plusieurs fois dans le graphe (via des chemins distincts menant au même fichier résolu) n'est traité qu'une seule fois. La deuxième occurrence et les suivantes sont silencieusement ignorées.
+
+**Messages d'erreur multi-fichiers :** pour toute erreur détectée dans un fichier importé, le champ `<file>` du message doit indiquer le chemin du fichier importé (chemin relatif au fichier racine), et non le nom du fichier racine. Cela s'applique aux erreurs lexicales, syntaxiques, sémantiques et runtime.
 
 ---
 
@@ -2645,7 +3724,7 @@ Catalogue des erreurs syntaxiques et messages associés :
 | `)` manquant | `Missing ')' to close expression` | `Opening '(' at line <N>, column <N>.` |
 | `}` manquant | `Missing '}' to close block` | `Opening '{' at line <N>, column <N>.` |
 | `]` manquant | `Missing ']' to close array literal` | `Opening '[' at line <N>, column <N>.` |
-| Type inconnu | `Unknown type: '<name>'` | `Valid types: int, float, bool, string, void, ExecResult.` |
+| Type inconnu | `Unknown type: '<name>'` | `Valid types: int, float, bool, string, byte, void, ExecResult.` |
 | Expression attendue | `Expected expression` | `Found '<tok>' which cannot start an expression.` |
 
 ### 21.5 Erreurs sémantiques
@@ -2676,6 +3755,16 @@ Catalogue des erreurs sémantiques et messages associés :
 | `ExecResult[]` déclaré | `Array of ExecResult is not allowed` | `ExecResult can only be used as a scalar variable.` |
 | Tableau de mauvais type d'élément | `Array element type mismatch` | `Expected '<T>', got '<T2>' at index <N>.` |
 | Signature de `main` invalide | `Invalid signature for 'main'` | `Valid signatures: void main(), int main(), void main(string[] args), int main(string[] args).` |
+| Littéral `byte` hors plage | `Byte literal out of range: <N>` | `Valid range: 0 to 255.` |
+| Affectation `int` → `byte` sans conversion | `Cannot assign 'int' to 'byte'` | `Use intToByte() to convert.` |
+| Opérateur `&&` / `\|\|` / `!` sur `byte` | `Operator '<op>' cannot be applied to type 'byte'` | `Logical operators require 'bool' operands.` |
+| `main` dans un fichier importé | `'main' cannot be defined in an imported file` | `Define 'main' only in the root source file.` |
+| Fichier importé introuvable | `Cannot import file: '<path>'` | `File not found or not readable.` |
+| Extension import invalide | `Import path must end with '.ci'` | `Only .ci files can be imported.` |
+| Import circulaire | `Circular import detected: '<path>'` | `Import chain: <file1> -> <file2> -> ... -> <path>` |
+| Profondeur d'import dépassée | `Import depth limit exceeded (max 32)` | `Simplify your import graph.` |
+| `import` hors tête de fichier | `'import' must appear before any declaration` | `Move all import directives to the top of the file.` |
+| `import` dans un bloc ou fonction | `'import' is not allowed inside a function or block` | `Import directives are only valid at the top level.` |
 
 ### 21.6 Erreurs runtime
 
@@ -2696,10 +3785,30 @@ Catalogue des erreurs runtime et messages associés :
 | `split` séparateur vide | `split: separator cannot be empty` | — |
 | `replace` ancien vide | `replace: old argument cannot be empty` | — |
 | `format` marqueurs/args | `format: marker count does not match argument count` | `Markers '{}' in template: <N>   Arguments provided: <M>` |
+| `repeat` n négatif | `repeat: count must be non-negative` | `Got: <N>` |
+| `countOccurrences` needle vide | `countOccurrences: needle cannot be empty` | — |
+| `padLeft` / `padRight` width négatif | `padLeft: width must be non-negative` / `padRight: width must be non-negative` | `Got: <N>` |
 | Division entière par zéro | `Integer division by zero` | — |
 | Modulo par zéro | `Integer modulo by zero` | — |
-| `readFile` / `readLines` | `Cannot read file: '<path>'` | `<system error message>` |
+| `readFileBytes` fichier illisible | `Cannot read file: '<path>'` | `<system error message>` |
+| `writeFileBytes` / `appendFileBytes` erreur écriture | `Cannot write file: '<path>'` | `<system error message>` |
+| `bytesToInt` mauvaise taille | `bytesToInt: expected INT_SIZE bytes, got <N>` | — |
+| `bytesToFloat` mauvaise taille | `bytesToFloat: expected FLOAT_SIZE bytes, got <N>` | — |
 | `writeFile` / `appendFile` / `writeLines` | `Cannot write file: '<path>'` | `<system error message>` |
+| `remove` fichier inexistant | `Cannot remove file: '<path>'` | `File does not exist.` |
+| `remove` sur un répertoire | `Cannot remove file: '<path>'` | `Path is a directory, not a file.` |
+| `remove` permission refusée | `Cannot remove file: '<path>'` | `<system error message>` |
+| `chmod` chemin inexistant | `Cannot chmod: '<path>'` | `File or directory does not exist.` |
+| `chmod` permission refusée | `Cannot chmod: '<path>'` | `<system error message>` |
+| `chmod` sur Windows ou WebAssembly | `chmod: not supported on this platform` | — |
+| `copy` src inexistant | `Cannot copy: source file not found: '<src>'` | `<system error message>` |
+| `copy` src est un répertoire | `Cannot copy: '<src>'` | `Source is a directory, not a file.` |
+| `copy` répertoire parent de dst inexistant | `Cannot copy: destination directory not found: '<dst>'` | `<system error message>` |
+| `copy` permission insuffisante | `Cannot copy: '<src>' -> '<dst>'` | `<system error message>` |
+| `move` src inexistant | `Cannot move: source file not found: '<src>'` | `<system error message>` |
+| `move` src est un répertoire | `Cannot move: '<src>'` | `Source is a directory, not a file.` |
+| `move` répertoire parent de dst inexistant | `Cannot move: destination directory not found: '<dst>'` | `<system error message>` |
+| `move` permission insuffisante | `Cannot move: '<src>' -> '<dst>'` | `<system error message>` |
 | `exec` commande vide | `exec: command array must not be empty` | — |
 | `exec` exécutable introuvable | `exec: command not found: '<cmd>'` | `Check that the executable exists and is in PATH.` |
 | `exec` entrée `env` invalide | `exec: invalid environment entry: '<entry>'` | `Expected format: 'NAME=VALUE'.` |
@@ -2756,7 +3865,10 @@ Conventions :
 
 ```ebnf
 program
-    = { top_level_item } ;
+    = { import_decl } { top_level_item } ;
+
+import_decl
+    = "import" STRING_LITERAL ";" ;
 
 top_level_item
     = function_decl
@@ -2776,13 +3888,14 @@ param
     | array_type IDENT ;
 
 type
-    = "int" | "float" | "bool" | "string" | "void" | "ExecResult" ;
+    = "int" | "float" | "bool" | "string" | "byte" | "void" | "ExecResult" ;
 
 array_type
     = "int" "[" "]"
     | "float" "[" "]"
     | "bool" "[" "]"
-    | "string" "[" "]" ;
+    | "string" "[" "]"
+    | "byte" "[" "]" ;
 
 block
     = "{" { statement } "}" ;
@@ -3002,6 +4115,8 @@ OCT_DIGIT
 
 Notes normatives sur la grammaire :
 
+- `import_decl` doit apparaître avant tout `top_level_item` ; le parseur doit rejeter un `import` apparaissant après une déclaration de fonction ou de variable comme une **erreur syntaxique** ; un `import` à l'intérieur d'un bloc ou d'une fonction est également une **erreur syntaxique** ;
+- le chemin dans `import_decl` est un `STRING_LITERAL` ordinaire ; les séquences d'échappement y sont reconnues mais leur usage est déconseillé pour les chemins ; le chemin est résolu et validé lors de la phase sémantique, pas lors du parsing ;
 - `simple_or_block` interdit explicitement une déclaration de variable scalaire ou tableau comme corps direct d'un `if`, `else`, `while` ou `for` sans bloc ; une telle déclaration doit produire une erreur syntaxique ou sémantique ;
 - `function_decl` pour `main` est restreint à quatre signatures exactes : `int main()`, `void main()`, `int main(string[] args)`, `void main(string[] args)` ; le nom du paramètre dans les formes avec `string[] args` est libre mais doit être un identifiant valide ;
 - `index_assign_stmt` est une instruction autonome et non une expression ; `array[i] = value` ne peut pas apparaître au sein d'une expression ; si l'identifiant désigne une `string`, c'est une **erreur sémantique** (chaînes immutables) ;
@@ -3719,7 +4834,7 @@ void main() {
 
 Les décisions suivantes sont **normatives** et s'appliquent sans exception :
 
-1. un seul fichier source par programme ;
+1. un programme Cimple est défini par un **fichier racine** unique passé à `cimple run` ou `cimple check` ; ce fichier racine peut importer d'autres fichiers `.ci` via la directive `import` (voir section 5.2) ; l'ensemble est fusionné en un AST unique avant l'analyse sémantique ; il n'existe pas de notion de module ni d'espace de noms ;
 2. pas de modules ;
 3. variables globales autorisées, y compris les tableaux globaux ;
 4. tableaux dynamiques homogènes supportés pour les types `int[]`, `float[]`, `bool[]`, `string[]` ;
@@ -3743,7 +4858,7 @@ Les décisions suivantes sont **normatives** et s'appliquent sans exception :
 22. l'affectation scalaire n'est pas une expression ; `i++` et `i--` (forme postfixe uniquement) sont des instructions autonomes uniquement, jamais des sous-expressions ; les formes préfixes `++i` et `--i` sont interdites ;
 23. `print` imprime uniquement des `string` ;
 24. `void main()` est une forme valide du point d'entrée ; les quatre formes `int main()`, `void main()`, `int main(string[] args)`, `void main(string[] args)` sont toutes valides ; toute autre signature de `main` est une erreur sémantique ;
-25. les entrées/sorties fichiers sont exclusivement texte UTF-8 ; toute erreur d'I/O est une erreur runtime avec message clair incluant le chemin et la nature de l'erreur ; `fileExists` ne lève jamais d'erreur runtime ;
+25. les entrées/sorties fichiers sont exclusivement texte UTF-8 ; toute erreur d'I/O est une erreur runtime avec message clair incluant le chemin et la nature de l'erreur ; `fileExists` ne lève jamais d'erreur runtime ; `remove` lève une erreur runtime si le fichier n'existe pas, s'il s'agit d'un répertoire, ou si les permissions sont insuffisantes ; `chmod` lève une erreur runtime si le chemin n'existe pas, si les permissions sont insuffisantes, ou si la plateforme est Windows ou WebAssembly ; `copy` et `move` écrasent silencieusement `dst` s'il existe ; `move` gère de manière transparente les déplacements inter-systèmes de fichiers (copie + suppression) ; `isReadable`, `isExecutable`, `isDirectory` retournent `false` sur chemin inexistant, sans erreur runtime ; `isWritable` teste le fichier lui-même s'il existe, le répertoire parent sinon, et retourne `false` si le parent n'existe pas ; `dirname`, `basename`, `filename`, `extension`, `cwd` sont des calculs purs ne levant jamais d'erreur runtime ;
 26. `ExecResult` est le seul type composite de Cimple ; il est opaque, produit uniquement par `exec`, non tableautable (`ExecResult[]` interdit), non déclarable sans initialisation ; un code de retour non nul du sous-processus n'est pas une erreur runtime Cimple ;
 27. la détection d'absence de `return` dans une fonction non `void` est conservative : tout chemin non garanti produit une erreur sémantique ;
 28. toutes les fonctions de temps opèrent en **UTC** ; les fuseaux horaires locaux ne sont pas pris en charge ; `now()` retourne l'epoch Unix en millisecondes sous forme d'`int` (`int64_t`) ; `makeEpoch` retourne `-1` sur composants invalides et jamais d'erreur runtime ; `formatDate` ne lève pas d'erreur runtime ;
@@ -3753,7 +4868,9 @@ Les décisions suivantes sont **normatives** et s'appliquent sans exception :
 32. l'implémentation doit être livrée avec un fichier `MANUAL.md` en anglais, auto-suffisant, couvrant les parties I à VIII définies en section 31 ; le manuel est normatif — tout écart entre le manuel et le comportement réel de l'implémentation est un bug ; le numéro de version du manuel doit correspondre à celui de la spec ;
 33. l'implémentation est écrite en **C** (standard C99 ou C11) exclusivement ; aucun autre langage n'est autorisé ; re2c génère du C pur ; Lemon est un fichier C unique ; l'ensemble du projet est compilable avec GCC, Clang et MSVC sans modification du code source ;
 34. les plateformes cibles sont : **macOS** (Apple Silicon et Intel), **Linux**, **Unix** (POSIX), **Windows** (MSVC/MinGW/Clang) et **WebAssembly** (Emscripten, cible `wasm32`) ; `exec` et `getEnv` ont un comportement dégradé défini sous WebAssembly (voir section 4.4) ;
-35. la suite de tests est **normative** : tout bug corrigé doit être accompagné d'un test de non-régression ajouté avant la correction ; la suite est composée de scripts shell POSIX pilotés par CTest (`make test`) ; les tests positifs, négatifs, de non-régression, de parité WebAssembly et des exemples du manuel doivent tous passer avec code `0` avant toute publication ; la couverture minimale est ≥ 535 tests définie en sections 28.11 et 28.12 ; tout exemple présent dans `MANUAL.md` doit avoir un test correspondant dans `tests/manual/`.
+35. la suite de tests est **normative** : tout bug corrigé doit être accompagné d'un test de non-régression ajouté avant la correction ; la suite est composée de scripts shell POSIX pilotés par CTest (`make test`) ; les tests positifs, négatifs, de non-régression, de parité WebAssembly et des exemples du manuel doivent tous passer avec code `0` avant toute publication ; la couverture minimale est ≥ 555 tests définie en sections 28.11 et 28.12 ; tout exemple présent dans `MANUAL.md` doit avoir un test correspondant dans `tests/manual/` ;
+36. la directive `import` est le seul mécanisme d'inclusion de fichiers ; `import` est un mot-clé du langage reconnu par le lexer ; les imports sont résolus avant l'analyse sémantique par fusion récursive en profondeur d'abord ; les imports circulaires sont une erreur sémantique ; la profondeur maximale est 32 ; les fichiers importés ne peuvent pas définir `main` ; les redéfinitions de fonctions ou variables globales via import sont des erreurs sémantiques ; un fichier importé plusieurs fois est traité une seule fois (déduplication par chemin absolu résolu) ; les messages d'erreur indiquent toujours le fichier source d'origine ;
+37. `byte` est un type scalaire entier non signé 8 bits (0–255) ; les opérateurs `+ - * / %` et `<< >>` sur `byte` produisent un `int` ; les opérateurs `& | ^ ~` sur deux `byte` produisent un `byte` ; les opérations mixtes `byte op int` produisent un `int` ; `intToByte(n)` applique un clamp (n<0→0, n>255→255) sans erreur runtime ; les littéraux entiers dans `[0,255]` sont affectables directement à un `byte` ; l'affectation d'une variable `int` à un `byte` sans `intToByte()` est une erreur sémantique ; `bytesToString` remplace les séquences UTF-8 invalides par U+FFFD sans erreur runtime ; `intToBytes` et `floatToBytes` sont des dumps mémoire bruts (`memcpy`) dans l'ordre natif de la machine hôte, sans interprétation ni transformation ; `bytesToInt` et `bytesToFloat` sont les opérations symétriques ; la taille du tableau est vérifiée (4 octets pour `int`, 8 pour `float`), toute autre taille est une erreur runtime ; NaN et ±Infinity sont valides comme résultat de `bytesToFloat` ; le round-trip est garanti sur la même machine.
 
 ---
 
@@ -3786,8 +4903,10 @@ cimple check hello.ci
 
 Comportement :
 
-- `run` : parse, vérifie, exécute ;
-- `check` : parse et vérifie sans exécuter.
+- `run` : résout les imports, parse, vérifie, exécute ;
+- `check` : résout les imports, parse et vérifie sans exécuter ; retourne `0` si aucune erreur dans le fichier racine **ni dans aucun fichier importé**, `1` sinon.
+
+La CLI n'accepte qu'un seul fichier en argument (le fichier racine) ; les fichiers importés sont découverts automatiquement via les directives `import`. Il n'est pas possible de passer plusieurs fichiers sur la ligne de commande.
 
 L'extension source officielle de Cimple est `.ci`.
 
@@ -3844,10 +4963,15 @@ tests/
     constants/
     unicode/
     main_signatures/
+    byte/                 # type byte, byte[], opérateurs, conversions
+    stdlib/
+      binary/             # readFileBytes, writeFileBytes, appendFileBytes
+    imports/                # programmes utilisant import (positifs)
   negative/                 # programmes invalides — vérification erreur + code 1 ou 2
     lexical/
     syntax/
     semantic/
+      imports/              # erreurs sémantiques spécifiques aux imports
     runtime/
   regression/               # tests de non-régression (un sous-répertoire par bug corrigé)
     bug-001/
@@ -4124,6 +5248,17 @@ Chaque ligne ci-dessous correspond à au moins un répertoire de test dans `test
 - `glyphLen` vs `len` sur chaîne multi-octets
 - `glyphAt` : NFC sur entrée NFD
 - immutabilité : `replace` retourne une nouvelle chaîne, `s` inchangé
+- `trim` : espaces en début et fin, tabs, newlines, chaîne entièrement vide → `""`
+- `trimLeft` / `trimRight` : asymétrie vérifiée (début seul, fin seule)
+- `toUpper` : ASCII, accents (`é`→`É`), `ß`→`SS`, déjà en majuscule inchangé
+- `toLower` : ASCII, accents (`É`→`é`), déjà en minuscule inchangé
+- `capitalize` : première lettre uniquement, reste inchangé ; `hELLO` → `HELLO` ; `""` → `""`
+- `padLeft` : padding simple, pad multi-char tronqué, `glyphLen(s) >= width` → inchangé, `pad=""` → inchangé
+- `padRight` : idem côté droit, pad multi-char tronqué à droite
+- `repeat` : `n=3`, `n=0` → `""`, `s=""` → `""`
+- `lastIndexOf` : dernière occurrence, occurrence unique, absent → `-1`
+- `countOccurrences` : non chevauchant `"aaaa"/"aa"` → 2, absent → 0
+- `isBlank` : `""` → `true`, `"   "` → `true`, `"\t\n"` → `true`, `"  x"` → `false`
 
 **Tableaux**
 - déclaration avec littéral et sans initialisation
@@ -4177,6 +5312,20 @@ Chaque ligne ci-dessous correspond à au moins un répertoire de test dans `test
 - `fileExists` : vrai, faux, faux sur répertoire
 - `readLines` / `writeLines` : aller-retour, normalisation `\r\n` → `\n`
 - fichier vide : `readLines` retourne `[]`, `readFile` retourne `""`
+- `tempPath` : retourne une `string` non vide, chemin inexistant (`fileExists` → `false`), deux appels → chemins distincts
+- `remove` : créer puis supprimer un fichier ; `fileExists` → `false` après suppression
+- `chmod` : `chmod(path, 0644)` sur fichier existant sans erreur (POSIX uniquement)
+- `cwd` : retourne une `string` non vide commençant par `/` (POSIX) ou lettre de lecteur (Windows)
+- `copy` : copie d'un fichier, contenu identique, src toujours présent ; écrasement silencieux si dst existe
+- `move` : déplacement d'un fichier, src absent après, contenu correct dans dst ; écrasement silencieux si dst existe
+- `isReadable` : `true` sur fichier lisible, `false` sur chemin inexistant
+- `isWritable` : `true` sur fichier existant accessible en écriture ; `true` sur chemin inexistant si parent accessible ; `false` si parent inexistant
+- `isExecutable` : `true` après `chmod(path, 0755)`, `false` après `chmod(path, 0644)`
+- `isDirectory` : `true` sur répertoire existant, `false` sur fichier, `false` sur inexistant
+- `dirname` : `/path/to/file.txt` → `/path/to` ; `file.txt` → `""` ; `/` → `"/"` ; `a/b` → `"a"`
+- `basename` : `/path/to/my.file.txt` → `my.file.txt` ; `file.txt` → `file.txt` ; `/path/to/` → `""`
+- `filename` : `my.file.txt` → `my.file` ; `archive.tar.gz` → `archive.tar` ; `makefile` → `makefile` ; `.gitignore` → `.gitignore`
+- `extension` : `my.file.txt` → `txt` ; `archive.tar.gz` → `gz` ; `makefile` → `""` ; `.gitignore` → `""`
 
 **Stdlib — exec**
 - commande retournant code 0, capture de stdout
@@ -4188,7 +5337,13 @@ Chaque ligne ci-dessous correspond à au moins un répertoire de test dans `test
 **Stdlib — temps**
 - `now()` : type `int`, positif, deux appels consécutifs non décroissants
 - aller-retour `makeEpoch` → `epochTo*` sur date connue (`2025-03-11 14:32:07`)
-- `formatDate` : tous les tokens sur epoch connu, séparateurs, `fmt` vide
+- `formatDate` : tous les tokens sur epoch connu — `YYYY`, `MM`, `DD`, `HH`, `mm`, `ss`, `w`, `yday`, `WW`, `ISO`
+- `formatDate` : séparateurs libres copiés tels quels, `fmt` vide → `""`
+- `formatDate("w")` : dimanche → `"0"`, lundi → `"1"`, samedi → `"6"`
+- `formatDate("yday")` : 1er janvier → `"0"`, 31 décembre non-bissextile → `"364"`, 31 décembre bissextile → `"365"`
+- `formatDate("WW")` : semaine 1 → `"01"`, semaine 42 → `"42"`, semaine 53 sur année longue
+- `formatDate("ISO")` : résultat de la forme `YYYY-MM-DDTHH:mm:ssZ`
+- `formatDate("YYYY-Www-w")` : format de semaine ISO — ex. `"2025-W11-2"`
 - `makeEpoch` : composants valides → epoch positif
 
 **Stdlib — environnement**
@@ -4201,6 +5356,37 @@ Chaque ligne ci-dessous correspond à au moins un répertoire de test dans `test
 - `toFloat(int)`, `toFloat(string)` : valide, non float → `NaN`
 - `toBool(string)` : `"true"`, `"false"`, `"1"`, `"0"`, non reconnu → `false`
 - `isIntString`, `isFloatString`, `isBoolString`
+
+**Type `byte` et `byte[]`**
+- déclaration : `byte b = 0xFF;`, `byte b = 255;`, `byte b = intToByte(128);`
+- arithmétique : `byte + byte` → `int`, `byte + int` → `int` ; valeur correcte sans overflow
+- bitwise : `byte & byte` → `byte`, `byte | byte` → `byte`, `~byte` → `byte`
+- décalage : `byte << int` → `int`
+- `intToByte(300)` → `byte(255)` (clamp haut) ; `intToByte(-5)` → `byte(0)` (clamp bas)
+- `byteToInt(0xFF)` → `int(255)`
+- littéral `byte[]` : `[255, 0, 128, 255]` ; accès lecture et écriture par index
+- `count(byte[])` : longueur correcte
+- aller-retour `writeFileBytes` + `readFileBytes` : contenu identique octet par octet
+- `stringToBytes("ABC")` → `[65, 66, 67]`
+- `stringToBytes("é")` → `[0xC3, 0xA9]` (2 octets UTF-8)
+- `bytesToString([72, 101, 108, 108, 111])` → `"Hello"`
+- `bytesToString([0xFF])` → `"<U+FFFD>"` (séquence UTF-8 invalide → remplacement)
+- aller-retour : `bytesToString(stringToBytes(s)) == s` pour toute chaîne valide
+- `intToBytes(n)` : `count == INT_SIZE` garanti ; `intToBytes(1)[0] == 1` détecte little-endian
+- `floatToBytes(f)` : `count == FLOAT_SIZE` garanti ; `NaN` et `±Infinity` produisent leurs octets IEEE 754
+- `bytesToInt(intToBytes(n)) == n` : round-trip garanti pour tout `int`
+- `bytesToFloat(floatToBytes(f)) == f` : round-trip garanti pour tout `float` fini
+- `bytesToInt` sur tableau de `INT_SIZE` octets quelconques : résultat potentiellement négatif, pas d'erreur
+
+**Imports**
+- import d'un fichier contenant une fonction utilitaire, appelée depuis `main.ci`
+- import de deux fichiers indépendants depuis `main.ci`
+- import en chaîne : `a.ci` importe `b.ci` qui importe `c.ci`
+- import dédupliqué : `a.ci` et `b.ci` importent tous deux `utils.ci` ; `utils.ci` n'est traité qu'une fois
+- import d'un fichier définissant une variable globale
+- import d'un fichier contenant des fonctions avec paramètres tableau (passage par référence)
+- chemin relatif avec sous-répertoire : `import "utils/strings.ci";`
+- `import` redondant silencieux : même chemin importé deux fois dans le même fichier
 
 ### 28.9 Tests négatifs — catalogue de couverture
 
@@ -4248,6 +5434,29 @@ Chaque test négatif vérifie : code de sortie `1` ou `2` selon le niveau, et pr
 | 11 erreurs : arrêt à 10 | `Further analysis aborted.` |
 | Accumulation : message récapitulatif | `semantic error(s) found` |
 
+**Erreurs sémantiques — `byte` (code 1)**
+
+| Test | Fragment attendu dans `stderr` |
+|---|---|
+| `byte b = 256;` | `[SEMANTIC ERROR]` + `Byte literal out of range` |
+| `byte b = -1;` | `[SEMANTIC ERROR]` + `Byte literal out of range` |
+| `int n = 10; byte b = n;` | `[SEMANTIC ERROR]` + `Cannot assign 'int' to 'byte'` |
+| `byte b = 0; bool x = b && true;` | `[SEMANTIC ERROR]` + `cannot be applied to type 'byte'` |
+
+**Erreurs sémantiques — imports (code 1)**
+
+| Test | Fragment attendu dans `stderr` |
+|---|---|
+| Fichier importé introuvable | `[SEMANTIC ERROR]` + `Cannot import file` |
+| Extension non `.ci` | `[SEMANTIC ERROR]` + `must end with '.ci'` |
+| Import circulaire direct (`a.ci` → `a.ci`) | `[SEMANTIC ERROR]` + `Circular import` |
+| Import circulaire indirect (`a` → `b` → `a`) | `[SEMANTIC ERROR]` + `Circular import` + chaîne complète |
+| `main` défini dans un fichier importé | `[SEMANTIC ERROR]` + `cannot be defined in an imported file` |
+| Redéfinition de fonction via import | `[SEMANTIC ERROR]` + `already declared` + les deux fichiers mentionnés |
+| `import` après une déclaration | `[SYNTAX ERROR]` + `'import' must appear before any declaration` |
+| `import` dans une fonction | `[SYNTAX ERROR]` + `not allowed inside a function` |
+| Message d'erreur dans fichier importé : fichier correct | erreur dans `lib.ci` → `stderr` contient `lib.ci` (pas `main.ci`) |
+
 **Erreurs runtime (code 2, arrêt immédiat)**
 
 | Test | Fragment attendu dans `stderr` |
@@ -4263,9 +5472,21 @@ Chaque test négatif vérifie : code de sortie `1` ou `2` selon le niveau, et pr
 | `split(s, "")` | `[RUNTIME ERROR]` + `separator cannot be empty` |
 | `replace(s, "", "x")` | `[RUNTIME ERROR]` + `old argument cannot be empty` |
 | `format("{}", [])` | `[RUNTIME ERROR]` + `marker count does not match` |
+| `repeat("x", -1)` | `[RUNTIME ERROR]` + `count must be non-negative` |
+| `countOccurrences(s, "")` | `[RUNTIME ERROR]` + `needle cannot be empty` |
+| `padLeft("x", -1, " ")` | `[RUNTIME ERROR]` + `width must be non-negative` |
+| `bytesToInt([0x01, 0x02])` | `[RUNTIME ERROR]` + `expected INT_SIZE bytes` |
+| `bytesToFloat([0x01, 0x02, 0x03])` | `[RUNTIME ERROR]` + `expected FLOAT_SIZE bytes` |
 | `makeEpoch(2025, 13, 1, 0, 0, 0)` | résultat `-1`, pas d'erreur runtime |
 | `readFile("nonexistent.txt")` | `[RUNTIME ERROR]` + `Cannot read file` |
 | `writeFile("/no/such/dir/f.txt", "x")` | `[RUNTIME ERROR]` + `Cannot write file` |
+| `remove` sur fichier inexistant | `[RUNTIME ERROR]` + `Cannot remove file` + `does not exist` |
+| `remove` sur un répertoire | `[RUNTIME ERROR]` + `Cannot remove file` + `directory` |
+| `chmod` sur chemin inexistant | `[RUNTIME ERROR]` + `Cannot chmod` + `does not exist` |
+| `copy` src inexistant | `[RUNTIME ERROR]` + `Cannot copy` + `source file not found` |
+| `copy` src est un répertoire | `[RUNTIME ERROR]` + `Cannot copy` + `directory` |
+| `move` src inexistant | `[RUNTIME ERROR]` + `Cannot move` + `source file not found` |
+| `move` src est un répertoire | `[RUNTIME ERROR]` + `Cannot move` + `directory` |
 | `exec([], [])` | `[RUNTIME ERROR]` + `command array must not be empty` |
 | `exec(["no_such_cmd_xyz"], [])` | `[RUNTIME ERROR]` + `command not found` |
 | Code de sortie runtime = `2` | vérification `expected_exit = 2` |
@@ -4377,10 +5598,11 @@ La suite est considérée suffisante si elle couvre :
 | Constantes prédéfinies | 20 |
 | Runtime (négatifs) | 25 |
 | Messages d'erreur (format) | 10 |
+| **Imports** | **20** |
 | WebAssembly (parité) | ≥ 80 % des tests positifs |
 | Non-régression | 1 par bug corrigé (minimum) |
 | Tests du manuel (`tests/manual/`) | ≥ 165 (section 28.12) |
-| **Total** | **≥ 535** |
+| **Total** | **≥ 555** |
 
 ### 28.12 Tests des exemples du manuel
 
@@ -4458,7 +5680,7 @@ Tests that 2 + 3 * 4 evaluates to 14, not 20.
 | Appendix G — Worked Examples | 10 (un programme complet par exemple) |
 | **Total** | **≥ 165** |
 
-Ces 165 tests s'ajoutent aux ≥ 370 tests de la section 28.11, portant le total de la suite à **≥ 535 tests**.
+Ces 165 tests s'ajoutent aux ≥ 390 tests de la section 28.11, portant le total de la suite à **≥ 555 tests**.
 
 ### 28.13 Convention `description.txt` pour tous les tests
 
@@ -4539,10 +5761,11 @@ Cimple est :
 - avec **constantes prédéfinies** numériques (`INT_MAX`, `INT_MIN`, `INT_SIZE`, `FLOAT_SIZE`, `FLOAT_DIG`, `FLOAT_EPSILON`, `FLOAT_MIN`, `FLOAT_MAX`) et mathématiques (`M_PI`, `M_E`, `M_TAU`, `M_SQRT2`, `M_LN2`, `M_LN10`) ; pour `int[]`, `float[]`, `bool[]`, `string[]`, indexés à partir de `0`, passés par référence aux fonctions ;
 - avec fonctions intrinsèques de manipulation de tableaux : `count`, `arrayPush`, `arrayPop`, `arrayInsert`, `arrayRemove`, `arrayGet`, `arraySet` ;
 - avec fonctions de manipulation de chaînes incluant `len` (octets UTF-8), `glyphLen` (points de code NFC), `glyphAt` (accès par glyphe NFC), `join`, `split`, `concat`, `replace` (remplacement toutes occurrences) et `format` (substitution positionnelle `{}` avec `string[]`) ;
-- avec fonctions de temps et dates UTC : `now()` (epoch ms), `epochToYear/Month/Day/Hour/Minute/Second`, `makeEpoch` (composants → epoch, `-1` sur invalide), `formatDate` (tokens `YYYY MM DD HH mm ss`) ;
+- avec fonctions de temps et dates UTC : `now()` (epoch ms), `epochToYear/Month/Day/Hour/Minute/Second`, `makeEpoch` (composants → epoch, `-1` sur invalide), `formatDate` (tokens `YYYY MM DD HH mm ss w yday WW ISO`) ;
 - avec fonctions d'entrées/sorties fichiers texte UTF-8 : `readFile`, `writeFile`, `appendFile`, `fileExists`, `readLines`, `writeLines` ; toute erreur d'I/O est une erreur runtime explicite ;
 - avec exécution de commandes externes via `exec` retournant un `ExecResult` opaque natif ; stdout et stderr capturés séparément via `execStdout` et `execStderr` ; code de retour via `execStatus` ;
 - avec fonctions mathématiques complètes : noyau (`sqrt`, `pow`, `abs`, `min`, `max`, `floor`, `ceil`, `round`, `trunc`, `fmod`, `approxEqual`), trigonométrie (`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`), logarithmes et exponentielle (`exp`, `log`, `log2`, `log10`) ;
+- avec directive **`import "fichier.ci";`** permettant d'inclure des fichiers sources `.ci` ; les imports sont résolus récursivement avant l'analyse sémantique ; l'ordre est profondeur d'abord ; les imports circulaires sont une erreur sémantique ; la profondeur maximale est 32 ; les fichiers importés ne peuvent pas définir `main` ; les redéfinitions entre fichiers sont des erreurs sémantiques ; un fichier importé plusieurs fois n'est traité qu'une fois ;
 - sans pointeurs, sans macros, sans préprocesseur, sans pièges historiques du C ;
 - avec `if`, `else`, `while` et `for` acceptant soit un bloc, soit une instruction simple unique ;
 - avec le `else` associé au `if` non apparié le plus proche ;
@@ -4552,7 +5775,7 @@ Cimple est :
 - avec erreurs runtime claires sur tout accès tableau hors bornes ;
 - avec **système de diagnostic uniforme** : quatre niveaux `[LEXICAL ERROR]`, `[SYNTAX ERROR]`, `[SEMANTIC ERROR]`, `[RUNTIME ERROR]` ; messages toujours en anglais ; format `[LEVEL]  file  line N, column N / description / -> indication` ; sortie sur `stderr` uniquement ; pas de coloration ANSI ; erreurs lexicales et syntaxiques fatales immédiates ; erreurs sémantiques accumulées jusqu'à 10 ; erreurs runtime fatales immédiates ; codes de sortie `0` / `1` / `2` écrasant le code retour utilisateur en cas d'erreur ;
 - livré avec **`MANUAL.md`** — manuel de référence en anglais, auto-suffisant, normatif, en 8 parties (Getting Started → Appendices), couvrant tous les concepts du débutant absolu à l'expert, avec un exemple complet par fonction, un catalogue exhaustif des erreurs, 10 programmes annotés en Appendix G, et un changelog versionné ;
-- livré avec une **suite de tests normative** : scripts shell POSIX, pilotée par CMake/CTest (`make test`), ≥ 535 tests couvrant positifs, négatifs, non-régression, parité CLI ↔ WebAssembly, et **tous les exemples du manuel** (`tests/manual/`) ; tout bug corrigé accompagné d'un test de non-régression obligatoire ; tout exemple de `MANUAL.md` sans test correspondant est un défaut.
+- livré avec une **suite de tests normative** : scripts shell POSIX, pilotée par CMake/CTest (`make test`), ≥ 555 tests couvrant positifs, négatifs, non-régression, parité CLI ↔ WebAssembly, et **tous les exemples du manuel** (`tests/manual/`) ; tout bug corrigé accompagné d'un test de non-régression obligatoire ; tout exemple de `MANUAL.md` sans test correspondant est un défaut.
 
 ---
 
@@ -4916,13 +6139,123 @@ The manual version number must match the specification version number. A changel
 ```
 ## Changelog
 
+### v39
+- Added: note d'implémentation en section 6.1 — `int` doit être `int64_t` ; justification : `now()` retourne une epoch Unix en millisecondes (~1,7 × 10¹² ms), incompatible avec `int32_t` ; `INT_SIZE = 8` sur toutes les plateformes cibles
+
+### v38
+- Fixed: `intToBytes`, `bytesToInt` — taille exprimée en `INT_SIZE` et non en valeur absolue 4 (section 9.9, 21.6, 28.8, 28.9)
+- Fixed: `floatToBytes`, `bytesToFloat` — taille exprimée en `FLOAT_SIZE` et non en valeur absolue 8 (section 9.9, 21.6, 28.8, 28.9)
+- Rationale: `INT_SIZE` et `FLOAT_SIZE` sont des constantes prédéfinies reflétant les choix de l'implémentation ; fixer les tailles en dur contredisait ce principe
+
+### v37
+- Added: `intToBytes(int n)` → `byte[INT_SIZE]` — dump mémoire brut de l'entier, ordre natif (section 9.9)
+- Added: `floatToBytes(float f)` → `byte[FLOAT_SIZE]` — dump mémoire brut du flottant IEEE 754, ordre natif (section 9.9)
+- Added: `bytesToInt(byte[] data)` → `int` — reconstruction symétrique ; `count != INT_SIZE` erreur runtime (section 9.9)
+- Added: `bytesToFloat(byte[] data)` → `float` — reconstruction symétrique ; `count != FLOAT_SIZE` erreur runtime ; NaN/Inf valides (section 9.9)
+- Updated: vérifications sémantiques 19.2b
+- Updated: catalogue erreurs runtime 21.6 — 2 nouvelles entrées
+- Updated: catalogues de tests 28.8 et 28.9
+- Updated: décision normative 37
+
+### v36
+- Added: type scalaire `byte` — entier non signé 8 bits (section 6.1, 6.6)
+- Added: type tableau `byte[]` (section 6.2)
+- Added: `byte` comme mot-clé réservé (section 14, 16.2)
+- Added: règles arithmétiques complètes : `+ - * / % << >>` → `int` ; `& | ^ ~` sur deux `byte` → `byte` ; mixte `byte op int` → `int` (section 6.6)
+- Added: `intToByte(n)` — clamp silencieux [0,255] (section 9.9)
+- Added: `byteToInt(b)` — valeur entière 0–255 (section 9.9)
+- Added: `readFileBytes`, `writeFileBytes`, `appendFileBytes` — I/O binaires (section 9.9)
+- Added: `stringToBytes`, `bytesToString` — conversion chaîne ↔ octets ; U+FFFD sur UTF-8 invalide (section 9.9)
+- Added: exception littérale — littéraux entiers `[0,255]` affectables directement à `byte` ; variables `int` → `intToByte()` obligatoire (section 6.6, 19.2b)
+- Added: section 19.2b — vérifications sémantiques `byte`
+- Added: 3 nouvelles erreurs sémantiques dans le catalogue 21.5
+- Added: 2 nouvelles erreurs runtime dans le catalogue 21.6
+- Updated: grammaire EBNF — `type` et `array_type` étendus (section 22)
+- Updated: catalogue des erreurs syntaxiques 21.4 — `byte` dans la liste des types valides
+- Updated: structure de tests 28.2, catalogues 28.8 et 28.9
+- Added: décision normative 37
+
+### v35
+- Added: `trim`, `trimLeft`, `trimRight` — suppression des espaces/tabs/newlines en début et/ou fin (section 9.3)
+- Added: `toUpper`, `toLower` — conversion de casse Unicode complète, locale-agnostique ; `ß`→`SS` pour `toUpper` (section 9.3)
+- Added: `capitalize` — première lettre en majuscule, reste inchangé (section 9.3)
+- Added: `padLeft`, `padRight` — padding jusqu'à `width` glyphes ; `pad=""` → inchangé ; pad multi-char tronqué pour tomber pile à `width` ; `width<0` erreur runtime (section 9.3)
+- Added: `repeat(string s, int n)` — `n=0` → `""` ; `n<0` erreur runtime (section 9.3)
+- Added: `lastIndexOf(string s, string needle)` — dernière occurrence en octets, `-1` si absente (section 9.3)
+- Added: `countOccurrences(string s, string needle)` — occurrences non chevauchantes ; `needle=""` erreur runtime (section 9.3)
+- Added: `isBlank(string s)` — `true` si vide ou uniquement espaces/tabs/newlines (section 9.3)
+- Added: 4 nouvelles entrées dans le catalogue des erreurs runtime 21.6
+- Updated: vérifications sémantiques 19.3
+- Updated: catalogues de tests 28.8 et 28.9
+
+### v34
+- Added: `string cwd()` — répertoire de travail courant, jamais d'erreur runtime (section 9.9)
+- Added: `void copy(string src, string dst)` — copie de fichier, écrasement silencieux si dst existe (section 9.9)
+- Added: `void move(string src, string dst)` — déplacement/renommage, transparent inter-systèmes de fichiers, écrasement silencieux si dst existe (section 9.9)
+- Added: `bool isReadable(string path)`, `bool isWritable(string path)`, `bool isExecutable(string path)`, `bool isDirectory(string path)` — tests de propriétés, jamais d'erreur runtime ; `isWritable` teste le fichier lui-même s'il existe, le répertoire parent sinon (section 9.9)
+- Added: `string dirname(string path)`, `string basename(string path)`, `string filename(string path)`, `string extension(string path)` — décomposition lexicale de chemin ; `dirname("file.txt")` → `""` ; `dirname("/")` → `"/"` ; `extension(".gitignore")` → `""` (section 9.9)
+- Added: 8 nouvelles entrées dans le catalogue des erreurs runtime 21.6 (`copy`, `move`)
+- Updated: vérifications sémantiques 19.8 — toutes les nouvelles fonctions
+- Updated: décision normative 25
+- Updated: catalogues de tests 28.8 et 28.9
+
+### v33
+- Added: `void remove(string path)` — supprime un fichier ; erreur runtime si inexistant, si répertoire, ou si permissions insuffisantes (section 9.9)
+- Added: `void chmod(string path, int mode)` — modifie les droits POSIX ; `mode` est un entier octal (ex. `0644`) ; erreur runtime si chemin inexistant, permissions insuffisantes, ou plateforme Windows/WebAssembly (`chmod: not supported on this platform`) (section 9.9)
+- Added: signatures `remove` et `chmod` dans la liste stdlib 9.1
+- Added: 5 nouvelles entrées dans le catalogue des erreurs runtime 21.6
+- Updated: vérifications sémantiques 19.8 — `remove`, `chmod`, `tempPath`
+- Updated: décision normative 25 — comportement de `remove` et `chmod`
+- Updated: catalogues de tests 28.8 (positifs) et 28.9 (négatifs)
+
+### v32
+- Added: `string tempPath()` — chemin temporaire unique et inexistant (section 9.9) ; ne crée pas le fichier ; deux appels successifs retournent deux chemins distincts ; répertoire POSIX : `$TMPDIR` sinon `/tmp` ; Windows et WebAssembly : comportement défini par l'implémenteur ; race condition externe non protégée, pas de suppression implicite
+- Added: signature `tempPath()` dans la liste stdlib 9.1
+
+### v31
+- Added: `formatDate` — 4 nouveaux tokens : `w` (jour de la semaine, 0=dim), `yday` (jour de l'année base 0, sans padding), `WW` (semaine ISO 8601, zéro-paddé), `ISO` (date complète ISO 8601 UTC : `YYYY-MM-DDTHH:mm:ssZ`, retourne `"invalid"` hors plage 0–9999) (section 9.12)
+- Updated: règle de substitution précisée — correspondance du préfixe le plus long en premier
+- Updated: section 28.8 — catalogue de tests `formatDate` étendu
+- Updated: résumé section 30
+
+### v30
+- Added: `import` directive — directive de premier niveau permettant d'inclure des fichiers `.ci` (sections 5.1–5.2, 14, 16.2, 19.12, 21.5, 22, 25, 27, 28)
+- Added: `import` comme mot-clé réservé (section 14)
+- Added: `TokenValue.file` pour les messages d'erreur multi-fichiers (section 16.3)
+- Added: section 19.12 — vérifications sémantiques des imports (cycles, profondeur, `main` interdit, redéfinitions)
+- Added: 8 nouvelles erreurs sémantiques dans le catalogue 21.5
+- Updated: grammaire EBNF — `program` distingue `import_decl` et `top_level_item` (section 22)
+- Updated: décision normative 1 reformulée ; décision 36 ajoutée (section 25)
+- Updated: CLI section 27 — un seul fichier racine, imports résolus automatiquement
+- Updated: structure de tests — `tests/positive/imports/` et `tests/negative/semantic/imports/` (section 28)
+- Updated: couverture minimale 535 → 555 tests (sections 28.11, 28.12, 30, 35)
+- Updated: résumé normatif section 30 — mention de `import`
+
+### v29
+- Fixed: `makeEpoch` retiré du catalogue des erreurs runtime (retourne `-1`, jamais d'erreur)
+- Fixed: doublon du bloc d'exemple `getEnv` supprimé
+- Fixed: commentaire erroné "log() n'existe pas en Cimple" supprimé
+- Added: section `input()` complète (lecture stdin)
+- Fixed: `readFile` clarifié — contenu brut, pas de normalisation ; `readLines` normalise
+- Fixed: `substr` — "caractères" → "octets"
+- Fixed: commentaire PREDEFINED_CONST dans la grammaire complété avec les constantes `M_*`
+- Fixed: artefacts `toString(...)` × 3 répétés (sections 11.5, 19.6, 30)
+- Added: règle de division entière par troncature vers zéro avec exemples
+- Added: `for_init` type non-`int` qualifié comme erreur sémantique
+- Added: réaffectation totale de tableau `t = [...]` qualifiée comme erreur sémantique
+
+### v28
+- Added: suite de tests normative complète (section 28) — structure, format, couverture ≥ 535
+- Added: tests du manuel (section 28.12) — ≥ 165 tests dans `tests/manual/`
+- Added: tests de parité CLI ↔ WebAssembly (section 28.10)
+- Added: MANUAL.md requirement (section 31) — 8 parties, Appendix G (10 programmes annotés)
+
 ### v25
-- Added: time and date functions (now, epochTo*, makeEpoch, formatDate) — Part V section 27
-- Added: replace and format string functions — Part V section 21
-- Added: mathematical constants M_PI, M_E, M_TAU, M_SQRT2, M_LN2, M_LN10 — Part V section 23
-- Added: trigonometry and logarithm functions — Part V section 22
-- Added: predefined numeric constants INT_MAX … FLOAT_MAX — Part V section 23
-- Added: error message format specification — Part VII
-```
+- Added: time and date functions (now, epochTo*, makeEpoch, formatDate)
+- Added: replace and format string functions
+- Added: mathematical constants M_PI, M_E, M_TAU, M_SQRT2, M_LN2, M_LN10
+- Added: trigonometry and logarithm functions
+- Added: predefined numeric constants INT_MAX … FLOAT_MAX
+- Added: error message format specification
 
 ---
