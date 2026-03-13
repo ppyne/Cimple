@@ -10,6 +10,7 @@ typedef struct StructTable StructTable;
  * Semantic analysis context
  * ----------------------------------------------------------------------- */
 typedef struct {
+    AstNode   *program;       /* current program root                */
     FuncTable *funcs;         /* all declared functions              */
     StructTable *structs;     /* all declared structures             */
     Scope     *global_scope;  /* global variable scope               */

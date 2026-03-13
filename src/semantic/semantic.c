@@ -225,6 +225,9 @@ static void collect_structs(SemCtx *ctx, AstNode *program);
 static void collect_functions(SemCtx *ctx, AstNode *program);
 static void validate_structs(SemCtx *ctx);
 static void check_struct_methods(SemCtx *ctx);
+static int struct_declared_before(SemCtx *ctx, const char *name, int line);
+static AstNode *global_decl_lookup(AstNode *program, const char *name);
+static int struct_has_inheritance_cycle(SemCtx *ctx, StructInfo *si);
 
 /* Resolve intrinsic conversion overloads statically. */
 CimpleType builtin_resolve_intrinsic(const char *name, CimpleType arg_type,
@@ -360,6 +363,38 @@ static StructMethodSig *struct_lookup_method(StructTable *st, StructInfo *si, co
         if (base) return struct_lookup_method(st, base, name);
     }
     return NULL;
+}
+
+static int struct_declared_before(SemCtx *ctx, const char *name, int line) {
+    StructInfo *si = struct_table_lookup(ctx->structs, name);
+    return si && si->decl && si->decl->line < line;
+}
+
+static AstNode *global_decl_lookup(AstNode *program, const char *name) {
+    if (!program || program->kind != NODE_PROGRAM) return NULL;
+    for (int i = 0; i < program->u.program.decls.count; i++) {
+        AstNode *d = program->u.program.decls.items[i];
+        if (d->kind == NODE_VAR_DECL && strcmp(d->u.var_decl.name, name) == 0)
+            return d;
+        if (d->kind == NODE_FUNC_DECL && strcmp(d->u.func_decl.name, name) == 0)
+            return d;
+    }
+    return NULL;
+}
+
+static int struct_has_inheritance_cycle(SemCtx *ctx, StructInfo *si) {
+    StructInfo *slow = si;
+    StructInfo *fast = si;
+    while (fast && fast->base_name) {
+        slow = slow && slow->base_name ? struct_table_lookup(ctx->structs, slow->base_name) : NULL;
+        fast = struct_table_lookup(ctx->structs, fast->base_name);
+        if (fast && fast->base_name)
+            fast = struct_table_lookup(ctx->structs, fast->base_name);
+        else
+            fast = NULL;
+        if (slow && fast && slow == fast) return 1;
+    }
+    return 0;
 }
 
 static int extract_int_literal_expr(AstNode *n, int64_t *out) {
@@ -539,6 +574,12 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                 error_semantic(n->line, n->col,
                                "Unknown type: '%s'", n->u.clone_expr.struct_name);
             }
+            n->type = TYPE_UNKNOWN;
+            return TYPE_UNKNOWN;
+        }
+        if (!struct_declared_before(ctx, si->name, n->line)) {
+            error_semantic(n->line, n->col,
+                           "Unknown type: '%s'", si->name);
             n->type = TYPE_UNKNOWN;
             return TYPE_UNKNOWN;
         }
@@ -1009,6 +1050,14 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         const char *name = n->u.var_decl.name;
         CimpleType   t   = n->u.var_decl.type;
 
+        if ((t == TYPE_STRUCT || t == TYPE_STRUCT_ARR) &&
+            (!n->u.var_decl.struct_name ||
+             !struct_declared_before(ctx, n->u.var_decl.struct_name, n->line))) {
+            error_semantic(n->line, n->col,
+                           "Unknown type: '%s'",
+                           n->u.var_decl.struct_name ? n->u.var_decl.struct_name : "<unknown>");
+        }
+
         /* Check for predefined constant collision */
         if (is_reserved_constant_name(name)) {
             error_semantic(n->line, n->col,
@@ -1370,16 +1419,32 @@ static void validate_structs(SemCtx *ctx) {
                            "Structure name must start with an uppercase letter: '%s'",
                            si->name);
         }
-        if (si->base_name && !struct_table_lookup(ctx->structs, si->base_name)) {
+        StructInfo *base_info = si->base_name ? struct_table_lookup(ctx->structs, si->base_name) : NULL;
+        int has_cycle = si->base_name && struct_has_inheritance_cycle(ctx, si);
+        if (si->base_name && !base_info) {
+            error_semantic(si->decl->line, si->decl->col,
+                           "Unknown base structure: '%s'", si->base_name);
+        } else if (si->base_name && !has_cycle &&
+                   !struct_declared_before(ctx, si->base_name, si->decl->line)) {
             error_semantic(si->decl->line, si->decl->col,
                            "Unknown base structure: '%s'", si->base_name);
         }
+        if (has_cycle) {
+            error_semantic(si->decl->line, si->decl->col,
+                           "Inheritance cycle detected involving '%s'", si->name);
+        }
 
-        StructInfo *base = si->base_name ? struct_table_lookup(ctx->structs, si->base_name) : NULL;
+        StructInfo *base = base_info;
         NodeList *members = &si->decl->u.struct_decl.members;
         for (int i = 0; i < members->count; i++) {
             AstNode *m = members->items[i];
             if (m->kind == NODE_STRUCT_FIELD) {
+                AstNode *global = global_decl_lookup(ctx->program, m->u.struct_field.name);
+                if (global && global->line < si->decl->line) {
+                    error_semantic(m->line, m->col,
+                                   "Field '%s' in structure '%s' conflicts with global identifier '%s'",
+                                   m->u.struct_field.name, si->name, m->u.struct_field.name);
+                }
                 StructFieldSig *field = ALLOC(StructFieldSig);
                 field->name = cimple_strdup(m->u.struct_field.name);
                 field->type = m->u.struct_field.type;
@@ -1395,7 +1460,9 @@ static void validate_structs(SemCtx *ctx) {
                                         "Field '%s' in structure '%s' has no default value",
                                         field->name, si->name);
                 }
-                if (field->type == TYPE_STRUCT && (!field->struct_name || !struct_table_lookup(ctx->structs, field->struct_name))) {
+                if ((field->type == TYPE_STRUCT || field->type == TYPE_STRUCT_ARR) &&
+                    (!field->struct_name ||
+                     !struct_declared_before(ctx, field->struct_name, m->line))) {
                     error_semantic(m->line, m->col,
                                    "Unknown type: '%s'", field->struct_name ? field->struct_name : "<unknown>");
                 }
@@ -1435,6 +1502,12 @@ static void validate_structs(SemCtx *ctx) {
                     }
                 }
             } else if (m->kind == NODE_FUNC_DECL) {
+                AstNode *global = global_decl_lookup(ctx->program, m->u.func_decl.name);
+                if (global && global->line < si->decl->line) {
+                    error_semantic(m->line, m->col,
+                                   "Method '%s' in structure '%s' conflicts with global identifier '%s'",
+                                   m->u.func_decl.name, si->name, m->u.func_decl.name);
+                }
                 StructMethodSig *method = ALLOC(StructMethodSig);
                 method->name = cimple_strdup(m->u.func_decl.name);
                 method->ret_type = m->u.func_decl.ret_type;
@@ -1481,6 +1554,14 @@ static void collect_functions(SemCtx *ctx, AstNode *program) {
 
         const char *name = d->u.func_decl.name;
 
+        if ((d->u.func_decl.ret_type == TYPE_STRUCT || d->u.func_decl.ret_type == TYPE_STRUCT_ARR) &&
+            (!d->u.func_decl.ret_struct_name ||
+             !struct_declared_before(ctx, d->u.func_decl.ret_struct_name, d->line))) {
+            error_semantic(d->line, d->col,
+                           "Unknown type: '%s'",
+                           d->u.func_decl.ret_struct_name ? d->u.func_decl.ret_struct_name : "<unknown>");
+        }
+
         /* Check builtin collision */
         if (builtin_lookup(name)) {
             error_semantic(d->line, d->col,
@@ -1497,6 +1578,12 @@ static void collect_functions(SemCtx *ctx, AstNode *program) {
             fp[j].type = params->items[j]->u.param.type;
             fp[j].struct_name = params->items[j]->u.param.struct_name
                 ? cimple_strdup(params->items[j]->u.param.struct_name) : NULL;
+            if ((fp[j].type == TYPE_STRUCT || fp[j].type == TYPE_STRUCT_ARR) &&
+                (!fp[j].struct_name || !struct_declared_before(ctx, fp[j].struct_name, params->items[j]->line))) {
+                error_semantic(params->items[j]->line, params->items[j]->col,
+                               "Unknown type: '%s'",
+                               fp[j].struct_name ? fp[j].struct_name : "<unknown>");
+            }
         }
 
         if (!func_table_define(ctx->funcs, name,
@@ -1636,6 +1723,7 @@ static void check_main(SemCtx *ctx, AstNode *program) {
  * ----------------------------------------------------------------------- */
 int semantic_check(AstNode *program) {
     SemCtx ctx;
+    ctx.program      = program;
     ctx.funcs        = func_table_new();
     ctx.structs      = struct_table_new();
     ctx.global_scope = scope_new(NULL, 0);

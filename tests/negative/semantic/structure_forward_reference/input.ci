@@ -1,0 +1,9 @@
+structure A {
+    B b = clone B;
+}
+
+structure B {
+    int x = 0;
+}
+
+void main() {}

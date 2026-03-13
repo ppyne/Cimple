@@ -34,6 +34,24 @@ void parse_state_free(ParseState *ps) {
     ps->struct_names = NULL;
 }
 
+static void precollect_struct_names(ParseState *ps, const char *source) {
+    Lexer lex;
+    TokenType prev_type = TOK_EOF;
+    lexer_init(&lex, source);
+    for (;;) {
+        Token tok = lexer_next(&lex);
+        if (tok.type == TOK_ERROR)
+            break;
+        if (prev_type == TOK_KW_STRUCTURE && tok.type == TOK_IDENT)
+            parse_state_add_struct(ps, tok.v.sval);
+        prev_type = tok.type;
+        if (tok.type == TOK_IDENT || tok.type == TOK_STRING_LIT)
+            free(tok.v.sval);
+        if (tok.type == TOK_EOF)
+            break;
+    }
+}
+
 /* -----------------------------------------------------------------------
  * Parse driver
  * Feeds tokens produced by the lexer into the Lemon-generated parser.
@@ -43,6 +61,7 @@ AstNode *parse_program(const char *source) {
     ParseState ps = { NULL, 0, TOK_EOF, 0, 0, NULL };
     TokenType prev_type = TOK_EOF;
 
+    precollect_struct_names(&ps, source);
     lexer_init(&lex, source);
 
     void *parser = ParseAlloc(cimple_malloc);
@@ -50,8 +69,6 @@ AstNode *parse_program(const char *source) {
     for (;;) {
         Token tok = lexer_next(&lex);
 
-        if (prev_type == TOK_KW_STRUCTURE && tok.type == TOK_IDENT)
-            parse_state_add_struct(&ps, tok.v.sval);
         if (prev_type != TOK_KW_STRUCTURE &&
             tok.type == TOK_IDENT && parse_state_has_struct(&ps, tok.v.sval))
             tok.type = TOK_TYPE_IDENT;

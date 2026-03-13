@@ -539,7 +539,9 @@ Règles normatives :
   | `NomDeStructure` | **obligatoire** — `clone NomDeStructure` doit être déclaré explicitement |
 - les champs et les méthodes peuvent apparaître dans n'importe quel ordre au sein de la structure ;
 - une structure doit être déclarée **avant** toute utilisation dans le fichier (ordre textuel strict) ; référencer une structure non encore déclarée est une **erreur sémantique** ;
-- les noms de champs et de méthodes sont locaux à la structure ; ils ne peuvent pas entrer en conflit avec des variables globales ou des fonctions globales ;
+
+> **Note d'implémentation — pré-collecte des noms de structures :** avant le parse principal, l'implémentation doit effectuer une passe de pré-collecte qui parcourt le flux de tokens pour identifier tous les noms de structures déclarés (`structure IDENT`) et les enregistrer comme `TYPE_IDENT` connus. Cette passe est nécessaire pour que le parseur puisse distinguer un nom de structure d'un identifiant ordinaire dès la première occurrence, indépendamment de l'ordre de déclaration dans le source. Sans cette passe, une référence à une structure non encore vue par le parseur produit une erreur syntaxique (`Unknown type`) au lieu d'une erreur sémantique (`structure non déclarée avant utilisation`), ce qui est un écart à la spec. La passe de pré-collecte résout également la détection de récursion indirecte entre structures et la détection de cycles d'héritage.
+- les noms de champs et de méthodes sont locaux à la structure ; ils ne peuvent pas entrer en conflit avec des noms de variables globales ou de fonctions globales déclarées dans le programme — un conflit est une **erreur sémantique** ;
 - un champ récursif (champ dont le type est la structure elle-même, directement ou indirectement) est une **erreur sémantique** ;
 - un champ peut être de type structure à condition que la structure référencée soit déjà déclarée et ne forme pas de cycle de dépendance ;
 - `void[]` et `ExecResult[]` ne sont pas des types valides pour un champ.
@@ -3687,15 +3689,16 @@ L'analyse sémantique doit vérifier :
 - que le nom d'une structure commence par une lettre majuscule ; un nom en minuscule est une **erreur sémantique** ;
 - que les champs de type scalaire (`int`, `float`, `bool`, `string`, `byte`) et tableau sans valeur par défaut explicite reçoivent leur valeur implicite (`0`, `0.0`, `false`, `""`, `0`, `[]`) ; aucune erreur n'est levée dans ce cas ;
 - que les champs de type structure ont une valeur par défaut explicite `clone NomDeStructure` ; l'absence de valeur par défaut pour un champ de type structure est une **erreur sémantique** ;
-- qu'aucun champ n'est de type récursif direct ou indirect (cycle de dépendance entre structures) ;
-- qu'un champ de type structure référence une structure déjà déclarée (ordre textuel) ;
+- qu'aucun champ n'est de type récursif **direct** (champ dont le type est la structure elle-même) ni **indirect** (cycle de dépendance : `A` contient un champ de type `B`, `B` contient un champ de type `A`) ; la détection de récursion indirecte requiert la passe de pré-collecte (section 6.8.1) ;
+- qu'un champ de type structure référence une structure déjà déclarée (ordre textuel) ; toute violation est une **erreur sémantique** (et non syntaxique — cf. note d'implémentation section 6.8.1) ;
 - que la valeur par défaut d'un champ de type structure est `clone NomDeStructure` ;
 - qu'il n'y a pas deux champs de même nom dans une structure (héritage inclus, sauf redéfinition valide) ;
-- qu'il n'y a pas deux méthodes avec la même signature dans une structure.
+- qu'il n'y a pas deux méthodes avec la même signature dans une structure ;
+- que les noms de champs et de méthodes d'une structure ne sont pas en conflit avec des noms de variables globales ou de fonctions globales du programme ; un conflit est une **erreur sémantique**.
 
 **Héritage :**
 - que la base déclarée dans `: NomDeBase` existe et est déclarée avant la sous-structure ;
-- qu'il n'y a pas de cycle d'héritage ;
+- qu'il n'y a pas de cycle d'héritage (`A : B, B : A`) ; la détection requiert la passe de pré-collecte (section 6.8.1) ;
 - qu'une redéfinition de champ a le **même type** que dans la base ; la valeur par défaut peut différer ; une redéfinition avec un type différent est une **erreur sémantique** ;
 - qu'un override de méthode a une signature identique (nom, types des paramètres, type de retour) à celle de la base ; une signature différente est une **erreur sémantique**.
 
@@ -4049,6 +4052,9 @@ Catalogue des erreurs sémantiques et messages associés :
 | Cycle d'héritage | `Inheritance cycle detected involving '<S>'` | — |
 | Base inconnue | `Unknown base structure: '<n>'` | — |
 | Champ redéfini avec type différent | `Field '<n>' in '<S>' redefines '<Base>.<n>' with a different type` | `Redefined fields must have the same type (default value may differ).` |
+| Accès membre sur non-structure | `Member access requires a structure instance` | `'<n>' is of type '<T>', not a structure.` |
+| Champ inconnu sur structure | `Unknown field '<n>' on structure '<S>'` | — |
+| Méthode inconnue sur structure | `Unknown method '<n>' on structure '<S>'` | — |
 | `main` dans un fichier importé | `'main' cannot be defined in an imported file` | `Define 'main' only in the root source file.` |
 | Fichier importé introuvable | `Cannot import file: '<path>'` | `File not found or not readable.` |
 | Extension import invalide | `Import path must end with '.ci'` | `Only .ci files can be imported.` |
@@ -5804,6 +5810,11 @@ Chaque test négatif vérifie : code de sortie `1` ou `2` selon le niveau, et pr
 | Cycle d'héritage `A : B, B : A` | `[SEMANTIC ERROR]` + `Inheritance cycle` |
 | Champ récursif `structure A { A x = clone A; }` | `[SEMANTIC ERROR]` + `Recursive field` |
 | Utilisation avant déclaration | `[SEMANTIC ERROR]` + `Unknown` |
+| `structure A { B b = clone B; } structure B { }` | `[SEMANTIC ERROR]` + `Unknown` (pas `[SYNTAX ERROR]`) |
+| Champ global `foo` et champ `foo` dans une structure | `[SEMANTIC ERROR]` + `conflict` |
+| `s.unknownField` | `[SEMANTIC ERROR]` + `Unknown field` |
+| `s.unknownMethod()` | `[SEMANTIC ERROR]` + `Unknown method` |
+| `42.someField` | `[SEMANTIC ERROR]` + `Member access requires a structure instance` |
 
 **Erreurs sémantiques — `byte` (code 1)**
 
@@ -6509,6 +6520,13 @@ The manual version number must match the specification version number. A changel
 
 ```
 ## Changelog
+
+### v42
+- Added: note d'implémentation obligatoire — passe de pré-collecte des noms de structures avant le parse principal, nécessaire pour produire des erreurs sémantiques (et non syntaxiques) sur les références forward, la récursion indirecte et les cycles d'héritage (section 6.8.1)
+- Fixed: section 19.2c — distinction récursion directe / indirecte explicitée ; référence à la passe de pré-collecte ; détection de cycle d'héritage liée à la passe de pré-collecte
+- Fixed: section 19.2c — vérification des conflits noms de champs/méthodes vs globaux formalisée avec note de désambiguïsation contextuelle
+- Added: 3 messages de diagnostic dans le catalogue 21.5 : `Member access requires a structure instance`, `Unknown field '<n>' on structure '<S>'`, `Unknown method '<n>' on structure '<S>'`
+- Added: 5 nouveaux cas de tests négatifs en section 28.9 (forward reference → erreur sémantique, conflit global/champ, accès membre invalide)
 
 ### v41
 - Fixed: redéfinition de champ dans une sous-structure — même type obligatoire, **valeur par défaut peut différer** (sections 6.8.2, 19.2c, 21.5, décision 38)
