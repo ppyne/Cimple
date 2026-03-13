@@ -1448,12 +1448,6 @@ static void validate_structs(SemCtx *ctx) {
                                    "Field '%s' in structure '%s' cannot have type '%s'",
                                    field->name, si->name, type_name(field->type));
                 }
-                if (field->type == TYPE_STRUCT && !m->u.struct_field.init) {
-                    error_semantic_hint(m->line, m->col,
-                                        "Fields of structure type must be explicitly initialized with 'clone StructureName'.",
-                                        "Field '%s' in structure '%s' has no default value",
-                                        field->name, si->name);
-                }
                 if ((field->type == TYPE_STRUCT || field->type == TYPE_STRUCT_ARR) &&
                     (!field->struct_name ||
                      !struct_declared_before(ctx, field->struct_name, m->line))) {

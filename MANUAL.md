@@ -1564,8 +1564,8 @@ float py = 0.0;
 
 // With a structure: one named value that carries both fields and operations.
 structure Point {
-    float x = 0.0;
-    float y = 0.0;
+    float x;          // implicit default: 0.0
+    float y;          // implicit default: 0.0
 
     void move(float dx, float dy) {
         self.x = self.x + dx;
@@ -1585,14 +1585,16 @@ structure Point {
 - Fields and methods may appear in **any order** inside the body.
 - A structure must be **declared before use** (textual order); forward references are a semantic error.
 - **Field types**: any scalar (`int`, `float`, `bool`, `string`, `byte`), any array type, or a previously declared structure type. `ExecResult` and `void` are not valid field types.
-- A field of structure type **must** have an explicit default value using `clone StructureName` (implicit defaults are not allowed for structure-typed fields).
+- **Implicit defaults**: scalar and array fields do not require an explicit initializer. When omitted, the field receives the type's zero value automatically: `0` for `int`/`byte`, `0.0` for `float`, `false` for `bool`, `""` for `string`, `[]` for any array type. `int x;` and `int x = 0;` are strictly equivalent inside a structure.
+- A field of **structure type** is the only exception: it **must** be initialized with `clone StructureName`. There is no sensible zero value for a composite type, so the initializer is always required.
 - **Recursive fields** (a structure that directly or indirectly contains a field of its own type) are a semantic error.
 
 ```c
 structure Config {
-    string host = "localhost";
-    int    port = 8080;
-    bool   debug = false;
+    string host = "localhost";  // explicit default overrides implicit ""
+    int    port = 8080;         // explicit default overrides implicit 0
+    bool   debug;               // implicit default: false
+    string[] tags;              // implicit default: []
     // Config self = clone Config;   ← semantic error: recursive field
 }
 ```
@@ -1604,10 +1606,10 @@ to read or write a field; bare `field` without `self.` is a compile error inside
 
 ```c
 structure Counter {
-    int value = 0;
+    int value;    // implicit default: 0
 
     void increment() {
-        self.value = self.value + 1;   // correct
+        self.value = self.value + 1;
     }
 
     int get() {

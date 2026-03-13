@@ -1,0 +1,17 @@
+// Structure fields without explicit defaults receive zero values automatically.
+structure Defaults {
+    int    i;
+    float  f;
+    bool   b;
+    string s;
+    int[]  arr;
+}
+
+void main() {
+    Defaults d = clone Defaults;
+    print(toString(d.i) + "\n");    // 0
+    print(toString(d.f) + "\n");    // 0.0
+    print(toString(d.b) + "\n");    // false
+    print(d.s + "empty\n");         // empty
+    print(toString(count(d.arr)) + "\n");  // 0
+}
