@@ -1,7 +1,0 @@
-void ping() {}
-
-structure S {
-    void ping() {}
-}
-
-void main() {}

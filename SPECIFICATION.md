@@ -541,7 +541,6 @@ Règles normatives :
 - une structure doit être déclarée **avant** toute utilisation dans le fichier (ordre textuel strict) ; référencer une structure non encore déclarée est une **erreur sémantique** ;
 
 > **Note d'implémentation — pré-collecte des noms de structures :** avant le parse principal, l'implémentation doit effectuer une passe de pré-collecte qui parcourt le flux de tokens pour identifier tous les noms de structures déclarés (`structure IDENT`) et les enregistrer comme `TYPE_IDENT` connus. Cette passe est nécessaire pour que le parseur puisse distinguer un nom de structure d'un identifiant ordinaire dès la première occurrence, indépendamment de l'ordre de déclaration dans le source. Sans cette passe, une référence à une structure non encore vue par le parseur produit une erreur syntaxique (`Unknown type`) au lieu d'une erreur sémantique (`structure non déclarée avant utilisation`), ce qui est un écart à la spec. La passe de pré-collecte résout également la détection de récursion indirecte entre structures et la détection de cycles d'héritage.
-- les noms de champs et de méthodes sont locaux à la structure ; ils ne peuvent pas entrer en conflit avec des noms de variables globales ou de fonctions globales déclarées dans le programme — un conflit est une **erreur sémantique** ;
 - un champ récursif (champ dont le type est la structure elle-même, directement ou indirectement) est une **erreur sémantique** ;
 - un champ peut être de type structure à condition que la structure référencée soit déjà déclarée et ne forme pas de cycle de dépendance ;
 - `void[]` et `ExecResult[]` ne sont pas des types valides pour un champ.
@@ -3694,7 +3693,6 @@ L'analyse sémantique doit vérifier :
 - que la valeur par défaut d'un champ de type structure est `clone NomDeStructure` ;
 - qu'il n'y a pas deux champs de même nom dans une structure (héritage inclus, sauf redéfinition valide) ;
 - qu'il n'y a pas deux méthodes avec la même signature dans une structure ;
-- que les noms de champs et de méthodes d'une structure ne sont pas en conflit avec des noms de variables globales ou de fonctions globales du programme ; un conflit est une **erreur sémantique**.
 
 **Héritage :**
 - que la base déclarée dans `: NomDeBase` existe et est déclarée avant la sous-structure ;

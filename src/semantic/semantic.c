@@ -1434,12 +1434,6 @@ static void validate_structs(SemCtx *ctx) {
         for (int i = 0; i < members->count; i++) {
             AstNode *m = members->items[i];
             if (m->kind == NODE_STRUCT_FIELD) {
-                AstNode *global = global_decl_lookup(ctx->program, m->u.struct_field.name);
-                if (global && global->line < si->decl->line) {
-                    error_semantic(m->line, m->col,
-                                   "Field '%s' in structure '%s' conflicts with global identifier '%s'",
-                                   m->u.struct_field.name, si->name, m->u.struct_field.name);
-                }
                 StructFieldSig *field = ALLOC(StructFieldSig);
                 field->name = cimple_strdup(m->u.struct_field.name);
                 field->type = m->u.struct_field.type;
@@ -1502,12 +1496,6 @@ static void validate_structs(SemCtx *ctx) {
                     }
                 }
             } else if (m->kind == NODE_FUNC_DECL) {
-                AstNode *global = global_decl_lookup(ctx->program, m->u.func_decl.name);
-                if (global && global->line < si->decl->line) {
-                    error_semantic(m->line, m->col,
-                                   "Method '%s' in structure '%s' conflicts with global identifier '%s'",
-                                   m->u.func_decl.name, si->name, m->u.func_decl.name);
-                }
                 StructMethodSig *method = ALLOC(StructMethodSig);
                 method->name = cimple_strdup(m->u.func_decl.name);
                 method->ret_type = m->u.func_decl.ret_type;

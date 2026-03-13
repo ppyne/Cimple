@@ -1,7 +1,0 @@
-int foo = 1;
-
-structure S {
-    int foo = 0;
-}
-
-void main() {}

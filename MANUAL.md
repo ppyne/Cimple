@@ -1584,7 +1584,6 @@ structure Point {
 
 - Fields and methods may appear in **any order** inside the body.
 - A structure must be **declared before use** (textual order); forward references are a semantic error.
-- Field and method names must not conflict with any global variable or function name declared in the program.
 - **Field types**: any scalar (`int`, `float`, `bool`, `string`, `byte`), any array type, or a previously declared structure type. `ExecResult` and `void` are not valid field types.
 - A field of structure type **must** have an explicit default value using `clone StructureName` (implicit defaults are not allowed for structure-typed fields).
 - **Recursive fields** (a structure that directly or indirectly contains a field of its own type) are a semantic error.
