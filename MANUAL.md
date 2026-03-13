@@ -22,12 +22,12 @@ This document is the authoritative user-facing manual for the current reference 
 7. [Functions](#7-functions)
 8. [Standard Library](#8-standard-library)
 9. [Imports](#9-imports)
-10. [Structures](#structures)
-10. [Predefined Constants](#10-predefined-constants)
-11. [Scoping Rules](#11-scoping-rules)
-12. [Keywords](#12-keywords)
-13. [Diagnostics](#13-diagnostics)
-14. [Worked Examples](#14-worked-examples)
+10. [Structures](#10-structures)
+11. [Predefined Constants](#11-predefined-constants)
+12. [Scoping Rules](#12-scoping-rules)
+13. [Keywords](#13-keywords)
+14. [Diagnostics](#14-diagnostics)
+15. [Worked Examples](#15-worked-examples)
 
 ---
 
@@ -166,6 +166,7 @@ Arrays are ordered, dynamic, and homogeneous. Each element type has its own arra
 | `bool[]` | `bool` |
 | `string[]` | `string` |
 | `byte[]` | `byte` |
+| `StructureName[]` | instances of that structure type |
 
 Mixed-type arrays do not exist. There are no two-dimensional arrays.
 
@@ -1118,7 +1119,7 @@ print(toString(isOdd(7))             + "\n");  // true
 ### 8.8 Array functions
 
 These polymorphic intrinsics work with any element type (`T` stands for `int`, `float`,
-`bool`, `string`, or `byte`):
+`bool`, `string`, `byte`, or a structure type):
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -1357,7 +1358,7 @@ Deletes the file at `path`. Both of the following are **runtime errors**:
 void chmod(string path, int mode)
 ```
 
-Changes the permission bits of `path` to `mode` (octal integer, e.g. `0o644`). Available
+Changes the permission bits of `path` to `mode` (octal integer, e.g. `0644`). Available
 on **POSIX platforms only** (macOS, Linux). Raises a runtime error on Windows and
 WebAssembly with the message `chmod: not supported on this platform`.
 
@@ -1551,11 +1552,17 @@ int addOne(int n) { return n + 1; }
 
 ---
 
-## Structures
+## 10. Structures
 
-Structures are user-defined composite types with fields and methods.
+Structures group related data and behaviour into a single named type. They are the only
+abstraction mechanism in Cimple — there are no classes, interfaces, or generics.
 
 ```c
+// Without a structure: scattered parallel variables.
+float px = 0.0;
+float py = 0.0;
+
+// With a structure: one named value that carries both fields and operations.
 structure Point {
     float x = 0.0;
     float y = 0.0;
@@ -1564,80 +1571,176 @@ structure Point {
         self.x = self.x + dx;
         self.y = self.y + dy;
     }
+
+    float distanceTo(Point other) {
+        float dx = self.x - other.x;
+        float dy = self.y - other.y;
+        return sqrt(dx * dx + dy * dy);
+    }
+}
+```
+
+### Declaration rules
+
+- Structure names must start with an **uppercase letter** (`Point`, `Animal`, `HttpRequest`…); a lowercase initial letter is a semantic error.
+- Fields and methods may appear in **any order** inside the body.
+- A structure must be **declared before use** (textual order); forward references are a semantic error.
+- Field and method names must not conflict with any global variable or function name declared in the program.
+- **Field types**: any scalar (`int`, `float`, `bool`, `string`, `byte`), any array type, or a previously declared structure type. `ExecResult` and `void` are not valid field types.
+- A field of structure type **must** have an explicit default value using `clone StructureName` (implicit defaults are not allowed for structure-typed fields).
+- **Recursive fields** (a structure that directly or indirectly contains a field of its own type) are a semantic error.
+
+```c
+structure Config {
+    string host = "localhost";
+    int    port = 8080;
+    bool   debug = false;
+    // Config self = clone Config;   ← semantic error: recursive field
+}
+```
+
+### `self` — the current instance
+
+Inside any method, `self` refers to the current instance. You must always write `self.field`
+to read or write a field; bare `field` without `self.` is a compile error inside a method.
+
+```c
+structure Counter {
+    int value = 0;
+
+    void increment() {
+        self.value = self.value + 1;   // correct
+    }
+
+    int get() {
+        return self.value;
+    }
+}
+```
+
+`self` cannot be reassigned (`self = clone Other` is a semantic error).
+
+### `clone` — creating instances
+
+`clone StructureName` creates a new, independent instance with all fields set to their
+declared defaults (or implicit defaults for scalar and array fields).
+
+```c
+Counter a = clone Counter;
+Counter b = clone Counter;
+
+a.increment();
+a.increment();
+// a.value == 2, b.value == 0 — each clone is independent
+```
+
+`clone` takes a **type name**, not a variable. `clone a` (where `a` is a variable) is a
+semantic error; use `clone Counter` instead.
+
+### Inheritance
+
+A structure may inherit from one base using `:`:
+
+```c
+structure Animal {
+    string name = "";
+
+    void speak() {
+        print(self.name + " says: ...\n");
+    }
+}
+
+structure Dog : Animal {
+    // Override 'name' with a different default (same type — string).
+    string name = "Rex";
+
+    // Override 'speak' with an identical signature.
+    void speak() {
+        print(self.name + " says: Woof!\n");
+    }
+}
+
+structure GuideDog : Dog {
+    string role = "guide";
 }
 ```
 
 Rules:
 
-- a structure name must start with an uppercase letter
-- fields may have explicit defaults; scalar and array fields otherwise use their implicit default
-- a field of structure type must be initialized with `clone StructureName`
-- methods are declared inside the structure body
-- `self` is only available inside structure methods
-- `super.method(...)` is only available inside a derived structure method
-- `super.field` is invalid; fields are always accessed through `self`
+- Inheritance is **single** — one base only.
+- Chain inheritance is allowed (`GuideDog : Dog : Animal`).
+- The base structure must be **declared before** the derived one.
+- **Field redefinition**: a derived structure may redeclare an inherited field with the **same type** but a different default. `self.field` always refers to the current structure's own slot.
+- **Method override**: the signature (name, parameter types, return type) must be **identical**; a different signature is a semantic error.
+- **Inheritance cycles** are a semantic error.
 
-### Cloning
+### `super` — calling the base method
 
-Use `clone` to create a new instance:
-
-```c
-Point p = clone Point;
-```
-
-Each `clone` creates an independent instance initialized from the structure defaults.
-
-### Inheritance
-
-Use `:` for single inheritance:
+Inside a derived structure method, `super.method(...)` calls the **direct base** version of
+that method. This is useful when you want to extend, rather than replace, the base behaviour:
 
 ```c
-structure Animal {
-    string name = "animal";
-    void speak() { print("...\n"); }
-}
-
-structure Dog : Animal {
-    string name = "dog";
-
+structure LoggingDog : Dog {
     void speak() {
-        super.speak();
-        print(self.name + "\n");
+        print("[LOG] Dog about to speak\n");
+        super.speak();          // calls Dog.speak(), not Animal.speak()
+        print("[LOG] Done\n");
     }
 }
 ```
 
-Derived structures inherit base fields and methods. A field may be redefined only with the
-same type. A method override must keep the exact same signature.
+- `super.method(...)` is only available inside a **derived** structure method.
+- `super.field` is a semantic error — fields are always accessed via `self`.
+- Using `super` in a structure without a base is a semantic error.
 
 ### Structures in functions
 
-- structure arguments are passed by reference
-- returning a structure from a global function returns a copy
+Structure arguments are passed **by reference**: modifications made inside the function are
+visible in the caller. Returning a structure from a global function returns a **copy**.
 
 ```c
-void resetPoint(Point p) {
-    p.x = 0.0;
+void reset(Point p) {
+    p.x = 0.0;    // modifies the original
     p.y = 0.0;
+}
+
+Point makeOrigin() {
+    Point p = clone Point;
+    return p;     // caller receives a copy
+}
+
+void main() {
+    Point pt = clone Point;
+    pt.x = 5.0;
+    reset(pt);
+    print(toString(pt.x) + "\n");   // 0.0 — reset modified it in place
 }
 ```
 
 ### Arrays of structures
 
-`StructureName[]` works like the built-in array types:
+`StructureName[]` works exactly like the built-in array types:
 
 ```c
 Point[] pts = [];
 arrayPush(pts, clone Point);
-pts[0].x = 3.0;
-```
+arrayPush(pts, clone Point);
 
-`arrayGet(pts, i)` returns a copy. To mutate the stored element in place, use direct indexed
-member access such as `pts[i].x = 3.0`.
+pts[0].x = 1.0;   // modify in place — OK
+pts[1].y = 2.0;
+
+// arrayGet returns a COPY — modifying it does NOT affect pts:
+Point copy = arrayGet(pts, 0);
+copy.x = 99.0;
+print(toString(pts[0].x) + "\n");   // still 1.0
+
+// To modify an element in place, use direct indexed access:
+pts[0].x = 99.0;   // this DOES affect the stored element
+```
 
 ---
 
-## 10. Predefined Constants
+## 11. Predefined Constants
 
 These identifiers are reserved; they cannot be redeclared or assigned.
 
@@ -1687,7 +1790,7 @@ void main() {
 
 ---
 
-## 11. Scoping Rules
+## 12. Scoping Rules
 
 Cimple uses **lexical (block) scoping**.
 
@@ -1719,15 +1822,15 @@ void main() {
 
 ---
 
-## 12. Keywords
+## 13. Keywords
 
 The following identifiers are reserved and may not be used as variable or function names:
 
 ```
-bool      break     continue  else      ExecResult
+bool      break     clone     continue  else      ExecResult
 false     float     for       if        import
-int       return    string    true      void
-while     byte
+int       return    self      string    structure super
+true      void      while     byte
 ```
 
 The predefined constants are also reserved (see §10):
@@ -1740,7 +1843,7 @@ M_E        M_LN10         M_LN2      M_PI       M_SQRT2  M_TAU
 
 ---
 
-## 13. Diagnostics
+## 14. Diagnostics
 
 ### Error categories
 
@@ -1785,9 +1888,9 @@ The implementation reports four categories of error, each with a source location
 
 ---
 
-## 14. Worked Examples
+## 15. Worked Examples
 
-### 14.1 FizzBuzz
+### 15.1 FizzBuzz
 
 ```c
 void main() {
@@ -1805,7 +1908,7 @@ void main() {
 }
 ```
 
-### 14.2 Recursive Fibonacci
+### 15.2 Recursive Fibonacci
 
 ```c
 int fibonacci(int n) {
@@ -1820,7 +1923,7 @@ void main(string[] args) {
 }
 ```
 
-### 14.3 Count words in a line
+### 15.3 Count words in a line
 
 ```c
 void main() {
@@ -1831,7 +1934,7 @@ void main() {
 }
 ```
 
-### 14.4 Sum an array with a helper function
+### 15.4 Sum an array with a helper function
 
 ```c
 int sumArray(int[] xs) {
@@ -1848,7 +1951,7 @@ void main() {
 }
 ```
 
-### 14.5 File processing
+### 15.5 File processing
 
 ```c
 void main(string[] args) {
@@ -1869,7 +1972,7 @@ void main(string[] args) {
 }
 ```
 
-### 14.6 Running an external command
+### 15.6 Running an external command
 
 ```c
 void main() {
@@ -1883,7 +1986,7 @@ void main() {
 }
 ```
 
-### 14.7 Formatted timestamp
+### 15.7 Formatted timestamp
 
 ```c
 void main() {
@@ -1893,7 +1996,7 @@ void main() {
 }
 ```
 
-### 14.8 Bitwise permission flags
+### 15.8 Bitwise permission flags
 
 ```c
 int FLAG_READ    = 0x1;
@@ -1911,7 +2014,7 @@ void main() {
 }
 ```
 
-### 14.9 CSV line parser
+### 15.9 CSV line parser
 
 ```c
 string[] parseCSV(string line) {
@@ -1933,6 +2036,113 @@ void main() {
     for (int i = 0; i < count(cols); i++) {
         print(cols[i] + "\n");
     }
+}
+```
+
+### 15.10 Structures — a simple task list
+
+This example shows structure declaration, `clone`, `self`, method calls, arrays of
+structures, and in-place mutation via direct indexed access.
+
+```c
+structure Task {
+    string title = "";
+    bool   done  = false;
+
+    void complete() {
+        self.done = true;
+    }
+
+    string describe() {
+        string mark = "[x]";
+        if (!self.done) { mark = "[ ]"; }
+        return mark + " " + self.title;
+    }
+}
+
+void printAll(Task[] tasks) {
+    for (int i = 0; i < count(tasks); i++) {
+        // tasks[i].describe() calls the method on the stored element
+        print(tasks[i].describe() + "\n");
+    }
+}
+
+void main() {
+    Task[] list = [];
+
+    Task t1 = clone Task;
+    t1.title = "Buy groceries";
+    arrayPush(list, t1);
+
+    Task t2 = clone Task;
+    t2.title = "Write report";
+    arrayPush(list, t2);
+
+    Task t3 = clone Task;
+    t3.title = "Call dentist";
+    arrayPush(list, t3);
+
+    // Mark the second task complete directly through the array
+    list[1].complete();
+
+    printAll(list);
+    // [ ] Buy groceries
+    // [x] Write report
+    // [ ] Call dentist
+}
+```
+
+### 15.11 Structures — inheritance with `super`
+
+```c
+structure Shape {
+    string color = "black";
+
+    string describe() {
+        return "a " + self.color + " shape";
+    }
+}
+
+structure Circle : Shape {
+    float radius = 1.0;
+
+    string describe() {
+        // Extend the base description instead of replacing it.
+        return super.describe() + " (circle, r=" + toString(self.radius) + ")";
+    }
+
+    float area() {
+        return M_PI * self.radius * self.radius;
+    }
+}
+
+structure Rectangle : Shape {
+    float width  = 1.0;
+    float height = 1.0;
+
+    string describe() {
+        return super.describe() + " (rect, " +
+               toString(self.width) + "x" + toString(self.height) + ")";
+    }
+
+    float area() {
+        return self.width * self.height;
+    }
+}
+
+void main() {
+    Circle c = clone Circle;
+    c.color  = "red";
+    c.radius = 5.0;
+    print(c.describe() + "\n");          // a red shape (circle, r=5)
+    print("area = " + toString(c.area()) + "\n");  // ~78.54
+
+    Rectangle r = clone Rectangle;
+    r.color  = "blue";
+    r.width  = 4.0;
+    r.height = 3.0;
+    print(r.describe() + "\n");          // a blue shape (rect, 4x3)
+    print("area = " + toString(r.area()) + "\n");  // 12
 }
 ```
 

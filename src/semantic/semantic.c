@@ -1454,6 +1454,11 @@ static void validate_structs(SemCtx *ctx) {
                 field->next = si->fields;
                 si->fields = field;
 
+                if (field->type == TYPE_EXEC_RESULT || field->type == TYPE_VOID) {
+                    error_semantic(m->line, m->col,
+                                   "Field '%s' in structure '%s' cannot have type '%s'",
+                                   field->name, si->name, type_name(field->type));
+                }
                 if (field->type == TYPE_STRUCT && !m->u.struct_field.init) {
                     error_semantic_hint(m->line, m->col,
                                         "Fields of structure type must be explicitly initialized with 'clone StructureName'.",
