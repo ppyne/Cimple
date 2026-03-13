@@ -20,6 +20,7 @@ typedef struct {
 
     /* Current function context */
     CimpleType  current_ret;  /* return type of the function being checked */
+    const char *current_ret_struct;
     int         in_loop;      /* depth counter for break/continue checking */
     int         has_return;   /* used during path analysis                */
     const char *current_struct_name;

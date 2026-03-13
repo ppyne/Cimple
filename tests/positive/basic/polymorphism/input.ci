@@ -1,0 +1,53 @@
+structure Animal {
+    string name = "animal";
+    void speak() { print("?"); }
+    string tag() { return "A"; }
+}
+
+structure Dog : Animal {
+    string name = "dog";
+    void speak() { print("woof"); }
+    string tag() { return super.tag() + "-D"; }
+}
+
+structure Cat : Animal {
+    string name = "cat";
+    void speak() { print("meow"); }
+}
+
+structure Shape {
+    float area() { return 0.0; }
+}
+
+structure Circle : Shape {
+    float radius = 2.0;
+    float area() { return 3.0 * self.radius * self.radius; }
+}
+
+structure Rect : Shape {
+    float w = 3.0;
+    float h = 4.0;
+    float area() { return self.w * self.h; }
+}
+
+void show(Shape s) {
+    print(toString(s.area()) + "\n");
+}
+
+void main() {
+    Animal[] animals = [];
+    arrayPush(animals, clone Dog);
+    arrayPush(animals, clone Cat);
+    for (int i = 0; i < count(animals); i++) {
+        animals[i].speak();
+        print("\n");
+    }
+
+    Shape s = clone Circle;
+    show(s);
+    s = clone Rect;
+    show(s);
+
+    Dog d = clone Dog;
+    print(d.tag() + "\n");
+}

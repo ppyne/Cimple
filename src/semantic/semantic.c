@@ -241,6 +241,8 @@ static void error_operator_type(int line, int col, const char *op,
                                 const char *expected_types, CimpleType got);
 static int types_equal_ex(CimpleType a, const char *a_name,
                           CimpleType b, const char *b_name);
+static int types_compatible(StructTable *st, CimpleType actual, const char *actual_name,
+                            CimpleType expected, const char *expected_name);
 static StructTable *struct_table_new(void);
 static void struct_table_free(StructTable *st);
 static StructInfo *struct_table_lookup(StructTable *st, const char *name);
@@ -312,6 +314,28 @@ static int types_equal_ex(CimpleType a, const char *a_name,
         return strcmp(a_name, b_name) == 0;
     }
     return 1;
+}
+
+static int struct_is_subtype(StructTable *st, const char *actual, const char *expected) {
+    if (!actual || !expected) return 0;
+    if (strcmp(actual, expected) == 0) return 1;
+    for (StructInfo *si = struct_table_lookup(st, actual); si && si->base_name;
+         si = struct_table_lookup(st, si->base_name)) {
+        if (strcmp(si->base_name, expected) == 0) return 1;
+    }
+    return 0;
+}
+
+static int types_compatible(StructTable *st, CimpleType actual, const char *actual_name,
+                            CimpleType expected, const char *expected_name) {
+    if (actual == TYPE_UNKNOWN || expected == TYPE_UNKNOWN) return 1;
+    if (actual == expected && actual != TYPE_STRUCT && actual != TYPE_STRUCT_ARR)
+        return types_equal_ex(actual, actual_name, expected, expected_name);
+    if (actual == TYPE_STRUCT && expected == TYPE_STRUCT)
+        return struct_is_subtype(st, actual_name, expected_name);
+    if (actual == TYPE_STRUCT_ARR && expected == TYPE_STRUCT_ARR)
+        return struct_is_subtype(st, actual_name, expected_name);
+    return types_equal_ex(actual, actual_name, expected, expected_name);
 }
 
 static int func_types_equal(const FuncType *a, const FuncType *b) {
@@ -799,6 +823,9 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         }
         n->u.array_lit.elem_type = elem_t;
         n->type = type_make_array(elem_t);
+        free(n->type_name_hint);
+        n->type_name_hint = (elem_t == TYPE_STRUCT || elem_t == TYPE_UNION) && elems->items[0]->type_name_hint
+            ? cimple_strdup(elems->items[0]->type_name_hint) : NULL;
         return n->type;
     }
 
@@ -955,8 +982,8 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                                     "Wrong number of arguments for '%s'", fname);
             } else {
                 for (int i = 0; i < nargs; i++) {
-                    if (!types_equal_ex(arg_types[i], args->items[i]->type_name_hint,
-                                       ft->params[i], NULL)) {
+                    if (!types_compatible(ctx->structs, arg_types[i], args->items[i]->type_name_hint,
+                                          ft->params[i], NULL)) {
                         error_type_mismatch(args->items[i]->line, args->items[i]->col,
                                             "function call", ft->params[i], arg_types[i]);
                     }
@@ -1013,7 +1040,9 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                         CimpleType value_t = arg_types[value_index];
                         if (elem == TYPE_BYTE && is_byte_compatible_literal_expr(args->items[value_index])) {
                             /* ok */
-                        } else if (value_t != TYPE_UNKNOWN && !types_equal(value_t, elem)) {
+                        } else if (value_t != TYPE_UNKNOWN &&
+                                   !types_compatible(ctx->structs, value_t, args->items[value_index]->type_name_hint,
+                                                     elem, args->items[0]->type_name_hint)) {
                             if (strcmp(fname, "arraySet") == 0) {
                                 error_type_mismatch(args->items[value_index]->line,
                                                     args->items[value_index]->col,
@@ -1070,8 +1099,8 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                     }
                     if (expected != TYPE_UNKNOWN &&
                         arg_types[i] != TYPE_UNKNOWN &&
-                        !types_equal_ex(arg_types[i], args->items[i]->type_name_hint,
-                                        expected, NULL)) {
+                        !types_compatible(ctx->structs, arg_types[i], args->items[i]->type_name_hint,
+                                           expected, NULL)) {
                         error_type_mismatch(args->items[i]->line, args->items[i]->col,
                                             "function call", expected, arg_types[i]);
                     }
@@ -1109,8 +1138,8 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                         error_semantic(args->items[i]->line, args->items[i]->col,
                                        "Function signature mismatch in callback argument");
                     }
-                } else if (!types_equal_ex(arg_types[i], args->items[i]->type_name_hint,
-                                           fsig->params[i].type, fsig->params[i].struct_name)) {
+                } else if (!types_compatible(ctx->structs, arg_types[i], args->items[i]->type_name_hint,
+                                              fsig->params[i].type, fsig->params[i].struct_name)) {
                     error_type_mismatch(args->items[i]->line, args->items[i]->col,
                                         "function call", fsig->params[i].type, arg_types[i]);
                 }
@@ -1242,8 +1271,8 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                         error_semantic(arg->line, arg->col,
                                        "Function signature mismatch in callback argument");
                     }
-                } else if (!types_equal_ex(arg->type, arg->type_name_hint,
-                                           method->params[i].type, method->params[i].struct_name)) {
+                } else if (!types_compatible(ctx->structs, arg->type, arg->type_name_hint,
+                                              method->params[i].type, method->params[i].struct_name)) {
                     error_type_mismatch(arg->line, arg->col, "function call",
                                         method->params[i].type, arg->type);
                 }
@@ -1404,8 +1433,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                 coerce_array_lit_to_type(n->u.var_decl.init, t);
                 /* ok */
             } else if (it != TYPE_UNKNOWN &&
-                       !types_equal_ex(it, n->u.var_decl.init->type_name_hint,
-                                       t, n->u.var_decl.struct_name)) {
+                       !types_compatible(ctx->structs, it, n->u.var_decl.init->type_name_hint,
+                                          t, n->u.var_decl.struct_name)) {
                 int64_t literal_value;
                 if (t == TYPE_BYTE && extract_int_literal_expr(n->u.var_decl.init, &literal_value)) {
                     error_byte_literal_out_of_range(n->u.var_decl.init->line,
@@ -1478,8 +1507,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
             break;
         }
         if (vt != TYPE_UNKNOWN &&
-            !types_equal_ex(vt, n->u.assign.value->type_name_hint,
-                            sym->type, sym->struct_name)) {
+            !types_compatible(ctx->structs, vt, n->u.assign.value->type_name_hint,
+                               sym->type, sym->struct_name)) {
             int64_t literal_value;
             if (sym->type == TYPE_BYTE && extract_int_literal_expr(n->u.assign.value, &literal_value)) {
                 error_byte_literal_out_of_range(n->u.assign.value->line,
@@ -1556,7 +1585,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
             break;
         }
         if (val_t != TYPE_UNKNOWN &&
-            !types_equal_ex(val_t, n->u.index_assign.value->type_name_hint, elem, NULL)) {
+            !types_compatible(ctx->structs, val_t, n->u.index_assign.value->type_name_hint,
+                               elem, sym->struct_name)) {
             int64_t literal_value;
             if (elem == TYPE_BYTE && extract_int_literal_expr(n->u.index_assign.value, &literal_value)) {
                 error_byte_literal_out_of_range(n->u.index_assign.value->line,
@@ -1591,8 +1621,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         CimpleType lhs_t = check_expr(ctx, n->u.member_assign.target);
         CimpleType rhs_t = check_expr(ctx, n->u.member_assign.value);
         if (rhs_t != TYPE_UNKNOWN &&
-            !types_equal_ex(rhs_t, n->u.member_assign.value->type_name_hint,
-                            lhs_t, n->u.member_assign.target->type_name_hint)) {
+            !types_compatible(ctx->structs, rhs_t, n->u.member_assign.value->type_name_hint,
+                               lhs_t, n->u.member_assign.target->type_name_hint)) {
             error_semantic_hint(n->line, n->col,
                                 "Use a value of the same member type.",
                                 "Type mismatch in assignment");
@@ -1715,7 +1745,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                 error_semantic_hint(n->line, n->col,
                                     "A void function cannot return a value.",
                                     "Wrong return type");
-            else if (vt != TYPE_UNKNOWN && !types_equal(vt, ctx->current_ret))
+            else if (vt != TYPE_UNKNOWN && !types_compatible(ctx->structs, vt, n->u.ret.value->type_name_hint,
+                                     ctx->current_ret, ctx->current_ret_struct))
                 error_semantic_hint(n->line, n->col,
                                     "Expected the function return type here.",
                                     "Wrong return type");
@@ -2048,6 +2079,7 @@ static void check_struct_methods(SemCtx *ctx) {
             AstNode *f = method->decl;
             push_scope(ctx, 1);
             ctx->current_ret = f->u.func_decl.ret_type;
+            ctx->current_ret_struct = f->u.func_decl.ret_struct_name;
             ctx->current_struct_name = si->name;
             ctx->current_base_name = si->base_name;
             ctx->in_method = 1;
@@ -2068,6 +2100,7 @@ static void check_struct_methods(SemCtx *ctx) {
                                     "Missing return in function '%s'",
                                     f->u.func_decl.name);
             }
+            ctx->current_ret_struct = NULL;
             ctx->current_struct_name = NULL;
             ctx->current_base_name = NULL;
             ctx->in_method = 0;
@@ -2082,6 +2115,7 @@ static void check_struct_methods(SemCtx *ctx) {
 static void check_func(SemCtx *ctx, AstNode *f) {
     push_scope(ctx, 1);
     ctx->current_ret = f->u.func_decl.ret_type;
+    ctx->current_ret_struct = f->u.func_decl.ret_struct_name;
 
     /* Define parameters */
     NodeList *params = &f->u.func_decl.params;
@@ -2172,6 +2206,7 @@ int semantic_check(AstNode *program) {
     ctx.global_scope = scope_new(NULL, 0);
     ctx.current      = ctx.global_scope;
     ctx.current_ret  = TYPE_VOID;
+    ctx.current_ret_struct = NULL;
     ctx.in_loop      = 0;
     ctx.has_return   = 0;
     ctx.current_struct_name = NULL;

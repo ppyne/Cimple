@@ -1,0 +1,16 @@
+structure Animal {
+    string name = "animal";
+}
+
+structure Dog : Animal {
+    string name = "dog";
+}
+
+structure Car {
+    string brand = "car";
+}
+
+void main() {
+    Animal a = clone Dog;
+    a = clone Car;
+}
