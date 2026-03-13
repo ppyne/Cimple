@@ -12,9 +12,10 @@ typedef struct Value Value;
 typedef struct StructFieldVal StructFieldVal;
 typedef struct StructVal StructVal;
 typedef struct UnionVal UnionVal;
+typedef struct ArrayVal ArrayVal;   /* forward typedef so 'ArrayVal **' works inside the struct */
 
 /* Dynamic array (used for arrays at runtime). */
-typedef struct {
+struct ArrayVal {
     CimpleType elem_type;
     char      *struct_name;
     union {
@@ -24,11 +25,12 @@ typedef struct {
         char   **strings;
         unsigned char *bytes;
         struct StructVal **structs;
-        struct UnionVal **unions;
+        struct UnionVal  **unions;
+        ArrayVal         **arrays;   /* for 2D arrays: elem_type is itself an array type */
     } data;
     int count;
     int cap;
-} ArrayVal;
+};
 
 /* Result of exec(). */
 typedef struct {

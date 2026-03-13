@@ -101,13 +101,21 @@ Value value_default(CimpleType t) {
     case TYPE_FUNC:   return val_func("");
     case TYPE_BYTE:   return val_byte(0);
     case TYPE_UNION: { Value v; v.type = TYPE_VOID; v.u.i = 0; return v; }
-    case TYPE_INT_ARR:   return val_array(TYPE_INT);
-    case TYPE_FLOAT_ARR: return val_array(TYPE_FLOAT);
-    case TYPE_BOOL_ARR:  return val_array(TYPE_BOOL);
-    case TYPE_STR_ARR:   return val_array(TYPE_STRING);
-    case TYPE_BYTE_ARR:  return val_array(TYPE_BYTE);
-    case TYPE_STRUCT_ARR: return val_array(TYPE_STRUCT);
-    case TYPE_UNION_ARR: return val_array(TYPE_UNION);
+    case TYPE_INT_ARR:      return val_array(TYPE_INT);
+    case TYPE_FLOAT_ARR:    return val_array(TYPE_FLOAT);
+    case TYPE_BOOL_ARR:     return val_array(TYPE_BOOL);
+    case TYPE_STR_ARR:      return val_array(TYPE_STRING);
+    case TYPE_BYTE_ARR:     return val_array(TYPE_BYTE);
+    case TYPE_STRUCT_ARR:   return val_array(TYPE_STRUCT);
+    case TYPE_UNION_ARR:    return val_array(TYPE_UNION);
+    /* 2D array defaults — empty outer array */
+    case TYPE_INT_ARR_ARR:    return val_array(TYPE_INT_ARR);
+    case TYPE_FLOAT_ARR_ARR:  return val_array(TYPE_FLOAT_ARR);
+    case TYPE_BOOL_ARR_ARR:   return val_array(TYPE_BOOL_ARR);
+    case TYPE_STR_ARR_ARR:    return val_array(TYPE_STR_ARR);
+    case TYPE_BYTE_ARR_ARR:   return val_array(TYPE_BYTE_ARR);
+    case TYPE_STRUCT_ARR_ARR: return val_array(TYPE_STRUCT_ARR);
+    case TYPE_UNION_ARR_ARR:  return val_array(TYPE_UNION_ARR);
     default: { Value v; v.type = TYPE_VOID; v.u.i = 0; return v; }
     }
 }
@@ -148,7 +156,13 @@ static void arr_ensure(ArrayVal *a, int new_count) {
         a->data.unions = (UnionVal **)cimple_realloc(a->data.unions,
                                                    (size_t)new_cap * sizeof(UnionVal *));
         break;
-    default: break;
+    default:
+        /* 2D arrays: elem_type is itself an array type */
+        if (type_is_array(a->elem_type)) {
+            a->data.arrays = (ArrayVal **)cimple_realloc(a->data.arrays,
+                                                         (size_t)new_cap * sizeof(ArrayVal *));
+        }
+        break;
     }
     a->cap = new_cap;
 }
@@ -163,7 +177,12 @@ void array_push(ArrayVal *a, Value v) {
     case TYPE_BYTE:   a->data.bytes[a->count]   = (unsigned char)v.u.i; break;
     case TYPE_STRUCT: a->data.structs[a->count] = value_copy(v).u.st; break;
     case TYPE_UNION:  a->data.unions[a->count] = value_copy(v).u.un; break;
-    default: break;
+    default:
+        if (type_is_array(a->elem_type)) {
+            /* deep-copy the inner array and store the ArrayVal* */
+            a->data.arrays[a->count] = value_copy(v).u.arr;
+        }
+        break;
     }
     a->count++;
 }
@@ -199,6 +218,11 @@ void array_push_owned(ArrayVal *a, Value *v) {
         v->type = TYPE_VOID;
         break;
     default:
+        if (type_is_array(a->elem_type)) {
+            a->data.arrays[a->count++] = v->u.arr;
+            v->u.arr = NULL;
+            v->type = TYPE_VOID;
+        }
         break;
     }
 }
@@ -223,7 +247,11 @@ Value array_pop(ArrayVal *a, int line, int col) {
     case TYPE_UNION: {
         Value v; v.type = TYPE_UNION; v.u.un = a->data.unions[a->count]; a->data.unions[a->count] = NULL; return v;
     }
-    default: return val_void();
+    default:
+        if (type_is_array(a->elem_type)) {
+            Value v; v.type = a->elem_type; v.u.arr = a->data.arrays[a->count]; a->data.arrays[a->count] = NULL; return v;
+        }
+        return val_void();
     }
 }
 
@@ -269,7 +297,13 @@ void array_insert(ArrayVal *a, int idx, Value v, int line, int col) {
                 (size_t)(a->count - idx) * sizeof(UnionVal *));
         a->data.unions[idx] = value_copy(v).u.un;
         break;
-    default: break;
+    default:
+        if (type_is_array(a->elem_type)) {
+            memmove(&a->data.arrays[idx + 1], &a->data.arrays[idx],
+                    (size_t)(a->count - idx) * sizeof(ArrayVal *));
+            a->data.arrays[idx] = value_copy(v).u.arr;
+        }
+        break;
     }
     a->count++;
 }
@@ -287,6 +321,10 @@ void array_remove(ArrayVal *a, int idx, int line, int col) {
     }
     if (a->elem_type == TYPE_UNION) {
         Value tmp; tmp.type = TYPE_UNION; tmp.u.un = a->data.unions[idx];
+        value_free(&tmp);
+    }
+    if (type_is_array(a->elem_type) && a->data.arrays[idx]) {
+        Value tmp; tmp.type = a->elem_type; tmp.u.arr = a->data.arrays[idx];
         value_free(&tmp);
     }
     switch (a->elem_type) {
@@ -318,7 +356,12 @@ void array_remove(ArrayVal *a, int idx, int line, int col) {
         memmove(&a->data.unions[idx], &a->data.unions[idx + 1],
                 (size_t)(a->count - idx - 1) * sizeof(UnionVal *));
         break;
-    default: break;
+    default:
+        if (type_is_array(a->elem_type)) {
+            memmove(&a->data.arrays[idx], &a->data.arrays[idx + 1],
+                    (size_t)(a->count - idx - 1) * sizeof(ArrayVal *));
+        }
+        break;
     }
     a->count--;
 }
@@ -342,7 +385,12 @@ Value array_get(ArrayVal *a, int idx, int line, int col) {
         Value v; v.type = TYPE_UNION; v.u.un = a->data.unions[idx];
         return value_copy(v);
     }
-    default:          return val_void();
+    default:
+        if (type_is_array(a->elem_type)) {
+            Value v; v.type = a->elem_type; v.u.arr = a->data.arrays[idx];
+            return value_copy(v);
+        }
+        return val_void();
     }
 }
 
@@ -372,7 +420,15 @@ void array_set(ArrayVal *a, int idx, Value v, int line, int col) {
         a->data.unions[idx] = value_copy(v).u.un;
         break;
     }
-    default: break;
+    default:
+        if (type_is_array(a->elem_type)) {
+            if (a->data.arrays[idx]) {
+                Value tmp; tmp.type = a->elem_type; tmp.u.arr = a->data.arrays[idx];
+                value_free(&tmp);
+            }
+            a->data.arrays[idx] = value_copy(v).u.arr;
+        }
+        break;
     }
 }
 
@@ -417,6 +473,15 @@ void array_set_owned(ArrayVal *a, int idx, Value *v, int line, int col) {
         break;
     }
     default:
+        if (type_is_array(a->elem_type)) {
+            if (a->data.arrays[idx]) {
+                Value tmp; tmp.type = a->elem_type; tmp.u.arr = a->data.arrays[idx];
+                value_free(&tmp);
+            }
+            a->data.arrays[idx] = v->u.arr;
+            v->u.arr = NULL;
+            v->type = TYPE_VOID;
+        }
         break;
     }
 }
@@ -468,7 +533,16 @@ Value value_copy(Value v) {
             }
             break;
         default:
-            out->count = 0;
+            if (type_is_array(src->elem_type)) {
+                /* 2D array: deep-copy each inner ArrayVal */
+                out->struct_name = src->struct_name ? cimple_strdup(src->struct_name) : NULL;
+                for (int i = 0; i < src->count; i++) {
+                    Value tmp; tmp.type = src->elem_type; tmp.u.arr = src->data.arrays[i];
+                    out->data.arrays[i] = value_copy(tmp).u.arr;
+                }
+            } else {
+                out->count = 0;
+            }
             break;
         }
         return dst;
@@ -531,6 +605,15 @@ void value_free(Value *v) {
                 for (int i = 0; i < a->count; i++) {
                     Value tmp; tmp.type = TYPE_UNION; tmp.u.un = a->data.unions[i];
                     value_free(&tmp);
+                }
+            }
+            if (type_is_array(a->elem_type)) {
+                /* 2D array: free each inner array */
+                for (int i = 0; i < a->count; i++) {
+                    if (a->data.arrays[i]) {
+                        Value tmp; tmp.type = a->elem_type; tmp.u.arr = a->data.arrays[i];
+                        value_free(&tmp);
+                    }
                 }
             }
             free(a->struct_name);

@@ -168,7 +168,41 @@ Arrays are ordered, dynamic, and homogeneous. Each element type has its own arra
 | `byte[]` | `byte` |
 | `StructureName[]` | instances of that structure type |
 
-Mixed-type arrays do not exist. There are no two-dimensional arrays.
+Mixed-type arrays do not exist. Two-dimensional (jagged) arrays are also available — see §3.2a below.
+
+### 3.2a Two-dimensional arrays
+
+Cimple supports **jagged 2D arrays** where each row is an independent 1D array. Rows may have different lengths.
+
+**Type syntax:** append `[][]` to any scalar or struct/union type.
+
+```c
+int[][] matrix;                          // empty 2D array
+int[][] grid = [[1,2,3],[4,5,6]];        // 2D literal
+
+int[] row = [7,8,9];
+arrayPush(grid, row);                    // add a row
+
+int val = grid[1][2];                    // read: 6
+grid[0][1] = 99;                         // write 2D element
+
+print(toString(count(grid)) + "\n");     // number of rows
+print(toString(count(grid[0])) + "\n"); // columns in row 0
+```
+
+**Nested iteration:**
+```c
+for (int i = 0; i < count(grid); i++) {
+    for (int j = 0; j < count(grid[i]); j++) {
+        print(toString(grid[i][j]) + " ");
+    }
+    print("\n");
+}
+```
+
+All standard array functions (`arrayPush`, `arrayPop`, `arrayInsert`, `arrayRemove`,
+`count`) work on the outer array. The element type of the outer array is the corresponding
+1D type (e.g. `int[]` for `int[][]`).
 
 ### 3.3 Opaque type: `ExecResult`
 

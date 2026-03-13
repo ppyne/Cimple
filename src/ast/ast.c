@@ -21,11 +21,18 @@ const char *type_name(CimpleType t) {
     case TYPE_STR_ARR:     return "string[]";
     case TYPE_BYTE_ARR:    return "byte[]";
     case TYPE_EXEC_RESULT: return "ExecResult";
-    case TYPE_STRUCT:      return "<structure>";
-    case TYPE_STRUCT_ARR:  return "<structure[]>";
-    case TYPE_UNION:       return "<union>";
-    case TYPE_UNION_ARR:   return "<union[]>";
-    default:               return "<unknown>";
+    case TYPE_STRUCT:         return "<structure>";
+    case TYPE_STRUCT_ARR:     return "<structure[]>";
+    case TYPE_UNION:          return "<union>";
+    case TYPE_UNION_ARR:      return "<union[]>";
+    case TYPE_INT_ARR_ARR:    return "int[][]";
+    case TYPE_FLOAT_ARR_ARR:  return "float[][]";
+    case TYPE_BOOL_ARR_ARR:   return "bool[][]";
+    case TYPE_STR_ARR_ARR:    return "string[][]";
+    case TYPE_BYTE_ARR_ARR:   return "byte[][]";
+    case TYPE_STRUCT_ARR_ARR: return "<structure[][]>";
+    case TYPE_UNION_ARR_ARR:  return "<union[][]>";
+    default:                  return "<unknown>";
     }
 }
 
@@ -140,6 +147,12 @@ void ast_free(AstNode *n) {
         free(n->u.index_assign.name);
         ast_free(n->u.index_assign.index);
         ast_free(n->u.index_assign.value);
+        break;
+    case NODE_INDEX2_ASSIGN:
+        free(n->u.index2_assign.name);
+        ast_free(n->u.index2_assign.index1);
+        ast_free(n->u.index2_assign.index2);
+        ast_free(n->u.index2_assign.value);
         break;
     case NODE_MEMBER_ASSIGN:
         ast_free(n->u.member_assign.target);

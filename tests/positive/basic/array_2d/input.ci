@@ -1,0 +1,59 @@
+// 2D arrays — comprehensive test
+
+void main() {
+    // --- Declaration and 2D literal ---
+    int[][] grid = [[1,2,3],[4,5,6],[7,8,9]];
+
+    // count of rows
+    print(toString(count(grid)) + "\n");        // 3
+
+    // count of columns in row 0
+    print(toString(count(grid[0])) + "\n");     // 3
+
+    // read elements
+    print(toString(grid[0][0]) + "\n");         // 1
+    print(toString(grid[1][2]) + "\n");         // 6
+    print(toString(grid[2][1]) + "\n");         // 8
+
+    // write element
+    grid[0][1] = 99;
+    print(toString(grid[0][1]) + "\n");         // 99
+
+    // --- arrayPush a new row ---
+    int[] row = [10,11,12];
+    arrayPush(grid, row);
+    print(toString(count(grid)) + "\n");        // 4
+    print(toString(grid[3][0]) + "\n");         // 10
+
+    // --- Nested for loop ---
+    int[][] small = [[1,2],[3,4]];
+    string out = "";
+    for (int i = 0; i < count(small); i++) {
+        for (int j = 0; j < count(small[i]); j++) {
+            out = out + toString(small[i][j]);
+            if (j < count(small[i]) - 1) {
+                out = out + ",";
+            }
+        }
+        out = out + ";";
+    }
+    print(out + "\n");                          // 1,2;3,4;
+
+    // --- Empty 2D array and push ---
+    string[][] words;
+    arrayPush(words, ["hello","world"]);
+    arrayPush(words, ["foo","bar","baz"]);
+    print(toString(count(words)) + "\n");       // 2
+    print(words[0][1] + "\n");                  // world
+    print(words[1][2] + "\n");                  // baz
+
+    // --- float[][] ---
+    float[][] mat = [[1.0,2.0],[3.0,4.0]];
+    mat[1][0] = 9.5;
+    print(toString(mat[1][0]) + "\n");          // 9.5
+
+    // --- bool[][] ---
+    bool[][] flags = [[true,false],[false,true]];
+    print(toString(flags[0][0]) + "\n");        // true
+    print(toString(flags[1][0]) + "\n");        // false
+}

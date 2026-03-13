@@ -404,7 +404,8 @@ structure_member(M) ::= KW_VOID IDENT(N) LPAREN param_list(PL) RPAREN block(B).
 %type scalar_type  { ParsedType }
 %type array_type   { ParsedType }
 %type struct_type  { ParsedType }
-%type struct_array_type { ParsedType }
+%type struct_array_type  { ParsedType }
+%type struct_array2_type { ParsedType }
 %type nonvoid_type { ParsedType }
 %type callback_param_types { FuncType * }
 %type param_tail   { AstNode * }
@@ -421,6 +422,13 @@ array_type(T) ::= KW_BOOL   LBRACKET RBRACKET. { T = parsed_type_make(TYPE_BOOL_
 array_type(T) ::= KW_STRING LBRACKET RBRACKET. { T = parsed_type_make(TYPE_STR_ARR, NULL); }
 array_type(T) ::= KW_BYTE   LBRACKET RBRACKET. { T = parsed_type_make(TYPE_BYTE_ARR, NULL); }
 
+/* 2D array types */
+array_type(T) ::= KW_INT    LBRACKET RBRACKET LBRACKET RBRACKET. { T = parsed_type_make(TYPE_INT_ARR_ARR, NULL); }
+array_type(T) ::= KW_FLOAT  LBRACKET RBRACKET LBRACKET RBRACKET. { T = parsed_type_make(TYPE_FLOAT_ARR_ARR, NULL); }
+array_type(T) ::= KW_BOOL   LBRACKET RBRACKET LBRACKET RBRACKET. { T = parsed_type_make(TYPE_BOOL_ARR_ARR, NULL); }
+array_type(T) ::= KW_STRING LBRACKET RBRACKET LBRACKET RBRACKET. { T = parsed_type_make(TYPE_STR_ARR_ARR, NULL); }
+array_type(T) ::= KW_BYTE   LBRACKET RBRACKET LBRACKET RBRACKET. { T = parsed_type_make(TYPE_BYTE_ARR_ARR, NULL); }
+
 struct_type(T) ::= TYPE_IDENT(N).
 {
     T = parsed_type_make(TYPE_STRUCT, N.v.sval);
@@ -433,11 +441,18 @@ struct_array_type(T) ::= TYPE_IDENT(N) LBRACKET RBRACKET.
     free(N.v.sval);
 }
 
-nonvoid_type(T) ::= scalar_type(S).       { T = S; }
-nonvoid_type(T) ::= array_type(A).        { T = A; }
-nonvoid_type(T) ::= struct_type(S).       { T = S; }
-nonvoid_type(T) ::= struct_array_type(A). { T = A; }
-nonvoid_type(T) ::= KW_EXECRESULT.        { T = parsed_type_make(TYPE_EXEC_RESULT, NULL); }
+struct_array2_type(T) ::= TYPE_IDENT(N) LBRACKET RBRACKET LBRACKET RBRACKET.
+{
+    T = parsed_type_make(TYPE_STRUCT_ARR_ARR, N.v.sval);
+    free(N.v.sval);
+}
+
+nonvoid_type(T) ::= scalar_type(S).        { T = S; }
+nonvoid_type(T) ::= array_type(A).         { T = A; }
+nonvoid_type(T) ::= struct_type(S).        { T = S; }
+nonvoid_type(T) ::= struct_array_type(A).  { T = A; }
+nonvoid_type(T) ::= struct_array2_type(A). { T = A; }
+nonvoid_type(T) ::= KW_EXECRESULT.         { T = parsed_type_make(TYPE_EXEC_RESULT, NULL); }
 
 callback_param_types(F) ::= nonvoid_type(T).
 {
@@ -681,6 +696,17 @@ stmt(S) ::= IDENT(N) LBRACKET expr(I) RBRACKET ASSIGN expr(E) SEMICOLON.
     free(N.v.sval);
 }
 
+/* 2D index assignment: a[i][j] = v */
+stmt(S) ::= IDENT(N) LBRACKET expr(I1) RBRACKET LBRACKET expr(I2) RBRACKET ASSIGN expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_INDEX2_ASSIGN, N.line, N.col);
+    S->u.index2_assign.name   = cimple_strdup(N.v.sval);
+    S->u.index2_assign.index1 = I1;
+    S->u.index2_assign.index2 = I2;
+    S->u.index2_assign.value  = E;
+    free(N.v.sval);
+}
+
 stmt(S) ::= IDENT(N) LBRACKET expr(I) RBRACKET DOT IDENT(F) ASSIGN expr(E) SEMICOLON.
 {
     AstNode *base = ast_ident(N.v.sval, N.line, N.col);
@@ -889,6 +915,17 @@ simple_stmt(S) ::= IDENT(N) LBRACKET expr(I) RBRACKET ASSIGN expr(E) SEMICOLON.
     S->u.index_assign.name  = cimple_strdup(N.v.sval);
     S->u.index_assign.index = I;
     S->u.index_assign.value = E;
+    free(N.v.sval);
+}
+
+/* 2D index assignment: a[i][j] = v */
+simple_stmt(S) ::= IDENT(N) LBRACKET expr(I1) RBRACKET LBRACKET expr(I2) RBRACKET ASSIGN expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_INDEX2_ASSIGN, N.line, N.col);
+    S->u.index2_assign.name   = cimple_strdup(N.v.sval);
+    S->u.index2_assign.index1 = I1;
+    S->u.index2_assign.index2 = I2;
+    S->u.index2_assign.value  = E;
     free(N.v.sval);
 }
 

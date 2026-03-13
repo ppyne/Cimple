@@ -1298,7 +1298,9 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
             CimpleType elem = type_elem(base_t);
             n->type = elem;
             free(n->type_name_hint);
-            n->type_name_hint = ((elem == TYPE_STRUCT || elem == TYPE_UNION) && n->u.index.base->type_name_hint)
+            n->type_name_hint = ((elem == TYPE_STRUCT || elem == TYPE_UNION ||
+                                   elem == TYPE_STRUCT_ARR || elem == TYPE_UNION_ARR)
+                                  && n->u.index.base->type_name_hint)
                 ? cimple_strdup(n->u.index.base->type_name_hint) : NULL;
             return elem;
         }
@@ -1363,17 +1365,15 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
     case NODE_VAR_DECL: {
         const char *name = n->u.var_decl.name;
         CimpleType   t   = n->u.var_decl.type;
-        if ((t == TYPE_STRUCT || t == TYPE_STRUCT_ARR) &&
+        if ((t == TYPE_STRUCT || t == TYPE_STRUCT_ARR || t == TYPE_STRUCT_ARR_ARR) &&
             n->u.var_decl.struct_name &&
             union_table_lookup(ctx->unions, n->u.var_decl.struct_name)) {
-            t = n->u.var_decl.type = (t == TYPE_STRUCT ? TYPE_UNION : TYPE_UNION_ARR);
-        }
-        if ((t == TYPE_STRUCT || t == TYPE_STRUCT_ARR) && n->u.var_decl.struct_name &&
-            union_table_lookup(ctx->unions, n->u.var_decl.struct_name)) {
-            t = n->u.var_decl.type = (t == TYPE_STRUCT ? TYPE_UNION : TYPE_UNION_ARR);
+            t = n->u.var_decl.type = (t == TYPE_STRUCT     ? TYPE_UNION :
+                                      t == TYPE_STRUCT_ARR  ? TYPE_UNION_ARR
+                                                            : TYPE_UNION_ARR_ARR);
         }
 
-        if ((t == TYPE_STRUCT || t == TYPE_STRUCT_ARR) &&
+        if ((t == TYPE_STRUCT || t == TYPE_STRUCT_ARR || t == TYPE_STRUCT_ARR_ARR) &&
             (!n->u.var_decl.struct_name ||
              !struct_declared_before(ctx, n->u.var_decl.struct_name, n->line))) {
             error_semantic(n->line, n->col,
@@ -1602,6 +1602,46 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                                     n->u.index_assign.value->col,
                                     "array assignment", elem, val_t);
             }
+        }
+        break;
+    }
+
+    case NODE_INDEX2_ASSIGN: {
+        Symbol *sym = scope_lookup(ctx->current, n->u.index2_assign.name);
+        if (!sym) {
+            char hint[160];
+            snprintf(hint, sizeof(hint), "'%s' must be declared before use.",
+                     n->u.index2_assign.name);
+            error_semantic_hint(n->line, n->col, hint,
+                                "Undefined variable: '%s'", n->u.index2_assign.name);
+            break;
+        }
+        /* outer type must be a 2D array (elem is itself an array type) */
+        if (!type_is_array(sym->type) || !type_is_array(type_elem(sym->type))) {
+            error_semantic_hint(n->line, n->col,
+                                "Use a 2D array type like int[][].",
+                                "Variable '%s' is not a 2D array", n->u.index2_assign.name);
+            break;
+        }
+        CimpleType inner_arr = type_elem(sym->type);   /* e.g. TYPE_INT_ARR */
+        CimpleType scalar    = type_elem(inner_arr);   /* e.g. TYPE_INT */
+        CimpleType idx1_t = check_expr(ctx, n->u.index2_assign.index1);
+        if (idx1_t != TYPE_INT && idx1_t != TYPE_UNKNOWN)
+            error_type_mismatch(n->u.index2_assign.index1->line,
+                                n->u.index2_assign.index1->col,
+                                "index expression", TYPE_INT, idx1_t);
+        CimpleType idx2_t = check_expr(ctx, n->u.index2_assign.index2);
+        if (idx2_t != TYPE_INT && idx2_t != TYPE_UNKNOWN)
+            error_type_mismatch(n->u.index2_assign.index2->line,
+                                n->u.index2_assign.index2->col,
+                                "index expression", TYPE_INT, idx2_t);
+        CimpleType val_t = check_expr(ctx, n->u.index2_assign.value);
+        if (val_t != TYPE_UNKNOWN &&
+            !types_compatible(ctx->structs, val_t, n->u.index2_assign.value->type_name_hint,
+                               scalar, sym->struct_name)) {
+            error_type_mismatch(n->u.index2_assign.value->line,
+                                n->u.index2_assign.value->col,
+                                "2D array assignment", scalar, val_t);
         }
         break;
     }

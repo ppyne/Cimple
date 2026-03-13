@@ -305,14 +305,17 @@ Cimple inclut les types scalaires suivants :
 
 ### 6.2 Types tableaux
 
-Cimple inclut cinq types tableaux homogènes pour les types scalaires non-`void`, plus un type tableau par structure définie par l'utilisateur :
+Cimple inclut cinq types tableaux homogènes pour les types scalaires non-`void`, plus un type tableau par structure ou union définie par l'utilisateur :
 
 - `int[]`
 - `float[]`
 - `bool[]`
 - `string[]`
 - `byte[]`
-- `NomDeStructure[]` — tableau de structures (voir section 6.8)
+- `NomDeStructure[]` — tableau de structures (voir §6.8)
+- `NomDeUnion[]` — tableau d'unions (voir §6.9)
+
+Les variantes **2D** correspondantes sont également disponibles (`int[][]`, `float[][]`, `bool[][]`, `string[][]`, `byte[][]`, `NomDeStructure[][]`, `NomDeUnion[][]`) — voir §6.11.
 
 Un type tableau est toujours associé à un type d'élément fixe. Il est interdit de mélanger les types d'éléments au sein d'un même tableau. `void[]` n'existe pas.
 
@@ -347,7 +350,7 @@ Propriétés fondamentales :
 - un accès à un indice hors bornes est une **erreur runtime** ; elle doit produire un message d'erreur clair indiquant l'indice demandé, la longueur du tableau, la ligne et la colonne dans le source ;
 - un tableau peut être passé en argument à une fonction et retourné par une fonction ;
 - les tableaux peuvent être déclarés comme variables locales ou globales ;
-- il n'existe pas de tableau de tableaux (tableaux 2D) ;
+- les tableaux 2D (tableaux irréguliers) sont supportés (voir §6.11) ;
 - `void[]` n'existe pas.
 
 ### 6.5 Sémantique des chaînes
@@ -941,6 +944,71 @@ void main() {
     }
 }
 ```
+
+---
+
+### 6.11 Tableaux bidimensionnels (2D)
+
+Cimple supporte les **tableaux irréguliers** (*jagged arrays*) à deux dimensions. Chaque ligne est un tableau 1D indépendant ; les lignes peuvent avoir des tailles différentes.
+
+#### 6.11.1 Types 2D
+
+| Type       | Description                        |
+|------------|------------------------------------|
+| `int[][]`  | tableau de tableaux d'entiers      |
+| `float[][]`| tableau de tableaux de flottants   |
+| `bool[][]` | tableau de tableaux de booléens    |
+| `string[][]`| tableau de tableaux de chaînes    |
+| `byte[][]` | tableau de tableaux d'octets       |
+| `T[][]`    | tableau de tableaux de structures/unions |
+
+#### 6.11.2 Déclaration et initialisation
+
+```c
+// Déclaration sans initialisation (tableau vide)
+int[][] matrix;
+
+// Initialisation avec un littéral 2D
+int[][] grid = [[1,2,3],[4,5,6],[7,8,9]];
+
+// Ajout d'une ligne
+int[] row = [10,11,12];
+arrayPush(grid, row);
+```
+
+#### 6.11.3 Lecture et écriture
+
+```c
+int val = grid[1][2];   // lecture : 6
+grid[0][1] = 99;        // écriture 2D
+```
+
+La syntaxe `a[i][j]` est un sucre syntaxique : `a[i]` retourne la ligne `i` (de type `int[]`), puis `[j]` indexe la colonne.
+
+#### 6.11.4 Fonctions utilitaires
+
+- `count(matrix)` retourne le nombre de lignes.
+- `count(matrix[i])` retourne le nombre d'éléments de la ligne `i`.
+- `arrayPush(matrix, row)` ajoute la ligne `row` en fin de tableau.
+- `arrayPop(matrix)` retire et retourne la dernière ligne.
+
+#### 6.11.5 Parcours
+
+```c
+for (int i = 0; i < count(matrix); i++) {
+    for (int j = 0; j < count(matrix[i]); j++) {
+        print(toString(matrix[i][j]) + " ");
+    }
+    print("\n");
+}
+```
+
+#### 6.11.6 Règles normatives
+
+- Un tableau 2D est toujours un tableau de tableaux du même type d'élément scalaire ou struct/union.
+- `void[][]` n'existe pas.
+- Les tableaux 3D et plus ne sont pas supportés.
+- L'assignation entière d'une ligne (`matrix[i] = row`) utilise la syntaxe d'assignation simple (`=`), pas `[i][j]`.
 
 ---
 

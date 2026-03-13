@@ -808,6 +808,26 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
         break;
     }
 
+    case NODE_INDEX2_ASSIGN: {
+        Symbol *sym = scope_lookup(scope, n->u.index2_assign.name);
+        if (!sym) error_runtime(n->line, n->col,
+                                "undefined variable '%s'", n->u.index2_assign.name);
+        Value i1v = eval_expr(ip, scope, n->u.index2_assign.index1);
+        Value i2v = eval_expr(ip, scope, n->u.index2_assign.index2);
+        Value val = eval_expr(ip, scope, n->u.index2_assign.value);
+        int i1 = (int)i1v.u.i;
+        int i2 = (int)i2v.u.i;
+        if (i1 < 0 || i1 >= sym->val.u.arr->count)
+            error_runtime(n->line, n->col, "row index %d out of bounds (size %d)",
+                          i1, sym->val.u.arr->count);
+        ArrayVal *inner = sym->val.u.arr->data.arrays[i1];
+        array_set_owned(inner, i2, &val, n->line, n->col);
+        value_free(&i1v);
+        value_free(&i2v);
+        value_free(&val);
+        break;
+    }
+
     case NODE_MEMBER_ASSIGN: {
         AstNode *target = n->u.member_assign.target;
         if (target->kind != NODE_MEMBER)

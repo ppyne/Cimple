@@ -26,7 +26,15 @@ typedef enum {
     TYPE_STRUCT_ARR  = 14,
     TYPE_UNION       = 15,
     TYPE_UNION_ARR   = 16,
-    TYPE_UNKNOWN     = 17
+    /* 2-D array variants */
+    TYPE_INT_ARR_ARR    = 18,
+    TYPE_FLOAT_ARR_ARR  = 19,
+    TYPE_BOOL_ARR_ARR   = 20,
+    TYPE_STR_ARR_ARR    = 21,
+    TYPE_BYTE_ARR_ARR   = 22,
+    TYPE_STRUCT_ARR_ARR = 23,
+    TYPE_UNION_ARR_ARR  = 24,
+    TYPE_UNKNOWN        = 25
 } CimpleType;
 
 typedef struct FuncType {
@@ -35,36 +43,57 @@ typedef struct FuncType {
     int        param_count;
 } FuncType;
 
-/* Returns true if t is an array type. */
+/* Returns true if t is an array type (1D or 2D). */
 static inline int type_is_array(CimpleType t) {
-    return (t >= TYPE_INT_ARR && t <= TYPE_BYTE_ARR) || t == TYPE_STRUCT_ARR || t == TYPE_UNION_ARR;
+    return (t >= TYPE_INT_ARR && t <= TYPE_BYTE_ARR)
+        || t == TYPE_STRUCT_ARR  || t == TYPE_UNION_ARR
+        || t == TYPE_INT_ARR_ARR || t == TYPE_FLOAT_ARR_ARR
+        || t == TYPE_BOOL_ARR_ARR || t == TYPE_STR_ARR_ARR
+        || t == TYPE_BYTE_ARR_ARR || t == TYPE_STRUCT_ARR_ARR
+        || t == TYPE_UNION_ARR_ARR;
 }
 
 /* Returns the element type of an array type. */
 static inline CimpleType type_elem(CimpleType t) {
     switch (t) {
-    case TYPE_INT_ARR:   return TYPE_INT;
-    case TYPE_FLOAT_ARR: return TYPE_FLOAT;
-    case TYPE_BOOL_ARR:  return TYPE_BOOL;
-    case TYPE_STR_ARR:   return TYPE_STRING;
-    case TYPE_BYTE_ARR:  return TYPE_BYTE;
-    case TYPE_STRUCT_ARR:return TYPE_STRUCT;
-    case TYPE_UNION_ARR: return TYPE_UNION;
-    default:             return TYPE_UNKNOWN;
+    case TYPE_INT_ARR:      return TYPE_INT;
+    case TYPE_FLOAT_ARR:    return TYPE_FLOAT;
+    case TYPE_BOOL_ARR:     return TYPE_BOOL;
+    case TYPE_STR_ARR:      return TYPE_STRING;
+    case TYPE_BYTE_ARR:     return TYPE_BYTE;
+    case TYPE_STRUCT_ARR:   return TYPE_STRUCT;
+    case TYPE_UNION_ARR:    return TYPE_UNION;
+    /* 2D → 1D */
+    case TYPE_INT_ARR_ARR:    return TYPE_INT_ARR;
+    case TYPE_FLOAT_ARR_ARR:  return TYPE_FLOAT_ARR;
+    case TYPE_BOOL_ARR_ARR:   return TYPE_BOOL_ARR;
+    case TYPE_STR_ARR_ARR:    return TYPE_STR_ARR;
+    case TYPE_BYTE_ARR_ARR:   return TYPE_BYTE_ARR;
+    case TYPE_STRUCT_ARR_ARR: return TYPE_STRUCT_ARR;
+    case TYPE_UNION_ARR_ARR:  return TYPE_UNION_ARR;
+    default:                  return TYPE_UNKNOWN;
     }
 }
 
-/* Returns the array type for a scalar type. */
+/* Returns the array type for a scalar or 1D array type. */
 static inline CimpleType type_make_array(CimpleType t) {
     switch (t) {
-    case TYPE_INT:    return TYPE_INT_ARR;
-    case TYPE_FLOAT:  return TYPE_FLOAT_ARR;
-    case TYPE_BOOL:   return TYPE_BOOL_ARR;
-    case TYPE_STRING: return TYPE_STR_ARR;
-    case TYPE_BYTE:   return TYPE_BYTE_ARR;
-    case TYPE_STRUCT: return TYPE_STRUCT_ARR;
-    case TYPE_UNION:  return TYPE_UNION_ARR;
-    default:          return TYPE_UNKNOWN;
+    case TYPE_INT:        return TYPE_INT_ARR;
+    case TYPE_FLOAT:      return TYPE_FLOAT_ARR;
+    case TYPE_BOOL:       return TYPE_BOOL_ARR;
+    case TYPE_STRING:     return TYPE_STR_ARR;
+    case TYPE_BYTE:       return TYPE_BYTE_ARR;
+    case TYPE_STRUCT:     return TYPE_STRUCT_ARR;
+    case TYPE_UNION:      return TYPE_UNION_ARR;
+    /* 1D → 2D */
+    case TYPE_INT_ARR:    return TYPE_INT_ARR_ARR;
+    case TYPE_FLOAT_ARR:  return TYPE_FLOAT_ARR_ARR;
+    case TYPE_BOOL_ARR:   return TYPE_BOOL_ARR_ARR;
+    case TYPE_STR_ARR:    return TYPE_STR_ARR_ARR;
+    case TYPE_BYTE_ARR:   return TYPE_BYTE_ARR_ARR;
+    case TYPE_STRUCT_ARR: return TYPE_STRUCT_ARR_ARR;
+    case TYPE_UNION_ARR:  return TYPE_UNION_ARR_ARR;
+    default:              return TYPE_UNKNOWN;
     }
 }
 
@@ -90,6 +119,7 @@ typedef enum {
     NODE_BLOCK,          /* { stmt* }                                   */
     NODE_ASSIGN,         /* ident = expr                                */
     NODE_INDEX_ASSIGN,   /* ident[expr] = expr                          */
+    NODE_INDEX2_ASSIGN,  /* ident[expr][expr] = expr                    */
     NODE_MEMBER_ASSIGN,  /* member = expr                               */
     NODE_IF,             /* if (cond) stmt [else stmt]                  */
     NODE_WHILE,          /* while (cond) stmt                           */
@@ -232,6 +262,14 @@ struct AstNode {
             AstNode *index;
             AstNode *value;
         } index_assign;
+
+        /* NODE_INDEX2_ASSIGN */
+        struct {
+            char    *name;
+            AstNode *index1;
+            AstNode *index2;
+            AstNode *value;
+        } index2_assign;
 
         /* NODE_MEMBER_ASSIGN */
         struct {
