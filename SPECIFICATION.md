@@ -738,6 +738,181 @@ Règles normatives :
 - les fonctions `arrayPush`, `arrayPop`, `arrayInsert`, `arrayRemove`, `arrayGet`, `arraySet`, `count` fonctionnent sur les tableaux de structures ;
 - `arrayGet` retourne une **copie** de l'élément ; pour modifier l'élément en place, utiliser l'accès direct par index `arr[i].champ = ...`.
 
+### 6.8.9 Polymorphisme et dispatch dynamique
+
+Voir §6.9 pour la définition complète. Résumé applicable aux structures :
+
+- les méthodes sont **virtuelles par défaut** : si une sous-structure redéfinit une méthode, c'est toujours la version de la sous-structure qui est appelée, quelle que soit la variable réceptrice ;
+- un tableau déclaré `Animal[]` peut contenir des instances de `Animal` et de n'importe quelle sous-structure de `Animal` (**covariance**) ;
+- l'affectation d'une instance de sous-structure à une variable du type de base est valide.
+
+---
+
+### 6.9 Unions discriminées
+
+Une **union discriminée** est un type qui peut contenir, à un instant donné, une valeur de l'un de ses membres — exactement un. Le compilateur ajoute automatiquement un champ `.kind` (entier) qui identifie le membre actif. Des constantes symboliques `NomUnion.NOM_CHAMP` (en majuscules) sont générées pour chaque membre.
+
+#### 6.9.1 Déclaration
+
+```c
+union Valeur {
+    int    i;
+    float  f;
+    string s;
+}
+```
+
+Cela déclare le type `Valeur` avec trois membres possibles : `i` (int), `f` (float), `s` (string).
+
+Le compilateur génère implicitement :
+
+| Constante | Valeur |
+|-----------|--------|
+| `Valeur.I` | 0 |
+| `Valeur.F` | 1 |
+| `Valeur.S` | 2 |
+
+#### 6.9.2 Construction et assignation
+
+L'initialisation se fait par assignation directe du champ souhaité. Le `.kind` est mis à jour automatiquement.
+
+```c
+Valeur v;
+v.i = 42;         // v.kind == Valeur.I
+v.s = "bonjour";  // v.kind == Valeur.S  (le précédent est écrasé)
+```
+
+#### 6.9.3 Lecture et branchement
+
+La lecture d'un membre dont le kind ne correspond pas est une **erreur runtime**. L'idiome canonique est le `switch` sur `.kind` :
+
+```c
+switch (v.kind) {
+    case Valeur.I: print("entier : "  + toString(v.i)); break;
+    case Valeur.F: print("flottant : "+ toString(v.f)); break;
+    case Valeur.S: print("chaîne : "  + v.s);           break;
+    default: break;
+}
+```
+
+Le compilateur émet un **avertissement sémantique** si un `switch` sur `.kind` ne couvre pas tous les cas de l'union.
+
+#### 6.9.4 Tableaux d'unions
+
+```c
+Valeur[] config;
+
+Valeur host; host.s = "localhost"; arrayPush(config, host);
+Valeur port; port.i = 8080;        arrayPush(config, port);
+Valeur tls;  tls.b  = true;        arrayPush(config, tls);
+
+for (int k = 0; k < count(config); k++) {
+    switch (config[k].kind) {
+        case Valeur.S: print("host: " + config[k].s);           break;
+        case Valeur.I: print("port: " + toString(config[k].i)); break;
+        case Valeur.B: print("tls: "  + toString(config[k].b)); break;
+    }
+}
+```
+
+#### 6.9.5 Règles normatives
+
+- les membres d'une union peuvent être de n'importe quel type scalaire ou tableau ; les structures comme membres d'union ne sont **pas** supportées dans cette version ;
+- la déclaration d'une union est valide au niveau global uniquement (pas de `union` local) ;
+- `NomUnion[]` est un type tableau valide ;
+- `.kind` est un champ en lecture seule : l'affecter directement est une erreur sémantique ;
+- les constantes de kind sont des entiers constants, utilisables dans tout `switch/case` ;
+- lire un membre dont le `.kind` ne correspond pas est une erreur runtime ;
+- un `switch` sur `.kind` qui n'est pas exhaustif produit un avertissement sémantique (non bloquant).
+
+---
+
+### 6.10 Polymorphisme et dispatch dynamique
+
+#### 6.10.1 Méthodes virtuelles
+
+Toutes les méthodes de structure sont **virtuelles par défaut**. Lorsqu'une sous-structure redéfinit une méthode de sa base, c'est toujours la méthode de la sous-structure qui est appelée à l'exécution, quelle que soit le type déclaré de la variable réceptrice.
+
+```c
+structure Animal {
+    string parle() { return "..."; }
+}
+
+structure Chien : Animal {
+    string parle() { return "waf"; }
+}
+
+structure Chat : Animal {
+    string parle() { return "miaou"; }
+}
+```
+
+#### 6.10.2 Tableaux covariants
+
+Un tableau déclaré avec un type de base (`Animal[]`) peut contenir des instances de cette base **et de toutes ses sous-structures**. Le dispatch se fait dynamiquement sur le type réel de chaque élément.
+
+```c
+Animal[] zoo = [clone Chien, clone Chat, clone Chien];
+
+for (int i = 0; i < count(zoo); i++) {
+    print(zoo[i].parle() + "\n");   // "waf", "miaou", "waf"
+}
+```
+
+L'affectation d'une instance de sous-structure à une variable du type de base est également valide :
+
+```c
+Animal a = clone Chien;
+print(a.parle() + "\n");   // "waf"
+```
+
+#### 6.10.3 Règles normatives
+
+- toutes les méthodes de structure sont virtuelles ; il n'existe pas de modificateur `virtual` / `override` — la redéfinition est détectée par correspondance de signature ;
+- un override doit avoir **exactement la même signature** (même type de retour, mêmes types de paramètres) ; tout écart est une erreur sémantique ;
+- la covariance est valide à l'affectation et dans les littéraux de tableau ;
+- `super.méthode()` appelle explicitement la méthode de la base directe, indépendamment du dispatch dynamique ;
+- les champs ne sont **pas** virtuels : `a.x` sur une variable de type `Animal` accède toujours au champ `x` de `Animal`, même si l'instance est un `Chien` ;
+- le dispatch dynamique s'applique aux appels de méthode sur variables, paramètres de fonctions, éléments de tableau, et valeurs retournées.
+
+#### 6.10.4 Exemple complet
+
+```c
+structure Forme {
+    float aire()    { return 0.0; }
+    string nom()    { return "forme"; }
+}
+
+structure Cercle : Forme {
+    float rayon;
+    float aire()    { return 3.14159 * self.rayon * self.rayon; }
+    string nom()    { return "cercle"; }
+}
+
+structure Rectangle : Forme {
+    float largeur;
+    float hauteur;
+    float aire()    { return self.largeur * self.hauteur; }
+    string nom()    { return "rectangle"; }
+}
+
+void afficherForme(Forme f) {
+    print(f.nom() + " — aire : " + toString(f.aire()) + "\n");
+}
+
+void main() {
+    Cercle    c = clone Cercle;    c.rayon   = 5.0;
+    Rectangle r = clone Rectangle; r.largeur = 4.0; r.hauteur = 6.0;
+
+    Forme[] formes = [c, r];
+    for (int i = 0; i < count(formes); i++) {
+        afficherForme(formes[i]);
+        // cercle — aire : 78.53975
+        // rectangle — aire : 24.0
+    }
+}
+```
+
 ---
 
 ## 7. Variables
@@ -961,7 +1136,62 @@ int add(int a, int b) {
 - les paramètres de type tableau sont passés **par référence** : toute modification du tableau dans la fonction est visible à l'appelant ;
 - les paramètres scalaires sont passés **par valeur**.
 
-### 8.3 Retour
+### 8.3 Fonctions comme paramètres (callbacks)
+
+Une fonction peut être passée en argument à une autre fonction. La syntaxe du paramètre est celle d'une **déclaration de fonction sans corps** : type de retour, nom local, liste de types de paramètres.
+
+```c
+// Déclaration : bool cmp(int, int) est le type du paramètre
+void trieBulles(int[] arr, bool cmp(int, int)) {
+    for (int i = 0; i < count(arr) - 1; i++) {
+        for (int j = 0; j < count(arr) - i - 1; j++) {
+            if (!cmp(arr[j], arr[j+1])) {
+                int tmp  = arr[j];
+                arr[j]   = arr[j+1];
+                arr[j+1] = tmp;
+            }
+        }
+    }
+}
+
+bool croissant(int a, int b) { return a < b; }
+bool décroissant(int a, int b) { return a > b; }
+
+void main() {
+    int[] scores = [5, 2, 8, 1, 9];
+    trieBulles(scores, croissant);    // [1, 2, 5, 8, 9]
+    trieBulles(scores, décroissant);  // [9, 8, 5, 2, 1]
+}
+```
+
+Une référence de fonction peut également être stockée dans une variable, en utilisant la même syntaxe de déclaration avec initialisation :
+
+```c
+bool compare(int, int) = croissant;  // variable de type "fonction"
+compare(3, 7);                        // appel identique à une fonction normale
+```
+
+Règles normatives :
+
+- le type d'un paramètre fonction est entièrement défini par son type de retour et les types de ses paramètres (pas les noms) ;
+- la vérification est **statique** : passer une fonction dont la signature ne correspond pas est une erreur sémantique ;
+- les fonctions de la bibliothèque standard peuvent être passées comme callbacks lorsque leur signature correspond ;
+- les fonctions anonymes (lambdas) ne sont **pas** supportées ; seules des fonctions nommées déclarées au niveau global peuvent être passées ;
+- une variable de type fonction s'appelle comme une fonction ordinaire.
+
+```c
+// La stdlib peut être passée directement
+void appliquer(string[] strs, void action(string)) {
+    for (int i = 0; i < count(strs); i++) {
+        action(strs[i]);
+    }
+}
+
+string[] noms = ["Alice", "Bob", "Carol"];
+appliquer(noms, print);   // print est void(string) : signature compatible
+```
+
+### 8.4 Retour
 
 - une fonction non `void` doit retourner une valeur de son type déclaré ;
 - une fonction `void` peut utiliser `return;` sans expression ;
@@ -5370,6 +5600,12 @@ Les décisions suivantes sont **normatives** et s'appliquent sans exception :
 42. `randInt(min, max)` retourne un entier pseudo-aléatoire dans `[min, max]` (intervalle fermé) ; `min > max` est une erreur runtime ; `randFloat()` retourne un flottant dans `[0.0, 1.0)` ; le générateur est initialisé par `srand(time(NULL))` au démarrage du programme.
 
 43. `sleep(ms)` suspend l'exécution pendant `ms` millisecondes (POSIX : `usleep`, Windows : `Sleep`) ; non disponible sur WebAssembly (erreur runtime).
+
+44. une fonction peut être passée comme argument à une autre fonction en utilisant la syntaxe de signature comme type de paramètre (`bool cmp(int, int)`) ; la vérification est statique ; seules les fonctions nommées déclarées au niveau global sont passables — les lambdas ne sont pas supportées ; une variable de type fonction se déclare et s'appelle avec la même syntaxe.
+
+45. les unions discriminées (`union`) déclarent un type pouvant contenir exactement un membre actif à la fois ; le compilateur ajoute automatiquement un champ `.kind` (lecture seule) et des constantes symboliques `NomUnion.NOM_CHAMP` ; l'assignation d'un champ met à jour `.kind` automatiquement ; lire un champ dont le kind ne correspond pas est une erreur runtime ; un `switch` non exhaustif sur `.kind` produit un avertissement sémantique ; les membres peuvent être de tout type scalaire ou tableau.
+
+46. toutes les méthodes de structure sont virtuelles par défaut ; la redéfinition d'une méthode dans une sous-structure est détectée par correspondance exacte de signature ; les tableaux sont covariants (`Base[]` peut contenir des instances de sous-structures) ; le dispatch dynamique s'applique aux appels de méthode sur tout récepteur dont le type déclaré est une structure ; les champs ne sont pas virtuels.
 ---
 
 ## 26. Livrables attendus

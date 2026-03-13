@@ -215,6 +215,84 @@ byte good = intToByte(n);
 The logical operators `&&`, `||`, and `!` are **not defined on `byte`**; using them on a
 `byte` value is a semantic error. Convert to `bool` explicitly if needed.
 
+### 3.5 Union types
+
+A `union` is a type that holds exactly one value at a time, chosen from a fixed set of
+typed members. The compiler automatically tracks which member is active via a `.kind`
+field, and generates a named constant for each member.
+
+#### Declaration
+
+```c
+union Valeur {
+    int    i;
+    float  f;
+    string s;
+}
+```
+
+This declares a type `Valeur` with three possible members. The compiler generates:
+`Valeur.I`, `Valeur.F`, `Valeur.S` (integer constants, one per member, in declaration order).
+
+#### Writing a member
+
+Assign directly to the desired field. The `.kind` is updated automatically.
+
+```c
+Valeur v;
+v.i = 42;          // v.kind == Valeur.I
+v.s = "hello";     // v.kind == Valeur.S  (overwrites previous)
+```
+
+#### Reading — use `switch` on `.kind`
+
+Reading a member whose `.kind` does not match is a runtime error. The canonical pattern:
+
+```c
+switch (v.kind) {
+    case Valeur.I: print("int:    " + toString(v.i)); break;
+    case Valeur.F: print("float:  " + toString(v.f)); break;
+    case Valeur.S: print("string: " + v.s);           break;
+    default: break;
+}
+```
+
+A `switch` on `.kind` that does not cover all members produces a **compiler warning**.
+
+#### Heterogeneous collections
+
+The primary use case — a single array that holds values of different types:
+
+```c
+union Json {
+    int    number;
+    float  real;
+    string text;
+    bool   flag;
+}
+
+Json[] row;
+
+Json name; name.text   = "Alice"; arrayPush(row, name);
+Json age;  age.number  = 30;      arrayPush(row, age);
+Json ratio; ratio.real = 0.85;    arrayPush(row, ratio);
+Json active; active.flag = true;  arrayPush(row, active);
+
+for (int i = 0; i < count(row); i++) {
+    switch (row[i].kind) {
+        case Json.NUMBER: print(toString(row[i].number)); break;
+        case Json.REAL:   print(toString(row[i].real));   break;
+        case Json.TEXT:   print(row[i].text);             break;
+        case Json.FLAG:   print(toString(row[i].flag));   break;
+    }
+    print("\n");
+}
+```
+
+> `.kind` is read-only. Assigning to it directly is a semantic error.
+> Union members may be any scalar or array type. Structures as union members are not
+> supported in this version.
+
 ---
 
 ## 4. Variables
@@ -657,7 +735,78 @@ void main() {
 }
 ```
 
-### 7.3 Recursion
+### 7.3 Function parameters (callbacks)
+
+A function can be passed as an argument to another function. The parameter type is written
+as a function signature — return type, local name, parameter types — exactly like a
+function declaration without a body:
+
+```c
+void forEach(int[] arr, void action(int)) {
+    for (int i = 0; i < count(arr); i++) {
+        action(arr[i]);
+    }
+}
+
+void printVal(int x) { print(toString(x) + "\n"); }
+
+void main() {
+    int[] nums = [1, 2, 3, 4, 5];
+    forEach(nums, printVal);   // prints each element
+}
+```
+
+The type of a function parameter is fully described by its return type and the types of
+its own parameters. The check is **static**: passing a function with the wrong signature
+is a semantic error.
+
+```c
+// Generic sort — works for any comparison criterion
+void bubbleSort(int[] arr, bool cmp(int, int)) {
+    for (int i = 0; i < count(arr) - 1; i++) {
+        for (int j = 0; j < count(arr) - i - 1; j++) {
+            if (!cmp(arr[j], arr[j+1])) {
+                int tmp  = arr[j];
+                arr[j]   = arr[j+1];
+                arr[j+1] = tmp;
+            }
+        }
+    }
+}
+
+bool ascending(int a, int b)  { return a < b; }
+bool descending(int a, int b) { return a > b; }
+
+void main() {
+    int[] scores = [5, 2, 8, 1, 9];
+    bubbleSort(scores, ascending);    // [1, 2, 5, 8, 9]
+    bubbleSort(scores, descending);   // [9, 8, 5, 2, 1]
+}
+```
+
+A function reference can also be stored in a variable using the same declaration syntax:
+
+```c
+bool compare(int, int) = ascending;   // variable holding a function
+compare(3, 7);                         // called like a regular function
+compare = descending;                  // reassignable
+```
+
+Standard library functions can be passed as callbacks when their signature matches:
+
+```c
+void apply(string[] items, void fn(string)) {
+    for (int i = 0; i < count(items); i++) { fn(items[i]); }
+}
+
+string[] names = ["Alice", "Bob", "Carol"];
+apply(names, print);   // print is void(string): compatible
+```
+
+> Anonymous functions (lambdas) are not supported. Only named, globally-declared
+> functions can be passed as callbacks.
+
+### 7.4 Recursion
 
 ```c
 int fibonacci(int n) {
@@ -666,7 +815,7 @@ int fibonacci(int n) {
 }
 ```
 
-### 7.4 Entry point signatures
+### 7.5 Entry point signatures
 
 `main` must match exactly one of these four signatures:
 
@@ -1849,6 +1998,105 @@ print(toString(pts[0].x) + "\n");   // still 1.0
 
 // To modify an element in place, use direct indexed access:
 pts[0].x = 99.0;   // this DOES affect the stored element
+```
+
+### Polymorphism
+
+All structure methods are **virtual by default**. When a sub-structure overrides a
+method, the sub-structure's version is always called at runtime — regardless of the
+declared type of the variable.
+
+#### Covariant arrays
+
+An array declared as `Base[]` can hold instances of `Base` **and any of its
+sub-structures**. Method calls dispatch dynamically to the actual runtime type.
+
+```c
+structure Animal {
+    string speak() { return "..."; }
+}
+
+structure Dog : Animal {
+    string speak() { return "woof"; }
+}
+
+structure Cat : Animal {
+    string speak() { return "meow"; }
+}
+
+// One array, mixed types — works naturally
+Animal[] zoo = [clone Dog, clone Cat, clone Dog];
+
+for (int i = 0; i < count(zoo); i++) {
+    print(zoo[i].speak() + "\n");   // woof, meow, woof
+}
+```
+
+Assigning a sub-structure instance to a base-type variable is also valid:
+
+```c
+Animal a = clone Dog;
+print(a.speak() + "\n");   // woof
+```
+
+#### Polymorphic function parameters
+
+A function accepting a base type will work correctly with any sub-type:
+
+```c
+void describe(Animal a) {
+    print("This animal says: " + a.speak() + "\n");
+}
+
+describe(clone Dog);   // This animal says: woof
+describe(clone Cat);   // This animal says: meow
+```
+
+#### Rules
+
+- **All methods are virtual** — there is no `virtual` or `override` keyword.
+- An override must have the **exact same signature** (same return type, same parameter
+  types); any mismatch is a semantic error.
+- **Fields are not virtual**: `a.x` always accesses the field `x` as declared in the
+  base type, even if the instance is a sub-structure.
+- `super.method()` explicitly calls the base implementation.
+
+#### Full example — shapes
+
+```c
+structure Shape {
+    float area()   { return 0.0; }
+    string label() { return "shape"; }
+}
+
+structure Circle : Shape {
+    float radius;
+    float area()   { return 3.14159 * self.radius * self.radius; }
+    string label() { return "circle"; }
+}
+
+structure Rect : Shape {
+    float width;
+    float height;
+    float area()   { return self.width * self.height; }
+    string label() { return "rect"; }
+}
+
+void printShape(Shape s) {
+    print(s.label() + " area=" + toString(s.area()) + "\n");
+}
+
+void main() {
+    Circle c = clone Circle; c.radius = 5.0;
+    Rect   r = clone Rect;   r.width  = 4.0; r.height = 6.0;
+
+    Shape[] shapes = [c, r];
+    for (int i = 0; i < count(shapes); i++) {
+        printShape(shapes[i]);
+    }
+    // circle area=78.53975
+    // rect   area=24.0
+}
 ```
 
 ---
