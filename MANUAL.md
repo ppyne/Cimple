@@ -1582,7 +1582,6 @@ structure Point {
 
 ### Declaration rules
 
-- Structure names must start with an **uppercase letter** (`Point`, `Animal`, `HttpRequest`…); a lowercase initial letter is a semantic error.
 - Fields and methods may appear in **any order** inside the body.
 - A structure must be **declared before use** (textual order); forward references are a semantic error.
 - Field and method names must not conflict with any global variable or function name declared in the program.

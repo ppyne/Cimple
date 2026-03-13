@@ -1,4 +1,0 @@
-structure point {
-    int x = 0;
-}
-void main() {}

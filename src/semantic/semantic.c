@@ -1414,11 +1414,6 @@ static int struct_depends_on(StructTable *st, const char *from, const char *targ
 
 static void validate_structs(SemCtx *ctx) {
     for (StructInfo *si = ctx->structs->head; si; si = si->next) {
-        if (!(si->name[0] >= 'A' && si->name[0] <= 'Z')) {
-            error_semantic(si->decl->line, si->decl->col,
-                           "Structure name must start with an uppercase letter: '%s'",
-                           si->name);
-        }
         StructInfo *base_info = si->base_name ? struct_table_lookup(ctx->structs, si->base_name) : NULL;
         int has_cycle = si->base_name && struct_has_inheritance_cycle(ctx, si);
         if (si->base_name && !base_info) {

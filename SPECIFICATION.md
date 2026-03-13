@@ -4040,7 +4040,6 @@ Catalogue des erreurs sémantiques et messages associés :
 | Littéral `byte` hors plage | `Byte literal out of range: <N>` | `Valid range: 0 to 255.` |
 | Affectation `int` → `byte` sans conversion | `Cannot assign 'int' to 'byte'` | `Use intToByte() to convert.` |
 | Opérateur `&&` / `\|\|` / `!` sur `byte` | `Operator '<op>' cannot be applied to type 'byte'` | `Logical operators require 'bool' operands.` |
-| Nom de structure en minuscule | `Structure name must start with an uppercase letter: '<n>'` | — |
 | Champ de type structure sans `clone` | `Field '<n>' in structure '<S>' has no default value` | `Fields of structure type must be explicitly initialized with 'clone StructureName'.` |
 | Champ récursif | `Recursive field '<n>' in structure '<S>'` | `Structures cannot contain fields of their own type (direct or indirect).` |
 | `clone` sur variable | `Cannot clone a variable: '<n>'` | `Use 'clone StructureName' to create an instance.` |
@@ -5800,7 +5799,6 @@ Chaque test négatif vérifie : code de sortie `1` ou `2` selon le niveau, et pr
 
 | Test | Fragment attendu dans `stderr` |
 |---|---|
-| `structure myStruct { ... }` | `[SEMANTIC ERROR]` + `must start with an uppercase letter` |
 | Champ sans valeur par défaut | `[SEMANTIC ERROR]` + `has no default value` |
 | `clone s` (variable) | `[SEMANTIC ERROR]` + `Cannot clone a variable` |
 | `self` hors méthode | `[SEMANTIC ERROR]` + `'self' used outside` |
