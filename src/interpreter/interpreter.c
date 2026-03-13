@@ -997,7 +997,13 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
     }
 
     case NODE_EXPR_STMT: {
-        Value v = eval_expr(ip, scope, n->u.expr_stmt.expr);
+        AstNode *expr = n->u.expr_stmt.expr;
+        /* void union member activation: `x.none;` sets the active member */
+        if (expr->kind == NODE_MEMBER && expr->type == TYPE_VOID) {
+            (void)resolve_value_lvalue(ip, scope, expr, n->line, n->col);
+            break;
+        }
+        Value v = eval_expr(ip, scope, expr);
         value_free(&v);
         break;
     }

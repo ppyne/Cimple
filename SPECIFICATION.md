@@ -815,14 +815,43 @@ for (int k = 0; k < count(config); k++) {
 }
 ```
 
-#### 6.9.5 Règles normatives
+#### 6.9.5 Membres vides (`void`)
 
-- les membres d'une union peuvent être de n'importe quel type scalaire ou tableau ; les structures comme membres d'union ne sont **pas** supportées dans cette version ;
+Un membre de type `void` représente un état sans donnée — équivalent d'un « null » ou d'un cas « rien ». Il se déclare avec le mot-clé `void` à la place du type :
+
+```c
+union Option {
+    void none;
+    int  some;
+}
+```
+
+**Activation** — la syntaxe `x.none;` utilisée comme instruction (sans affectation ni lecture) active le membre void, mettant `.kind` à `Option.none` :
+
+```c
+Option x;
+x.none;               // active le membre vide : x.kind == Option.none
+x.some = 42;          // active le membre avec valeur : x.kind == Option.some
+```
+
+**Branchement** — le membre void participe normalement au `switch` :
+
+```c
+switch (x.kind) {
+    case Option.none: print("absent\n"); break;
+    case Option.some: print(toString(x.some) + "\n"); break;
+}
+```
+
+#### 6.9.6 Règles normatives
+
+- les membres d'une union peuvent être de n'importe quel type scalaire, tableau, ou `void` ; les structures comme membres d'union ne sont **pas** supportées dans cette version ;
 - la déclaration d'une union est valide au niveau global uniquement (pas de `union` local) ;
 - `NomUnion[]` est un type tableau valide ;
 - `.kind` est un champ en lecture seule : l'affecter directement est une erreur sémantique ;
 - les constantes de kind sont des entiers constants, utilisables dans tout `switch/case` ;
 - lire un membre dont le `.kind` ne correspond pas est une erreur runtime ;
+- un membre `void` s'active en écrivant `x.membreVoid;` comme instruction ;
 - un `switch` sur `.kind` qui n'est pas exhaustif produit un avertissement sémantique (non bloquant).
 
 ---
@@ -5603,7 +5632,7 @@ Les décisions suivantes sont **normatives** et s'appliquent sans exception :
 
 44. une fonction peut être passée comme argument à une autre fonction en utilisant la syntaxe de signature comme type de paramètre (`bool cmp(int, int)`) ; la vérification est statique ; seules les fonctions nommées déclarées au niveau global sont passables — les lambdas ne sont pas supportées ; une variable de type fonction se déclare et s'appelle avec la même syntaxe.
 
-45. les unions discriminées (`union`) déclarent un type pouvant contenir exactement un membre actif à la fois ; le compilateur ajoute automatiquement un champ `.kind` (lecture seule) et des constantes symboliques `NomUnion.NOM_CHAMP` ; l'assignation d'un champ met à jour `.kind` automatiquement ; lire un champ dont le kind ne correspond pas est une erreur runtime ; un `switch` non exhaustif sur `.kind` produit un avertissement sémantique ; les membres peuvent être de tout type scalaire ou tableau.
+45. les unions discriminées (`union`) déclarent un type pouvant contenir exactement un membre actif à la fois ; le compilateur ajoute automatiquement un champ `.kind` (lecture seule) et des constantes symboliques `NomUnion.NOM_CHAMP` ; l'assignation d'un champ met à jour `.kind` automatiquement ; lire un champ dont le kind ne correspond pas est une erreur runtime ; un `switch` non exhaustif sur `.kind` produit un avertissement sémantique ; les membres peuvent être de tout type scalaire, tableau, ou `void` ; un membre `void` représente un état sans donnée (motif « Option/nullable ») et s'active en écrivant `x.membreVoid;` comme instruction.
 
 46. toutes les méthodes de structure sont virtuelles par défaut ; la redéfinition d'une méthode dans une sous-structure est détectée par correspondance exacte de signature ; les tableaux sont covariants (`Base[]` peut contenir des instances de sous-structures) ; le dispatch dynamique s'applique aux appels de méthode sur tout récepteur dont le type déclaré est une structure ; les champs ne sont pas virtuels.
 ---

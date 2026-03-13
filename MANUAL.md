@@ -290,8 +290,68 @@ for (int i = 0; i < count(row); i++) {
 ```
 
 > `.kind` is read-only. Assigning to it directly is a semantic error.
-> Union members may be any scalar or array type. Structures as union members are not
+> Union members may be any scalar, array, or `void` type. Structures as union members are not
 > supported in this version.
+
+#### Void members — the Option / nullable pattern
+
+A member declared with `void` carries no payload. It represents an "absent" or "empty" state,
+giving Cimple a clean nullable pattern without null pointers.
+
+```c
+union Option {
+    void none;    // absent — no payload
+    int  some;    // present — carries an int
+}
+```
+
+**Activating a void member** — write the member access as a statement (no assignment):
+
+```c
+Option x;
+x.none;           // x.kind == Option.none  (absent)
+x.some = 42;      // x.kind == Option.some  (present, value = 42)
+x.none;           // back to absent
+```
+
+**Branching** — void members participate in `switch` like any other member:
+
+```c
+switch (x.kind) {
+    case Option.none: print("nothing\n");              break;
+    case Option.some: print(toString(x.some) + "\n"); break;
+}
+```
+
+**Practical example** — a function that may return a result or nothing:
+
+```c
+union MaybeInt {
+    void nothing;
+    int  value;
+}
+
+MaybeInt find(int[] arr, int target) {
+    MaybeInt r;
+    for (int i = 0; i < count(arr); i++) {
+        if (arr[i] == target) {
+            r.value = i;
+            return r;
+        }
+    }
+    r.nothing;
+    return r;
+}
+
+void main() {
+    int[] nums = [3, 7, 2, 9];
+    MaybeInt result = find(nums, 7);
+    switch (result.kind) {
+        case MaybeInt.nothing: print("not found\n"); break;
+        case MaybeInt.value:   print("found at index " + toString(result.value) + "\n"); break;
+    }
+}
+```
 
 ---
 

@@ -331,6 +331,17 @@ union_member(M) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
     free(N.v.sval);
 }
 
+union_member(M) ::= KW_VOID IDENT(N) SEMICOLON.
+{
+    M = ast_new(NODE_STRUCT_FIELD, N.line, N.col);
+    M->u.struct_field.name = cimple_strdup(N.v.sval);
+    M->u.struct_field.type = TYPE_VOID;
+    M->u.struct_field.struct_name = NULL;
+    M->u.struct_field.init = NULL;
+    M->type_name_hint = NULL;
+    free(N.v.sval);
+}
+
 structure_member_list(L) ::= .
 {
     nodelist_init(&L);
@@ -706,6 +717,13 @@ stmt(S) ::= IDENT(N) MINUSMINUS SEMICOLON.
     free(N.v.sval);
 }
 
+/* void union member activation: x.none; */
+stmt(S) ::= member_expr(M) SEMICOLON.
+{
+    S = ast_new(NODE_EXPR_STMT, M->line, M->col);
+    S->u.expr_stmt.expr = M;
+}
+
 /* Expression statement (function call only) */
 stmt(S) ::= call_expr(C) SEMICOLON.
 {
@@ -893,6 +911,13 @@ simple_stmt(S) ::= member_expr(M) ASSIGN expr(E) SEMICOLON.
     S = ast_new(NODE_MEMBER_ASSIGN, M->line, M->col);
     S->u.member_assign.target = M;
     S->u.member_assign.value = E;
+}
+
+/* void union member activation: x.none; */
+simple_stmt(S) ::= member_expr(M) SEMICOLON.
+{
+    S = ast_new(NODE_EXPR_STMT, M->line, M->col);
+    S->u.expr_stmt.expr = M;
 }
 
 simple_stmt(S) ::= IDENT(N) PLUSPLUS SEMICOLON.

@@ -1982,7 +1982,7 @@ static void validate_unions(SemCtx *ctx) {
             sig->decl = m;
             sig->next = ui->members;
             ui->members = sig;
-            if (sig->type == TYPE_STRUCT || sig->type == TYPE_STRUCT_ARR || sig->type == TYPE_UNION || sig->type == TYPE_UNION_ARR || sig->type == TYPE_EXEC_RESULT || sig->type == TYPE_VOID) {
+            if (sig->type == TYPE_STRUCT || sig->type == TYPE_STRUCT_ARR || sig->type == TYPE_UNION || sig->type == TYPE_UNION_ARR || sig->type == TYPE_EXEC_RESULT) {
                 error_semantic(m->line, m->col,
                                "Union member '%s' in '%s' has unsupported type '%s'",
                                sig->name, ui->name, type_name(sig->type));

@@ -1,0 +1,60 @@
+// void union members — Option / nullable pattern
+
+union Option {
+    void none;
+    int  some;
+}
+
+union MaybeStr {
+    void   nothing;
+    string value;
+}
+
+MaybeStr find(string[] arr, string target) {
+    MaybeStr r;
+    for (int i = 0; i < count(arr); i++) {
+        if (arr[i] == target) {
+            r.value = target;
+            return r;
+        }
+    }
+    r.nothing;
+    return r;
+}
+
+void main() {
+    // basic void member activation and switch
+    Option x;
+    x.none;
+    switch (x.kind) {
+        case Option.none: print("none\n"); break;
+        case Option.some: print("some\n"); break;
+    }
+
+    x.some = 99;
+    switch (x.kind) {
+        case Option.none: print("none\n"); break;
+        case Option.some: print("some=" + toString(x.some) + "\n"); break;
+    }
+
+    // reset back to void
+    x.none;
+    switch (x.kind) {
+        case Option.none: print("none again\n"); break;
+        case Option.some: print("some\n"); break;
+    }
+
+    // function returning void member
+    string[] words = ["hello", "world"];
+    MaybeStr r = find(words, "world");
+    switch (r.kind) {
+        case MaybeStr.nothing: print("not found\n"); break;
+        case MaybeStr.value:   print("found: " + r.value + "\n"); break;
+    }
+
+    MaybeStr r2 = find(words, "missing");
+    switch (r2.kind) {
+        case MaybeStr.nothing: print("not found\n"); break;
+        case MaybeStr.value:   print("found: " + r2.value + "\n"); break;
+    }
+}
