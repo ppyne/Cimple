@@ -2871,66 +2871,61 @@ string formatDate(int epochMs, string fmt)
 ```
 
 Formate un epoch en millisecondes en chaîne de caractères selon le gabarit `fmt`, exprimé en UTC.
+Format des lettres aligné sur PHP (`date()`). Un `\` devant une lettre la copie littéralement.
 
-**Tokens reconnus dans `fmt` :**
+**Lettres reconnues dans `fmt` :**
 
-| Token | Description | Plage / Format | Exemple |
+| Lettre | Description | Plage / Format | Exemple |
 |---|---|---|---|
-| `YYYY` | Année sur 4 chiffres | `0000`–`9999` | `2025` |
-| `MM` | Mois sur 2 chiffres, zéro-paddé | `01`–`12` | `03` |
-| `DD` | Jour du mois sur 2 chiffres, zéro-paddé | `01`–`31` | `11` |
-| `HH` | Heure sur 2 chiffres (00–23), zéro-paddé | `00`–`23` | `14` |
-| `mm` | Minutes sur 2 chiffres, zéro-paddé | `00`–`59` | `32` |
-| `ss` | Secondes sur 2 chiffres, zéro-paddé | `00`–`59` | `07` |
+| `Y` | Année sur 4 chiffres | `0000`–`9999` | `2025` |
+| `m` | Mois sur 2 chiffres, zéro-paddé | `01`–`12` | `03` |
+| `d` | Jour du mois sur 2 chiffres, zéro-paddé | `01`–`31` | `11` |
+| `H` | Heure sur 2 chiffres (24 h), zéro-paddé | `00`–`23` | `14` |
+| `i` | Minutes sur 2 chiffres, zéro-paddé | `00`–`59` | `32` |
+| `s` | Secondes sur 2 chiffres, zéro-paddé | `00`–`59` | `07` |
 | `w` | Jour de la semaine, numérique | `0` (dimanche) – `6` (samedi) | `2` |
-| `yday` | Jour de l'année, base 0, sans padding | `0`–`365` | `69` |
-| `WW` | Numéro de semaine ISO 8601, zéro-paddé | `01`–`53` | `42` |
-| `ISO` | Date et heure complètes ISO 8601 en UTC | `YYYY-MM-DDTHH:mm:ssZ` | `2025-03-11T14:32:07Z` |
+| `z` | Jour de l'année, base 0, sans padding | `0`–`365` | `69` |
+| `W` | Numéro de semaine ISO 8601, zéro-paddé | `01`–`53` | `11` |
+| `c` | Date et heure complètes ISO 8601 en UTC | `Y-m-dTH:i:sZ` | `2025-03-11T14:32:07Z` |
 
-Tout autre caractère dans `fmt` est copié tel quel dans la sortie.
+Tout autre caractère dans `fmt` est copié tel quel. Un `\` suivi d'une lettre copie la lettre littéralement.
 
-**Détail des nouveaux tokens :**
+**Détail des lettres :**
 
-- **`w`** — retourne un entier non paddé représentant le jour de la semaine selon la convention ISO/POSIX : `0` pour dimanche, `1` pour lundi, …, `6` pour samedi ;
+- **`w`** — entier non paddé, convention POSIX : `0` = dimanche, `1` = lundi, …, `6` = samedi ;
 
-- **`yday`** — retourne le jour de l'année compté depuis `0` : le 1er janvier vaut `0`, le 31 décembre d'une année non bissextile vaut `364`, le 31 décembre d'une année bissextile vaut `365` ; la valeur n'est pas zéro-paddée ;
+- **`z`** — jour de l'année depuis `0` : 1er janvier = `0`, 31 décembre d'une année non bissextile = `364`, 31 décembre d'une année bissextile = `365` ; non paddé ;
 
-- **`WW`** — retourne le numéro de semaine ISO 8601, zéro-paddé sur 2 chiffres : les semaines commencent le lundi ; la semaine contenant le premier jeudi de l'année est la semaine `01` ; les premiers/derniers jours d'une année peuvent appartenir à la semaine `52` ou `53` de l'année précédente, ou à la semaine `01` de l'année suivante, conformément à ISO 8601 ;
+- **`W`** — numéro de semaine ISO 8601, zéro-paddé sur 2 chiffres ; semaines commençant le lundi ; la semaine contenant le premier jeudi de l'année est la semaine `01` ; les premiers/derniers jours d'une année peuvent appartenir à la semaine de l'année précédente ou suivante ;
 
-- **`ISO`** — retourne la représentation complète ISO 8601 en UTC sous la forme `YYYY-MM-DDTHH:mm:ssZ` ; ce token est équivalent au template `"YYYY-MM-DDTHH:mm:ssZ"` mais fourni pour commodité et lisibilité ; il n'est valide que pour les années `0000`–`9999` (le format ISO 8601 non étendu) — pour un epoch correspondant à une année hors de cette plage, le résultat est la chaîne `"invalid"`.
+- **`c`** — représentation complète ISO 8601 en UTC `Y-m-dTH:i:sZ` ; retourne `"invalid"` si l'année est hors de `[0, 9999]`.
 
 Règles normatives :
 
 - `epochMs` doit être de type `int` ; `fmt` doit être de type `string` ; tout autre type est une erreur sémantique ;
-- les tokens sont sensibles à la casse : `yyyy`, `ww`, `iso` ne sont pas reconnus ; seules les formes exactes du tableau ci-dessus le sont ;
-- un token non reconnu est copié tel quel sans erreur ;
-- les tokens sont substitués dans l'ordre de leur apparition dans `fmt`, de gauche à droite, par correspondance du préfixe le plus long en premier ; ainsi `WW` est reconnu avant un `W` hypothétique qui serait copié tel quel ;
+- les lettres sont sensibles à la casse ;
+- une lettre non reconnue est copiée telle quelle sans erreur ;
+- `\X` copie `X` littéralement quelle que soit la lettre ;
 - `fmt` peut être vide `""` : retourne `""` ;
-- ne lève pas d'erreur runtime sur un epoch négatif ; formate la date correspondante, sauf `ISO` qui retourne `"invalid"` si l'année est hors de `[0, 9999]`.
+- ne lève pas d'erreur runtime sur un epoch négatif ; formate la date correspondante, sauf `c` qui retourne `"invalid"` si l'année est hors de `[0, 9999]`.
 
 ```c
 int ts = now();  // ex. 2025-03-11 14:32:07 UTC, mardi
 
-// Tokens existants
-string date  = formatDate(ts, "YYYY-MM-DD");            // "2025-03-11"
-string heure = formatDate(ts, "HH:mm:ss");              // "14:32:07"
-string dt    = formatDate(ts, "YYYY-MM-DD HH:mm:ss");   // "2025-03-11 14:32:07"
-string slash = formatDate(ts, "DD/MM/YYYY");            // "11/03/2025"
-string log   = formatDate(ts, "[YYYY-MM-DD HH:mm:ss]"); // "[2025-03-11 14:32:07]"
+string date  = formatDate(ts, "Y-m-d");              // "2025-03-11"
+string heure = formatDate(ts, "H:i:s");              // "14:32:07"
+string dt    = formatDate(ts, "Y-m-d H:i:s");        // "2025-03-11 14:32:07"
+string slash = formatDate(ts, "d/m/Y");              // "11/03/2025"
+string log   = formatDate(ts, "[Y-m-d H:i:s]");      // "[2025-03-11 14:32:07]"
+string dow   = formatDate(ts, "w");                  // "2"  (mardi)
+string doy   = formatDate(ts, "z");                  // "69" (70e jour, base 0)
+string week  = formatDate(ts, "W");                  // "11" (semaine ISO 11)
+string iso   = formatDate(ts, "c");                  // "2025-03-11T14:32:07Z"
+string isowd = formatDate(ts, "Y-W-w");              // "2025-11-2" (date semaine ISO)
+string lit   = formatDate(ts, "\Y\e\a\r: Y");        // "Year: 2025" (échappement)
 
-// Nouveaux tokens
-string dow   = formatDate(ts, "w");                     // "2"  (mardi)
-string doy   = formatDate(ts, "yday");                  // "69" (70e jour, base 0)
-string week  = formatDate(ts, "WW");                    // "11" (semaine ISO 11)
-string iso   = formatDate(ts, "ISO");                   // "2025-03-11T14:32:07Z"
-
-// Combinaisons
-string label = formatDate(ts, "YYYY-Www-w");            // "2025-W22-2"  (W littéral, w=weekday 2)
-string log2  = formatDate(ts, "[ISO] ");                // "[2025-03-11T14:32:07Z] "
-
-// Horodatage d'un fichier de log
-string ligne = formatDate(now(), "[YYYY-MM-DD HH:mm:ss] ") + "Démarrage\n";
-print(ligne);
+// Horodatage de log
+print(formatDate(now(), "[Y-m-d H:i:s] ") + "Démarrage\n");
 ```
 
 ---
@@ -5137,13 +5132,13 @@ void main() {
     print("Seconde : " + toString(epochToSecond(ts)) + "\n");
 
     // Formatage
-    print(formatDate(ts, "YYYY-MM-DD") + "\n");           // "2025-03-11"
-    print(formatDate(ts, "HH:mm:ss")   + "\n");           // "14:32:07"
-    print(formatDate(ts, "YYYY-MM-DD HH:mm:ss") + "\n");  // "2025-03-11 14:32:07"
-    print(formatDate(ts, "DD/MM/YYYY") + "\n");           // "11/03/2025"
+    print(formatDate(ts, "Y-m-d") + "\n");           // "2025-03-11"
+    print(formatDate(ts, "H:i:s")   + "\n");          // "14:32:07"
+    print(formatDate(ts, "Y-m-d H:i:s") + "\n");      // "2025-03-11 14:32:07"
+    print(formatDate(ts, "d/m/Y") + "\n");             // "11/03/2025"
 
     // Horodatage de log
-    string entree = formatDate(now(), "[YYYY-MM-DD HH:mm:ss] ") + "Démarrage\n";
+    string entree = formatDate(now(), "[Y-m-d H:i:s] ") + "Démarrage\n";
     print(entree);
 
     // Mesure de durée
@@ -5160,7 +5155,7 @@ void main() {
     if (debut == -1) {
         print("Date invalide\n");
     } else {
-        print("Début 2025 : " + formatDate(debut, "YYYY-MM-DD") + "\n");
+        print("Début 2025 : " + formatDate(debut, "Y-m-d") + "\n");
     }
 
     // Erreur : composants invalides
@@ -5680,13 +5675,14 @@ Chaque ligne ci-dessous correspond à au moins un répertoire de test dans `test
 **Stdlib — temps**
 - `now()` : type `int`, positif, deux appels consécutifs non décroissants
 - aller-retour `makeEpoch` → `epochTo*` sur date connue (`2025-03-11 14:32:07`)
-- `formatDate` : tous les tokens sur epoch connu — `YYYY`, `MM`, `DD`, `HH`, `mm`, `ss`, `w`, `yday`, `WW`, `ISO`
+- `formatDate` : toutes les lettres sur epoch connu — `Y`, `m`, `d`, `H`, `i`, `s`, `w`, `z`, `W`, `c`
 - `formatDate` : séparateurs libres copiés tels quels, `fmt` vide → `""`
 - `formatDate("w")` : dimanche → `"0"`, lundi → `"1"`, samedi → `"6"`
-- `formatDate("yday")` : 1er janvier → `"0"`, 31 décembre non-bissextile → `"364"`, 31 décembre bissextile → `"365"`
-- `formatDate("WW")` : semaine 1 → `"01"`, semaine 42 → `"42"`, semaine 53 sur année longue
-- `formatDate("ISO")` : résultat de la forme `YYYY-MM-DDTHH:mm:ssZ`
-- `formatDate("YYYY-WW-w")` : numéro de semaine ISO suivi du jour — ex. `"2025-11-2"` (pour ISO week 11, mardi)
+- `formatDate("z")` : 1er janvier → `"0"`, 31 décembre non-bissextile → `"364"`, 31 décembre bissextile → `"365"`
+- `formatDate("W")` : semaine 1 → `"01"`, semaine 42 → `"42"`, semaine 53 sur année longue
+- `formatDate("c")` : résultat de la forme `Y-m-dTH:i:sZ`
+- `formatDate("Y-W-w")` : numéro de semaine ISO suivi du jour — ex. `"2025-11-2"` (pour ISO week 11, mardi)
+- `formatDate("\\Y")` : retourne la lettre `Y` littérale (échappement backslash)
 - `makeEpoch` : composants valides → epoch positif
 
 **Stdlib — environnement**
@@ -6527,8 +6523,7 @@ The manual version number must match the specification version number. A changel
 ### v41
 - Fixed: redéfinition de champ dans une sous-structure — même type obligatoire, **valeur par défaut peut différer** (sections 6.8.2, 19.2c, 21.5, décision 38)
 - Fixed: valeurs par défaut des champs — implicites pour les types scalaires (`0`, `0.0`, `false`, `""`, `0`) et tableaux (`[]`) ; seuls les champs de type structure restent obligatoirement initialisés avec `clone` (sections 6.8.1, 6.8.5, 19.2c, 21.5, décision 38)
-- Fixed (errata) : `formatDate(ts, "YYYY-Www-w")` — commentaire corrigé en `"2025-W22-2" (W littéral, w=weekday 2)` (section 9.13)
-- Fixed (errata) : test `formatDate("YYYY-Www-w")` corrigé en `formatDate("YYYY-WW-w")` avec exemple `"2025-11-2"` (section 28.8)
+- Fixed (errata) : `formatDate` — format strings des exemples mis à jour vers les nouvelles lettres
 
 ### v40 — Cimple 1.1
 - **Version du langage : 1.0 → 1.1**

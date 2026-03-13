@@ -1007,8 +1007,41 @@ static char *format_date(int64_t epochMs, const char *fmt) {
     size_t oi    = 0;
 
     for (size_t i = 0; i < len && oi < buflen - 10; i++) {
-        /* Match tokens */
-        if (strncmp(fmt + i, "ISO", 3) == 0) {
+        /* Backslash escape: \X copies X literally (PHP-compatible) */
+        if (fmt[i] == '\\' && i + 1 < len) {
+            out[oi++] = fmt[++i];
+            continue;
+        }
+        /* Single-letter PHP-compatible format tokens */
+        switch (fmt[i]) {
+        case 'Y': /* 4-digit year, zero-padded */
+            oi += (size_t)snprintf(out + oi, buflen - oi, "%04d", tm.tm_year + 1900);
+            break;
+        case 'm': /* month 01-12 */
+            oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", tm.tm_mon + 1);
+            break;
+        case 'd': /* day of month 01-31 */
+            oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", tm.tm_mday);
+            break;
+        case 'H': /* hour 00-23 */
+            oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", tm.tm_hour);
+            break;
+        case 'i': /* minutes 00-59 */
+            oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", tm.tm_min);
+            break;
+        case 's': /* seconds 00-59 */
+            oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", tm.tm_sec);
+            break;
+        case 'w': /* weekday 0 (Sunday) – 6 (Saturday) */
+            oi += (size_t)snprintf(out + oi, buflen - oi, "%d", tm.tm_wday);
+            break;
+        case 'z': /* day of year, base 0, no padding */
+            oi += (size_t)snprintf(out + oi, buflen - oi, "%d", tm.tm_yday);
+            break;
+        case 'W': /* ISO 8601 week number, zero-padded */
+            oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", iso_week_number(&tm));
+            break;
+        case 'c': /* full UTC ISO 8601 date-time */ {
             int year = tm.tm_year + 1900;
             if (year < 0 || year > 9999) {
                 strcpy(out + oi, "invalid");
@@ -1019,35 +1052,11 @@ static char *format_date(int64_t epochMs, const char *fmt) {
                                        year, tm.tm_mon + 1, tm.tm_mday,
                                        tm.tm_hour, tm.tm_min, tm.tm_sec);
             }
-            i += 2;
-        } else if (strncmp(fmt + i, "yday", 4) == 0) {
-            oi += (size_t)snprintf(out + oi, buflen - oi, "%d", tm.tm_yday);
-            i += 3;
-        } else if (strncmp(fmt + i, "WW", 2) == 0) {
-            oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", iso_week_number(&tm));
-            i += 1;
-        } else if (strncmp(fmt + i, "YYYY", 4) == 0) {
-            oi += (size_t)snprintf(out + oi, buflen - oi, "%04d", tm.tm_year + 1900);
-            i += 3;
-        } else if (strncmp(fmt + i, "MM", 2) == 0) {
-            oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", tm.tm_mon + 1);
-            i += 1;
-        } else if (strncmp(fmt + i, "DD", 2) == 0) {
-            oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", tm.tm_mday);
-            i += 1;
-        } else if (strncmp(fmt + i, "HH", 2) == 0) {
-            oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", tm.tm_hour);
-            i += 1;
-        } else if (strncmp(fmt + i, "mm", 2) == 0) {
-            oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", tm.tm_min);
-            i += 1;
-        } else if (strncmp(fmt + i, "ss", 2) == 0) {
-            oi += (size_t)snprintf(out + oi, buflen - oi, "%02d", tm.tm_sec);
-            i += 1;
-        } else if (fmt[i] == 'w') {
-            oi += (size_t)snprintf(out + oi, buflen - oi, "%d", tm.tm_wday);
-        } else {
+            break;
+        }
+        default: /* unrecognised character: copy verbatim */
             out[oi++] = fmt[i];
+            break;
         }
     }
     out[oi] = '\0';

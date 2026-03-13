@@ -1266,43 +1266,45 @@ int makeEpoch(int year, int month, int day, int hour, int minute, int second)
 string formatDate(int epochMs, string fmt)
 ```
 
-`formatDate` substitutes named tokens in `fmt` left-to-right using **longest-prefix-first**
-matching (so `WW` is recognised before a bare `W`). Any character sequence that does not
-match a token is copied verbatim.
+`formatDate` substitutes single-letter tokens in `fmt` left-to-right (PHP-compatible).
+Any character that does not match a token is copied verbatim. Use `\` to escape a letter
+that should appear literally (e.g. `\Y` → `"Y"`).
 
 | Token | Field | Range / format | Example |
 |-------|-------|----------------|---------|
-| `YYYY` | 4-digit year, zero-padded | `0000`–`9999` | `2025` |
-| `MM` | 2-digit month | `01`–`12` | `03` |
-| `DD` | 2-digit day | `01`–`31` | `11` |
-| `HH` | 2-digit hour (24 h) | `00`–`23` | `14` |
-| `mm` | 2-digit minute | `00`–`59` | `32` |
-| `ss` | 2-digit second | `00`–`59` | `07` |
+| `Y` | 4-digit year, zero-padded | `0000`–`9999` | `2025` |
+| `m` | 2-digit month | `01`–`12` | `03` |
+| `d` | 2-digit day | `01`–`31` | `11` |
+| `H` | 2-digit hour (24 h) | `00`–`23` | `14` |
+| `i` | 2-digit minute | `00`–`59` | `32` |
+| `s` | 2-digit second | `00`–`59` | `07` |
 | `w` | weekday, no padding (`0`=Sunday … `6`=Saturday) | `0`–`6` | `2` |
-| `yday` | day of year, base 0, no padding | `0`–`365` | `69` |
-| `WW` | ISO 8601 week number, zero-padded | `01`–`53` | `11` |
-| `ISO` | full UTC date-time | `YYYY-MM-DDTHH:mm:ssZ` | `2025-03-11T14:32:07Z` |
+| `z` | day of year, base 0, no padding | `0`–`365` | `69` |
+| `W` | ISO 8601 week number, zero-padded | `01`–`53` | `11` |
+| `c` | full UTC date-time | `Y-m-dTH:i:sZ` | `2025-03-11T14:32:07Z` |
 
 **Notes on specific tokens:**
 
-- **`yday`** — January 1 is `"0"`, December 31 of a non-leap year is `"364"`, December 31 of
+- **`z`** — January 1 is `"0"`, December 31 of a non-leap year is `"364"`, December 31 of
   a leap year is `"365"`. The value is not padded.
-- **`WW`** — uses ISO 8601 week numbering: weeks start on **Monday**; the week containing
+- **`W`** — uses ISO 8601 week numbering: weeks start on **Monday**; the week containing
   the first Thursday of the year is week `01`. Days at the very start or end of a year can
   belong to the previous or next year's week.
-- **`ISO`** — returns `"invalid"` if the year of the epoch falls outside the range `0`–`9999`.
+- **`c`** — returns `"invalid"` if the year of the epoch falls outside the range `0`–`9999`.
 
 ```c
 void main() {
     int ts = makeEpoch(2025, 3, 11, 14, 32, 7);
-    print(formatDate(ts, "YYYY-MM-DD")        + "\n");  // 2025-03-11
-    print(formatDate(ts, "HH:mm:ss")          + "\n");  // 14:32:07
-    print(formatDate(ts, "[YYYY-MM-DD]")      + "\n");  // [2025-03-11]  ([ ] copied verbatim)
-    print(formatDate(ts, "w")                 + "\n");  // 2             (Tuesday)
-    print(formatDate(ts, "yday")              + "\n");  // 69            (70th day, base 0)
-    print(formatDate(ts, "WW")               + "\n");  // 11            (ISO week 11)
-    print(formatDate(ts, "YYYY-WW-w")         + "\n");  // 2025-11-2     (ISO week date)
-    print(formatDate(ts, "ISO")               + "\n");  // 2025-03-11T14:32:07Z
+    print(formatDate(ts, "Y-m-d")          + "\n");  // 2025-03-11
+    print(formatDate(ts, "H:i:s")          + "\n");  // 14:32:07
+    print(formatDate(ts, "[Y-m-d]")        + "\n");  // [2025-03-11]  ([ ] copied verbatim)
+    print(formatDate(ts, "d/m/Y")          + "\n");  // 11/03/2025
+    print(formatDate(ts, "w")              + "\n");  // 2             (Tuesday)
+    print(formatDate(ts, "z")              + "\n");  // 69            (70th day, base 0)
+    print(formatDate(ts, "W")              + "\n");  // 11            (ISO week 11)
+    print(formatDate(ts, "Y-W-w")          + "\n");  // 2025-11-2     (ISO week date)
+    print(formatDate(ts, "c")              + "\n");  // 2025-03-11T14:32:07Z
+    print(formatDate(ts, "\Y\e\a\r: Y")   + "\n");  // Year: 2025    (backslash escape)
 
     int t0 = now();
     // ... some work ...
@@ -1991,7 +1993,7 @@ void main() {
 ```c
 void main() {
     int ts = now();
-    string stamp = formatDate(ts, "YYYY-MM-DD HH:mm:ss");
+    string stamp = formatDate(ts, "Y-m-d H:i:s");
     print("[" + stamp + " UTC] Program started\n");
 }
 ```

@@ -1,7 +1,7 @@
 void main() {
     int ts = makeEpoch(2025, 3, 11, 14, 32, 7);
     print(toString(ts) + "\n");
-    print(formatDate(ts, "YYYY-MM-DD") + "\n");
-    print(formatDate(ts, "HH:mm:ss") + "\n");
-    print(formatDate(ts, "DD/MM/YYYY") + "\n");
+    print(formatDate(ts, "Y-m-d") + "\n");
+    print(formatDate(ts, "H:i:s") + "\n");
+    print(formatDate(ts, "d/m/Y") + "\n");
 }

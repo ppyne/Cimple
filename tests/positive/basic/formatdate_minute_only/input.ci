@@ -1,1 +1,1 @@
-void main() { int ts = makeEpoch(2025, 12, 31, 23, 59, 58); print(formatDate(ts, "mm") + "\n"); }
+void main() { int ts = makeEpoch(2025, 12, 31, 23, 59, 58); print(formatDate(ts, "i") + "\n"); }
