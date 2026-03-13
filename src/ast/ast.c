@@ -13,6 +13,7 @@ const char *type_name(CimpleType t) {
     case TYPE_BOOL:        return "bool";
     case TYPE_STRING:      return "string";
     case TYPE_BYTE:        return "byte";
+    case TYPE_FUNC:        return "<function>";
     case TYPE_VOID:        return "void";
     case TYPE_INT_ARR:     return "int[]";
     case TYPE_FLOAT_ARR:   return "float[]";
@@ -24,6 +25,25 @@ const char *type_name(CimpleType t) {
     case TYPE_STRUCT_ARR:  return "<structure[]>";
     default:               return "<unknown>";
     }
+}
+
+FuncType *func_type_new(CimpleType ret) {
+    FuncType *ft = ALLOC(FuncType);
+    ft->ret = ret;
+    ft->param_count = 0;
+    memset(ft->params, 0, sizeof(ft->params));
+    return ft;
+}
+
+FuncType *func_type_copy(const FuncType *src) {
+    if (!src) return NULL;
+    FuncType *ft = ALLOC(FuncType);
+    memcpy(ft, src, sizeof(FuncType));
+    return ft;
+}
+
+void func_type_free(FuncType *ft) {
+    free(ft);
 }
 
 /* -----------------------------------------------------------------------
@@ -63,6 +83,7 @@ AstNode *ast_new(NodeKind kind, int line, int col) {
     n->col     = col;
     n->type    = TYPE_UNKNOWN;
     n->type_name_hint = NULL;
+    n->func_type_hint = NULL;
     return n;
 }
 
@@ -94,10 +115,12 @@ void ast_free(AstNode *n) {
     case NODE_PARAM:
         free(n->u.param.name);
         free(n->u.param.struct_name);
+        func_type_free(n->u.param.func_type);
         break;
     case NODE_VAR_DECL:
         free(n->u.var_decl.name);
         free(n->u.var_decl.struct_name);
+        func_type_free(n->u.var_decl.func_type);
         ast_free(n->u.var_decl.init);
         break;
     case NODE_BLOCK:
@@ -150,6 +173,9 @@ void ast_free(AstNode *n) {
     case NODE_IDENT:
         free(n->u.ident.name);
         break;
+    case NODE_FUNC_REF:
+        free(n->u.func_ref.name);
+        break;
     case NODE_BINOP:
         ast_free(n->u.binop.left);
         ast_free(n->u.binop.right);
@@ -197,6 +223,7 @@ void ast_free(AstNode *n) {
         break;
     }
     free(n->type_name_hint);
+    func_type_free(n->func_type_hint);
     free(n);
 }
 
@@ -234,6 +261,13 @@ AstNode *ast_string_lit(const char *s, int line, int col) {
 AstNode *ast_ident(const char *name, int line, int col) {
     AstNode *n = ast_new(NODE_IDENT, line, col);
     n->u.ident.name = cimple_strdup(name);
+    return n;
+}
+
+AstNode *ast_func_ref(const char *name, int line, int col) {
+    AstNode *n = ast_new(NODE_FUNC_REF, line, col);
+    n->u.func_ref.name = cimple_strdup(name);
+    n->type = TYPE_FUNC;
     return n;
 }
 

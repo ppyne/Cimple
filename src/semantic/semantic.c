@@ -234,6 +234,10 @@ static void check_struct_methods(SemCtx *ctx);
 static int struct_declared_before(SemCtx *ctx, const char *name, int line);
 static AstNode *global_decl_lookup(AstNode *program, const char *name);
 static int struct_has_inheritance_cycle(SemCtx *ctx, StructInfo *si);
+static int func_types_equal(const FuncType *a, const FuncType *b);
+static FuncType *func_type_from_sig(const FuncSig *sig);
+static FuncType *func_type_from_builtin(const char *name);
+static const FuncType *expr_func_type(SemCtx *ctx, AstNode *n);
 
 /* Resolve intrinsic conversion overloads statically. */
 CimpleType builtin_resolve_intrinsic(const char *name, CimpleType arg_type,
@@ -280,6 +284,47 @@ static int types_equal_ex(CimpleType a, const char *a_name,
         return strcmp(a_name, b_name) == 0;
     }
     return 1;
+}
+
+static int func_types_equal(const FuncType *a, const FuncType *b) {
+    if (!a || !b) return 0;
+    if (a->ret != b->ret || a->param_count != b->param_count) return 0;
+    for (int i = 0; i < a->param_count; i++) {
+        if (a->params[i] != b->params[i]) return 0;
+    }
+    return 1;
+}
+
+static FuncType *func_type_from_sig(const FuncSig *sig) {
+    if (!sig) return NULL;
+    FuncType *ft = func_type_new(sig->ret_type);
+    ft->param_count = sig->param_count > 8 ? 8 : sig->param_count;
+    for (int i = 0; i < ft->param_count; i++)
+        ft->params[i] = sig->params[i].type;
+    return ft;
+}
+
+static FuncType *func_type_from_builtin(const char *name) {
+    if (strcmp(name, "print") != 0) return NULL;
+    FuncType *ft = func_type_new(TYPE_VOID);
+    ft->params[0] = TYPE_STRING;
+    ft->param_count = 1;
+    return ft;
+}
+
+static const FuncType *expr_func_type(SemCtx *ctx, AstNode *n) {
+    if (!n || n->type != TYPE_FUNC) return NULL;
+    if (n->func_type_hint) return n->func_type_hint;
+    if (n->kind == NODE_IDENT) {
+        Symbol *sym = scope_lookup(ctx->current, n->u.ident.name);
+        return sym ? sym->func_type : NULL;
+    }
+    if (n->kind == NODE_FUNC_REF) {
+        FuncSig *sig = func_table_lookup(ctx->funcs, n->u.func_ref.name);
+        if (sig) return n->func_type_hint = func_type_from_sig(sig);
+        return n->func_type_hint = func_type_from_builtin(n->u.func_ref.name);
+    }
+    return NULL;
 }
 
 static int is_int_like(CimpleType t) {
@@ -531,6 +576,19 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
     case NODE_IDENT: {
         Symbol *sym = scope_lookup(ctx->current, n->u.ident.name);
         if (!sym) {
+            FuncSig *fsig = func_table_lookup(ctx->funcs, n->u.ident.name);
+            FuncType *builtin_ft = NULL;
+            if (!fsig && strcmp(n->u.ident.name, "print") == 0)
+                builtin_ft = func_type_from_builtin("print");
+            if (fsig || builtin_ft) {
+                char *name = n->u.ident.name;
+                n->kind = NODE_FUNC_REF;
+                n->u.func_ref.name = name;
+                n->type = TYPE_FUNC;
+                func_type_free(n->func_type_hint);
+                n->func_type_hint = fsig ? func_type_from_sig(fsig) : builtin_ft;
+                return TYPE_FUNC;
+            }
             char hint[160];
             snprintf(hint, sizeof(hint), "'%s' must be declared before use.",
                      n->u.ident.name);
@@ -542,7 +600,32 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         n->type = sym->type;
         free(n->type_name_hint);
         n->type_name_hint = sym->struct_name ? cimple_strdup(sym->struct_name) : NULL;
+        func_type_free(n->func_type_hint);
+        n->func_type_hint = func_type_copy(sym->func_type);
         return sym->type;
+    }
+
+    case NODE_FUNC_REF: {
+        FuncSig *fsig = func_table_lookup(ctx->funcs, n->u.func_ref.name);
+        FuncType *builtin_ft = NULL;
+        if (!fsig && strcmp(n->u.func_ref.name, "print") == 0)
+            builtin_ft = func_type_from_builtin("print");
+        if (!fsig && !builtin_ft) {
+            if (builtin_lookup(n->u.func_ref.name)) {
+                error_semantic(n->line, n->col,
+                               "Built-in function '%s' cannot be used as a callback",
+                               n->u.func_ref.name);
+            } else {
+                error_semantic(n->line, n->col,
+                               "Unknown function: '%s'", n->u.func_ref.name);
+            }
+            n->type = TYPE_UNKNOWN;
+            return TYPE_UNKNOWN;
+        }
+        n->type = TYPE_FUNC;
+        func_type_free(n->func_type_hint);
+        n->func_type_hint = fsig ? func_type_from_sig(fsig) : builtin_ft;
+        return TYPE_FUNC;
     }
 
     case NODE_SELF:
@@ -758,12 +841,40 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
     case NODE_CALL: {
         const char *fname = n->u.call.name;
         NodeList   *args  = &n->u.call.args;
+        Symbol     *call_sym = scope_lookup(ctx->current, fname);
 
         /* First check argument types */
         CimpleType arg_types[16];
         int nargs = args->count;
         for (int i = 0; i < nargs && i < 16; i++)
             arg_types[i] = check_expr(ctx, args->items[i]);
+
+        if (call_sym && call_sym->type == TYPE_FUNC) {
+            const FuncType *ft = call_sym->func_type;
+            if (!ft) {
+                error_semantic(n->line, n->col,
+                               "Function variable '%s' has no signature", fname);
+                n->type = TYPE_UNKNOWN;
+                return TYPE_UNKNOWN;
+            }
+            if (nargs != ft->param_count) {
+                char hint[128];
+                snprintf(hint, sizeof(hint), "Expected %d, got %d.",
+                         ft->param_count, nargs);
+                error_semantic_hint(n->line, n->col, hint,
+                                    "Wrong number of arguments for '%s'", fname);
+            } else {
+                for (int i = 0; i < nargs; i++) {
+                    if (!types_equal_ex(arg_types[i], args->items[i]->type_name_hint,
+                                       ft->params[i], NULL)) {
+                        error_type_mismatch(args->items[i]->line, args->items[i]->col,
+                                            "function call", ft->params[i], arg_types[i]);
+                    }
+                }
+            }
+            n->type = ft->ret;
+            return n->type;
+        }
 
         /* Intrinsic conversions */
         if (strcmp(fname, "toString") == 0 || strcmp(fname, "toInt") == 0 ||
@@ -901,10 +1012,18 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         }
         else {
             for (int i = 0; i < nargs; i++) {
-                if (!types_equal_ex(arg_types[i], args->items[i]->type_name_hint,
-                                    fsig->params[i].type, fsig->params[i].struct_name))
+                if (fsig->params[i].type == TYPE_FUNC) {
+                    const FuncType *arg_ft = expr_func_type(ctx, args->items[i]);
+                    if (arg_types[i] != TYPE_FUNC ||
+                        !func_types_equal(arg_ft, fsig->params[i].func_type)) {
+                        error_semantic(args->items[i]->line, args->items[i]->col,
+                                       "Function signature mismatch in callback argument");
+                    }
+                } else if (!types_equal_ex(arg_types[i], args->items[i]->type_name_hint,
+                                           fsig->params[i].type, fsig->params[i].struct_name)) {
                     error_type_mismatch(args->items[i]->line, args->items[i]->col,
                                         "function call", fsig->params[i].type, arg_types[i]);
+                }
             }
         }
         n->type = fsig->ret_type;
@@ -984,8 +1103,15 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         } else {
             for (int i = 0; i < method->param_count; i++) {
                 AstNode *arg = n->u.method_call.args.items[i];
-                if (!types_equal_ex(arg->type, arg->type_name_hint,
-                                    method->params[i].type, method->params[i].struct_name)) {
+                if (method->params[i].type == TYPE_FUNC) {
+                    const FuncType *arg_ft = expr_func_type(ctx, arg);
+                    if (arg->type != TYPE_FUNC ||
+                        !func_types_equal(arg_ft, method->params[i].func_type)) {
+                        error_semantic(arg->line, arg->col,
+                                       "Function signature mismatch in callback argument");
+                    }
+                } else if (!types_equal_ex(arg->type, arg->type_name_hint,
+                                           method->params[i].type, method->params[i].struct_name)) {
                     error_type_mismatch(arg->line, arg->col, "function call",
                                         method->params[i].type, arg->type);
                 }
@@ -1103,6 +1229,7 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         /* Define in current scope */
         Symbol *sym = scope_define(ctx->current, name, t,
                                    n->u.var_decl.struct_name,
+                                   n->u.var_decl.func_type,
                                    n->line, n->col);
         if (!sym) {
             Symbol *existing = scope_lookup_local(ctx->current, name);
@@ -1117,6 +1244,14 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         /* Type-check initialiser */
         if (n->u.var_decl.init) {
             CimpleType it = check_expr(ctx, n->u.var_decl.init);
+            if (t == TYPE_FUNC) {
+                const FuncType *init_ft = expr_func_type(ctx, n->u.var_decl.init);
+                if (it != TYPE_FUNC || !func_types_equal(n->u.var_decl.func_type, init_ft)) {
+                    error_semantic(n->u.var_decl.init->line, n->u.var_decl.init->col,
+                                   "Function signature mismatch in initialization");
+                }
+                break;
+            }
             /* Empty array lit */
             if (n->u.var_decl.init->kind == NODE_ARRAY_LIT &&
                 n->u.var_decl.init->u.array_lit.elems.count == 0) {
@@ -1186,6 +1321,14 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
             break;
         }
         CimpleType vt = check_expr(ctx, n->u.assign.value);
+        if (sym->type == TYPE_FUNC) {
+            const FuncType *rhs_ft = expr_func_type(ctx, n->u.assign.value);
+            if (vt != TYPE_FUNC || !func_types_equal(sym->func_type, rhs_ft)) {
+                error_semantic(n->u.assign.value->line, n->u.assign.value->col,
+                               "Function signature mismatch in assignment");
+            }
+            break;
+        }
         if (sym->type == TYPE_BYTE && is_byte_compatible_literal_expr(n->u.assign.value)) {
             break;
         }
@@ -1341,7 +1484,7 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
             if (init->kind == NODE_FOR_INIT) {
                 Symbol *sym = scope_define(ctx->current,
                                            init->u.for_init.name,
-                                           TYPE_INT, NULL,
+                                           TYPE_INT, NULL, NULL,
                                            init->line, init->col);
                 if (!sym)
                     error_semantic(init->line, init->col,
@@ -1448,8 +1591,12 @@ static int struct_method_signature_matches(const StructMethodSig *a,
                         b->ret_type, b->ret_struct_name)) return 0;
     if (a->param_count != b->param_count) return 0;
     for (int i = 0; i < a->param_count; i++) {
-        if (!types_equal_ex(a->params[i].type, a->params[i].struct_name,
-                            b->params[i].type, b->params[i].struct_name)) return 0;
+        if (a->params[i].type == TYPE_FUNC || b->params[i].type == TYPE_FUNC) {
+            if (a->params[i].type != b->params[i].type ||
+                !func_types_equal(a->params[i].func_type, b->params[i].func_type))
+                return 0;
+        } else if (!types_equal_ex(a->params[i].type, a->params[i].struct_name,
+                                   b->params[i].type, b->params[i].struct_name)) return 0;
     }
     return 1;
 }
@@ -1557,6 +1704,7 @@ static void validate_structs(SemCtx *ctx) {
                     method->params[j].type = p->u.param.type;
                     method->params[j].struct_name = p->u.param.struct_name
                         ? cimple_strdup(p->u.param.struct_name) : NULL;
+                    method->params[j].func_type = func_type_copy(p->u.param.func_type);
                 }
                 method->decl = m;
                 method->next = si->methods;
@@ -1614,6 +1762,7 @@ static void collect_functions(SemCtx *ctx, AstNode *program) {
             fp[j].type = params->items[j]->u.param.type;
             fp[j].struct_name = params->items[j]->u.param.struct_name
                 ? cimple_strdup(params->items[j]->u.param.struct_name) : NULL;
+            fp[j].func_type = func_type_copy(params->items[j]->u.param.func_type);
             if ((fp[j].type == TYPE_STRUCT || fp[j].type == TYPE_STRUCT_ARR) &&
                 (!fp[j].struct_name || !struct_declared_before(ctx, fp[j].struct_name, params->items[j]->line))) {
                 error_semantic(params->items[j]->line, params->items[j]->col,
@@ -1630,8 +1779,10 @@ static void collect_functions(SemCtx *ctx, AstNode *program) {
             error_semantic(d->line, d->col,
                            "function '%s' already declared", name);
         }
-        for (int j = 0; j < params->count; j++)
+        for (int j = 0; j < params->count; j++) {
+            func_type_free(fp[j].func_type);
             free(fp[j].struct_name);
+        }
         free(fp);
     }
 }
@@ -1646,11 +1797,11 @@ static void check_struct_methods(SemCtx *ctx) {
             ctx->current_base_name = si->base_name;
             ctx->in_method = 1;
 
-            scope_define(ctx->current, "self", TYPE_STRUCT, si->name, f->line, f->col);
+            scope_define(ctx->current, "self", TYPE_STRUCT, si->name, NULL, f->line, f->col);
             for (int i = 0; i < f->u.func_decl.params.count; i++) {
                 AstNode *p = f->u.func_decl.params.items[i];
                 scope_define(ctx->current, p->u.param.name, p->u.param.type,
-                             p->u.param.struct_name, p->line, p->col);
+                             p->u.param.struct_name, p->u.param.func_type, p->line, p->col);
             }
             NodeList *stmts = &f->u.func_decl.body->u.block.stmts;
             for (int i = 0; i < stmts->count; i++)
@@ -1682,7 +1833,7 @@ static void check_func(SemCtx *ctx, AstNode *f) {
     for (int i = 0; i < params->count; i++) {
         AstNode *p = params->items[i];
         scope_define(ctx->current, p->u.param.name, p->u.param.type,
-                     p->u.param.struct_name, p->line, p->col);
+                     p->u.param.struct_name, p->u.param.func_type, p->line, p->col);
     }
 
     /* Check body */

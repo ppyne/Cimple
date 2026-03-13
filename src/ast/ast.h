@@ -12,19 +12,26 @@ typedef enum {
     TYPE_BOOL      = 2,
     TYPE_STRING    = 3,
     TYPE_BYTE      = 4,
-    TYPE_VOID      = 5,
+    TYPE_FUNC      = 5,
+    TYPE_VOID      = 6,
     /* Array variants */
-    TYPE_INT_ARR   = 6,
-    TYPE_FLOAT_ARR = 7,
-    TYPE_BOOL_ARR  = 8,
-    TYPE_STR_ARR   = 9,
-    TYPE_BYTE_ARR  = 10,
+    TYPE_INT_ARR   = 7,
+    TYPE_FLOAT_ARR = 8,
+    TYPE_BOOL_ARR  = 9,
+    TYPE_STR_ARR   = 10,
+    TYPE_BYTE_ARR  = 11,
     /* Opaque */
-    TYPE_EXEC_RESULT = 11,
-    TYPE_STRUCT      = 12,
-    TYPE_STRUCT_ARR  = 13,
-    TYPE_UNKNOWN     = 14
+    TYPE_EXEC_RESULT = 12,
+    TYPE_STRUCT      = 13,
+    TYPE_STRUCT_ARR  = 14,
+    TYPE_UNKNOWN     = 15
 } CimpleType;
+
+typedef struct FuncType {
+    CimpleType ret;
+    CimpleType params[8];
+    int        param_count;
+} FuncType;
 
 /* Returns true if t is an array type. */
 static inline int type_is_array(CimpleType t) {
@@ -58,6 +65,9 @@ static inline CimpleType type_make_array(CimpleType t) {
 }
 
 const char *type_name(CimpleType t);
+FuncType *func_type_new(CimpleType ret);
+FuncType *func_type_copy(const FuncType *src);
+void      func_type_free(FuncType *ft);
 
 /* -----------------------------------------------------------------------
  * AST node kinds
@@ -92,6 +102,7 @@ typedef enum {
     NODE_STRING_LIT,     /* string literal (decoded)                    */
     NODE_ARRAY_LIT,      /* [ expr, expr, ... ]                         */
     NODE_IDENT,          /* identifier                                  */
+    NODE_FUNC_REF,       /* named function used as a value              */
     NODE_BINOP,          /* binary operator                             */
     NODE_UNOP,           /* unary operator                              */
     NODE_CALL,           /* function call                               */
@@ -143,6 +154,7 @@ struct AstNode {
     int       col;
     CimpleType type;   /* inferred/declared type (set by semantic pass) */
     char     *type_name_hint; /* structure name when type is TYPE_STRUCT/_ARR */
+    FuncType *func_type_hint; /* function signature when type is TYPE_FUNC    */
 
     union {
         /* NODE_PROGRAM */
@@ -162,6 +174,7 @@ struct AstNode {
             char      *name;
             CimpleType type;
             char      *struct_name;
+            FuncType  *func_type;
         } param;
 
         /* NODE_VAR_DECL */
@@ -169,6 +182,7 @@ struct AstNode {
             char      *name;
             CimpleType type;
             char      *struct_name;
+            FuncType  *func_type;
             AstNode   *init;    /* NULL if uninitialized                */
             int        is_global;
         } var_decl;
@@ -264,6 +278,9 @@ struct AstNode {
         /* NODE_IDENT */
         struct { char *name; } ident;
 
+        /* NODE_FUNC_REF */
+        struct { char *name; } func_ref;
+
         /* NODE_BINOP */
         struct {
             OpKind   op;
@@ -340,6 +357,7 @@ AstNode *ast_float_lit(double v, int line, int col);
 AstNode *ast_bool_lit(int v, int line, int col);
 AstNode *ast_string_lit(const char *s, int line, int col);
 AstNode *ast_ident(const char *name, int line, int col);
+AstNode *ast_func_ref(const char *name, int line, int col);
 AstNode *ast_const(const char *name, int line, int col);
 AstNode *ast_binop(OpKind op, AstNode *l, AstNode *r, int line, int col);
 AstNode *ast_unop(OpKind op, AstNode *operand, int line, int col);

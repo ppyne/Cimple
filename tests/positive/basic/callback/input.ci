@@ -1,0 +1,42 @@
+bool ascending(int a, int b) {
+    return a < b;
+}
+
+bool descending(int a, int b) {
+    return a > b;
+}
+
+void sort2(int[] arr, bool cmp(int, int)) {
+    if (!cmp(arr[0], arr[1])) {
+        int tmp = arr[0];
+        arr[0] = arr[1];
+        arr[1] = tmp;
+    }
+}
+
+void apply(string[] items, void action(string)) {
+    for (int i = 0; i < count(items); i++) {
+        action(items[i]);
+    }
+}
+
+void main() {
+    int[] nums = [2, 1];
+    sort2(nums, ascending);
+    print(toString(nums[0]) + "," + toString(nums[1]) + "\n");
+
+    bool compare(int, int) = descending;
+    if (compare(3, 7)) {
+        print("bad\n");
+    } else {
+        print("ok\n");
+    }
+
+    compare = ascending;
+    if (compare(3, 7)) {
+        print("asc\n");
+    }
+
+    string[] names = ["A\n", "B\n"];
+    apply(names, print);
+}

@@ -11,6 +11,7 @@ typedef struct Symbol {
     char       *name;
     CimpleType  type;
     char       *struct_name;
+    FuncType   *func_type;
     Value       val;         /* runtime value (interpreter phase)         */
     int         is_const;   /* predefined constant                        */
     int         line;        /* declaration site                          */
@@ -36,6 +37,7 @@ typedef struct FuncParam {
     char       *name;
     CimpleType  type;
     char       *struct_name;
+    FuncType   *func_type;
 } FuncParam;
 
 typedef struct FuncSig {
@@ -63,7 +65,8 @@ Symbol *scope_lookup_local(Scope *s, const char *name);
 
 /* Define a new symbol (returns NULL on redefinition). */
 Symbol *scope_define(Scope *s, const char *name, CimpleType type,
-                     const char *struct_name, int line, int col);
+                     const char *struct_name, const FuncType *func_type,
+                     int line, int col);
 
 /* -----------------------------------------------------------------------
  * API — Functions

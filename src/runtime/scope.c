@@ -32,6 +32,7 @@ void scope_free(Scope *s) {
             Symbol *next = sym->next;
             free(sym->name);
             free(sym->struct_name);
+            func_type_free(sym->func_type);
             value_free(&sym->val);
             free(sym);
             sym = next;
@@ -61,13 +62,15 @@ Symbol *scope_lookup(Scope *s, const char *name) {
 }
 
 Symbol *scope_define(Scope *s, const char *name, CimpleType type,
-                     const char *struct_name, int line, int col) {
+                     const char *struct_name, const FuncType *func_type,
+                     int line, int col) {
     if (scope_lookup_local(s, name))
         return NULL; /* already defined */
     Symbol *sym  = ALLOC(Symbol);
     sym->name     = cimple_strdup(name);
     sym->type     = type;
     sym->struct_name = struct_name ? cimple_strdup(struct_name) : NULL;
+    sym->func_type = func_type_copy(func_type);
     sym->val      = value_default(type);
     sym->is_const = 0;
     sym->line     = line;
@@ -102,6 +105,8 @@ void func_table_free(FuncTable *ft) {
                 free(sig->params[j].name);
             for (int j = 0; j < sig->param_count; j++)
                 free(sig->params[j].struct_name);
+            for (int j = 0; j < sig->param_count; j++)
+                func_type_free(sig->params[j].func_type);
             free(sig->params);
             free(sig);
             sig = next;
@@ -140,6 +145,7 @@ int func_table_define(FuncTable *ft, const char *name,
         sig->params[i].type = params[i].type;
         sig->params[i].struct_name = params[i].struct_name
             ? cimple_strdup(params[i].struct_name) : NULL;
+        sig->params[i].func_type = func_type_copy(params[i].func_type);
     }
     sig->line      = line;
     sig->col       = col;

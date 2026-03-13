@@ -70,6 +70,7 @@ Value  val_bool(int v);
 Value  val_byte(unsigned char v);
 Value  val_string(const char *s);      /* duplicates s */
 Value  val_string_own(char *s);        /* takes ownership */
+Value  val_func(const char *name);     /* duplicates function name */
 Value  val_void(void);
 Value  val_array(CimpleType elem_type);
 Value  val_struct(const char *struct_name, int field_count);

@@ -17,12 +17,14 @@
 typedef struct {
     CimpleType type;
     char      *struct_name;
+    FuncType  *func_type;
 } ParsedType;
 
 static ParsedType parsed_type_make(CimpleType type, const char *struct_name) {
     ParsedType pt;
     pt.type = type;
     pt.struct_name = struct_name ? cimple_strdup(struct_name) : NULL;
+    pt.func_type = NULL;
     return pt;
 }
 
@@ -168,6 +170,7 @@ decl(D) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
     D->u.var_decl.name        = cimple_strdup(N.v.sval);
     D->u.var_decl.type        = T.type;
     D->u.var_decl.struct_name = T.struct_name;
+    D->u.var_decl.func_type   = T.func_type;
     D->u.var_decl.init        = NULL;
     D->u.var_decl.is_global   = 1;
     D->type_name_hint         = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
@@ -180,10 +183,42 @@ decl(D) ::= nonvoid_type(T) IDENT(N) ASSIGN expr(E) SEMICOLON.
     D->u.var_decl.name        = cimple_strdup(N.v.sval);
     D->u.var_decl.type        = T.type;
     D->u.var_decl.struct_name = T.struct_name;
+    D->u.var_decl.func_type   = T.func_type;
     D->u.var_decl.init        = E;
     D->u.var_decl.is_global   = 1;
     D->type_name_hint         = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
     free(N.v.sval);
+}
+
+decl(D) ::= nonvoid_type(T) IDENT(N) LPAREN callback_param_types(F) RPAREN ASSIGN IDENT(I) SEMICOLON.
+{
+    D = ast_new(NODE_VAR_DECL, N.line, N.col);
+    F->ret = T.type;
+    D->u.var_decl.name = cimple_strdup(N.v.sval);
+    D->u.var_decl.type = TYPE_FUNC;
+    D->u.var_decl.struct_name = NULL;
+    D->u.var_decl.func_type = F;
+    D->u.var_decl.init = ast_ident(I.v.sval, I.line, I.col);
+    D->u.var_decl.is_global = 1;
+    D->type = TYPE_FUNC;
+    free(T.struct_name);
+    free(N.v.sval);
+    free(I.v.sval);
+}
+
+decl(D) ::= KW_VOID IDENT(N) LPAREN callback_param_types(F) RPAREN ASSIGN IDENT(I) SEMICOLON.
+{
+    D = ast_new(NODE_VAR_DECL, N.line, N.col);
+    F->ret = TYPE_VOID;
+    D->u.var_decl.name = cimple_strdup(N.v.sval);
+    D->u.var_decl.type = TYPE_FUNC;
+    D->u.var_decl.struct_name = NULL;
+    D->u.var_decl.func_type = F;
+    D->u.var_decl.init = ast_ident(I.v.sval, I.line, I.col);
+    D->u.var_decl.is_global = 1;
+    D->type = TYPE_FUNC;
+    free(N.v.sval);
+    free(I.v.sval);
 }
 
 decl(D) ::= nonvoid_type(T) IDENT(N) LPAREN param_list(PL) RPAREN block(B).
@@ -319,7 +354,8 @@ structure_member(M) ::= KW_VOID IDENT(N) LPAREN param_list(PL) RPAREN block(B).
 %type struct_type  { ParsedType }
 %type struct_array_type { ParsedType }
 %type nonvoid_type { ParsedType }
-%type param_type   { ParsedType }
+%type callback_param_types { FuncType * }
+%type param_tail   { AstNode * }
 
 scalar_type(T) ::= KW_INT.    { T = parsed_type_make(TYPE_INT, NULL); }
 scalar_type(T) ::= KW_FLOAT.  { T = parsed_type_make(TYPE_FLOAT, NULL); }
@@ -351,7 +387,22 @@ nonvoid_type(T) ::= struct_type(S).       { T = S; }
 nonvoid_type(T) ::= struct_array_type(A). { T = A; }
 nonvoid_type(T) ::= KW_EXECRESULT.        { T = parsed_type_make(TYPE_EXEC_RESULT, NULL); }
 
-param_type(T) ::= nonvoid_type(S).  { T = S; }
+callback_param_types(F) ::= nonvoid_type(T).
+{
+    F = func_type_new(TYPE_UNKNOWN);
+    if (F->param_count < 8)
+        F->params[F->param_count++] = T.type;
+    free(T.struct_name);
+}
+
+callback_param_types(F) ::= callback_param_types(FF) COMMA nonvoid_type(T).
+{
+    F = FF;
+    if (F->param_count < 8) {
+        F->params[F->param_count++] = T.type;
+    }
+    free(T.struct_name);
+}
 
 /* -----------------------------------------------------------------------
  * Parameter list
@@ -376,14 +427,51 @@ param_list(L) ::= param_list(LL) COMMA param(P).
     nodelist_push(&L, P);
 }
 
-param(P) ::= param_type(T) IDENT(N).
+param(P) ::= nonvoid_type(T) IDENT(N) param_tail(TAIL).
+{
+    if (TAIL) {
+        P = TAIL;
+        P->line = N.line;
+        P->col = N.col;
+        P->u.param.name = cimple_strdup(N.v.sval);
+        P->u.param.func_type->ret = T.type;
+        free(T.struct_name);
+    } else {
+        P = ast_new(NODE_PARAM, N.line, N.col);
+        P->u.param.name = cimple_strdup(N.v.sval);
+        P->u.param.type = T.type;
+        P->u.param.struct_name = T.struct_name;
+        P->u.param.func_type = T.func_type;
+        P->type = T.type;
+        P->type_name_hint = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    }
+    free(N.v.sval);
+}
+
+param(P) ::= KW_VOID IDENT(N) LPAREN callback_param_types(F) RPAREN.
 {
     P = ast_new(NODE_PARAM, N.line, N.col);
+    F->ret = TYPE_VOID;
     P->u.param.name = cimple_strdup(N.v.sval);
-    P->u.param.type = T.type;
-    P->u.param.struct_name = T.struct_name;
-    P->type_name_hint = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    P->u.param.type = TYPE_FUNC;
+    P->u.param.struct_name = NULL;
+    P->u.param.func_type = F;
+    P->type = TYPE_FUNC;
     free(N.v.sval);
+}
+
+param_tail(TAIL) ::= .
+{
+    TAIL = NULL;
+}
+
+param_tail(TAIL) ::= LPAREN callback_param_types(F) RPAREN.
+{
+    TAIL = ast_new(NODE_PARAM, 0, 0);
+    TAIL->u.param.type = TYPE_FUNC;
+    TAIL->u.param.struct_name = NULL;
+    TAIL->u.param.func_type = F;
+    TAIL->type = TYPE_FUNC;
 }
 
 /* -----------------------------------------------------------------------
@@ -423,6 +511,7 @@ stmt(S) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
     S->u.var_decl.name        = cimple_strdup(N.v.sval);
     S->u.var_decl.type        = T.type;
     S->u.var_decl.struct_name = T.struct_name;
+    S->u.var_decl.func_type   = T.func_type;
     S->u.var_decl.init        = NULL;
     S->u.var_decl.is_global   = 0;
     S->type_name_hint         = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
@@ -435,10 +524,42 @@ stmt(S) ::= nonvoid_type(T) IDENT(N) ASSIGN expr(E) SEMICOLON.
     S->u.var_decl.name        = cimple_strdup(N.v.sval);
     S->u.var_decl.type        = T.type;
     S->u.var_decl.struct_name = T.struct_name;
+    S->u.var_decl.func_type   = T.func_type;
     S->u.var_decl.init        = E;
     S->u.var_decl.is_global   = 0;
     S->type_name_hint         = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
     free(N.v.sval);
+}
+
+stmt(S) ::= nonvoid_type(T) IDENT(N) LPAREN callback_param_types(F) RPAREN ASSIGN IDENT(I) SEMICOLON.
+{
+    S = ast_new(NODE_VAR_DECL, N.line, N.col);
+    F->ret = T.type;
+    S->u.var_decl.name = cimple_strdup(N.v.sval);
+    S->u.var_decl.type = TYPE_FUNC;
+    S->u.var_decl.struct_name = NULL;
+    S->u.var_decl.func_type = F;
+    S->u.var_decl.init = ast_ident(I.v.sval, I.line, I.col);
+    S->u.var_decl.is_global = 0;
+    S->type = TYPE_FUNC;
+    free(T.struct_name);
+    free(N.v.sval);
+    free(I.v.sval);
+}
+
+stmt(S) ::= KW_VOID IDENT(N) LPAREN callback_param_types(F) RPAREN ASSIGN IDENT(I) SEMICOLON.
+{
+    S = ast_new(NODE_VAR_DECL, N.line, N.col);
+    F->ret = TYPE_VOID;
+    S->u.var_decl.name = cimple_strdup(N.v.sval);
+    S->u.var_decl.type = TYPE_FUNC;
+    S->u.var_decl.struct_name = NULL;
+    S->u.var_decl.func_type = F;
+    S->u.var_decl.init = ast_ident(I.v.sval, I.line, I.col);
+    S->u.var_decl.is_global = 0;
+    S->type = TYPE_FUNC;
+    free(N.v.sval);
+    free(I.v.sval);
 }
 
 /* Assignment */

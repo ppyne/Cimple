@@ -29,6 +29,13 @@ Value val_string_own(char *s) {
     return r;
 }
 
+Value val_func(const char *name) {
+    Value r;
+    r.type = TYPE_FUNC;
+    r.u.s = cimple_strdup(name ? name : "");
+    return r;
+}
+
 Value val_array(CimpleType elem_type) {
     Value r;
     r.type  = type_make_array(elem_type);
@@ -71,6 +78,7 @@ Value value_default(CimpleType t) {
     case TYPE_FLOAT:  return val_float(0.0);
     case TYPE_BOOL:   return val_bool(0);
     case TYPE_STRING: return val_string("");
+    case TYPE_FUNC:   return val_func("");
     case TYPE_BYTE:   return val_byte(0);
     case TYPE_INT_ARR:   return val_array(TYPE_INT);
     case TYPE_FLOAT_ARR: return val_array(TYPE_FLOAT);
@@ -353,6 +361,8 @@ void array_set_owned(ArrayVal *a, int idx, Value *v, int line, int col) {
 Value value_copy(Value v) {
     if (v.type == TYPE_STRING)
         return val_string(v.u.s);
+    if (v.type == TYPE_FUNC)
+        return val_func(v.u.s);
     if (type_is_array(v.type)) {
         ArrayVal *src = v.u.arr;
         Value dst = val_array(src->elem_type);
@@ -415,7 +425,7 @@ Value value_copy(Value v) {
  * ----------------------------------------------------------------------- */
 void value_free(Value *v) {
     if (!v) return;
-    if (v->type == TYPE_STRING) {
+    if (v->type == TYPE_STRING || v->type == TYPE_FUNC) {
         free(v->u.s);
         v->u.s = NULL;
     } else if (type_is_array(v->type)) {
@@ -474,6 +484,8 @@ char *value_to_display(Value v) {
     case TYPE_BOOL:
         return cimple_strdup(v.u.b ? "true" : "false");
     case TYPE_STRING:
+        return cimple_strdup(v.u.s ? v.u.s : "");
+    case TYPE_FUNC:
         return cimple_strdup(v.u.s ? v.u.s : "");
     case TYPE_BYTE:
         snprintf(buf, sizeof(buf), "%u", (unsigned)v.u.i);

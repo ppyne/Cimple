@@ -353,6 +353,9 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         return value_copy(sym->val);
     }
 
+    case NODE_FUNC_REF:
+        return val_func(n->u.func_ref.name);
+
     case NODE_SELF: {
         Symbol *sym = scope_lookup(scope, "self");
         if (!sym) error_runtime(n->line, n->col, "'self' is not available here");
@@ -567,12 +570,26 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         Value       arg_vals[32];
         int         borrowed[32] = {0};
         AstNode    *user_func = find_func_decl(ip, fname);
+        Symbol     *call_sym = scope_lookup(scope, fname);
+        const char *dispatch_name = fname;
         int nargs = args->count;
+        const FuncType *callback_sig = NULL;
+        if (call_sym && call_sym->type == TYPE_FUNC) {
+            if (!call_sym->val.u.s || !call_sym->val.u.s[0])
+                error_runtime(n->line, n->col, "Function variable '%s' is not initialized", fname);
+            dispatch_name = call_sym->val.u.s;
+            user_func = find_func_decl(ip, dispatch_name);
+            callback_sig = call_sym->func_type;
+        }
         if (nargs > 32) nargs = 32;
         for (int i = 0; i < nargs; i++) {
             int borrow_array_arg =
                 args->items[i]->kind == NODE_IDENT &&
-                ((i == 0 && is_mutating_array_builtin(fname)) ||
+                ((i == 0 && is_mutating_array_builtin(dispatch_name)) ||
+                 (callback_sig &&
+                  i < callback_sig->param_count &&
+                  (type_is_array(callback_sig->params[i]) ||
+                   callback_sig->params[i] == TYPE_STRUCT)) ||
                  (user_func &&
                   i < user_func->u.func_decl.params.count &&
                   (type_is_array(user_func->u.func_decl.params.items[i]->u.param.type) ||
@@ -590,7 +607,7 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
                 arg_vals[i] = eval_expr(ip, scope, args->items[i]);
             }
         }
-        Value result = call_func(ip, fname, arg_vals, nargs, n->line, n->col);
+        Value result = call_func(ip, dispatch_name, arg_vals, nargs, n->line, n->col);
         for (int i = 0; i < nargs; i++) {
             if (!borrowed[i]) value_free(&arg_vals[i]);
         }
@@ -629,6 +646,7 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
 
         Symbol *sym = scope_define(scope, name, t,
                                    n->u.var_decl.struct_name,
+                                   n->u.var_decl.func_type,
                                    n->line, n->col);
         if (!sym) {
             /* Re-definition at runtime (shouldn't happen if semantic check passed) */
@@ -719,7 +737,7 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
             if (init->kind == NODE_FOR_INIT) {
                 Value init_v = eval_expr(ip, for_scope, init->u.for_init.init_expr);
                 Symbol *sym  = scope_define(for_scope, init->u.for_init.name,
-                                            TYPE_INT, NULL,
+                                            TYPE_INT, NULL, NULL,
                                             init->line, init->col);
                 if (sym) { value_free(&sym->val); sym->val = init_v; }
                 else value_free(&init_v);
@@ -865,6 +883,7 @@ static Value call_user_func(Interp *ip, AstNode *f, Value *args, int nargs,
         AstNode *p   = params->items[i];
         Symbol  *sym = scope_define(fn_scope, p->u.param.name,
                                     p->u.param.type, p->u.param.struct_name,
+                                    p->u.param.func_type,
                                     p->line, p->col);
         if (sym) {
             if ((type_is_array(p->u.param.type) && type_is_array(args[i].type)) ||
@@ -924,7 +943,7 @@ static Value call_method(Interp *ip, Value *base, const char *method_name,
         error_runtime(line, col, "Unknown method '%s'", method_name);
 
     Scope *fn_scope = scope_new(ip->global, 1);
-    Symbol *self_sym = scope_define(fn_scope, "self", TYPE_STRUCT, base->u.st->struct_name, line, col);
+    Symbol *self_sym = scope_define(fn_scope, "self", TYPE_STRUCT, base->u.st->struct_name, NULL, line, col);
     value_free(&self_sym->val);
     self_sym->val = *base;
 
@@ -932,6 +951,7 @@ static Value call_method(Interp *ip, Value *base, const char *method_name,
         AstNode *p = method->u.func_decl.params.items[i];
         Symbol *sym = scope_define(fn_scope, p->u.param.name,
                                    p->u.param.type, p->u.param.struct_name,
+                                   p->u.param.func_type,
                                    p->line, p->col);
         if (type_is_array(p->u.param.type) || p->u.param.type == TYPE_STRUCT)
             sym->val = args[i];
