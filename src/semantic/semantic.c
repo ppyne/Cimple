@@ -192,6 +192,12 @@ static const BuiltinSig BUILTINS[] = {
                                    TYPE_INT, TYPE_INT, TYPE_INT }, 6, 0, 0 },
     { "formatDate",   TYPE_STRING, { TYPE_INT, TYPE_STRING }, 2, 0, 0 },
 
+    /* Utility */
+    { "assert",    TYPE_VOID,  { TYPE_BOOL, TYPE_STRING }, 1, 1, 0 }, /* variadic: 1 or 2 args */
+    { "randInt",   TYPE_INT,   { TYPE_INT,  TYPE_INT },    2, 0, 0 },
+    { "randFloat", TYPE_FLOAT, { TYPE_UNKNOWN },           0, 0, 0 },
+    { "sleep",     TYPE_VOID,  { TYPE_INT },               1, 0, 0 },
+
     { NULL, TYPE_UNKNOWN, {TYPE_UNKNOWN}, 0, 0, 0 }
 };
 
@@ -708,6 +714,20 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         return TYPE_UNKNOWN;
     }
 
+    case NODE_TERNARY: {
+        CimpleType ct = check_expr(ctx, n->u.ternary.cond);
+        if (ct != TYPE_BOOL && ct != TYPE_UNKNOWN)
+            error_type_mismatch(n->u.ternary.cond->line, n->u.ternary.cond->col,
+                                "ternary condition", TYPE_BOOL, ct);
+        CimpleType tt = check_expr(ctx, n->u.ternary.then_expr);
+        CimpleType ft = check_expr(ctx, n->u.ternary.else_expr);
+        if (tt != TYPE_UNKNOWN && ft != TYPE_UNKNOWN && !types_equal(tt, ft))
+            error_semantic(n->line, n->col,
+                           "Both branches of '?:' must have the same type");
+        n->type = (tt != TYPE_UNKNOWN) ? tt : ft;
+        return n->type;
+    }
+
     case NODE_UNOP: {
         CimpleType t = check_expr(ctx, n->u.unop.operand);
         OpKind op = n->u.unop.op;
@@ -818,10 +838,17 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
             }
 
             /* Regular builtin — check arg count */
-            if (nargs != sig->param_count) {
+            int arg_count_ok = sig->variadic
+                ? (nargs >= sig->param_count)
+                : (nargs == sig->param_count);
+            if (!arg_count_ok) {
                 char hint[128];
-                snprintf(hint, sizeof(hint), "Expected %d, got %d.",
-                         sig->param_count, nargs);
+                if (sig->variadic)
+                    snprintf(hint, sizeof(hint), "Expected at least %d, got %d.",
+                             sig->param_count, nargs);
+                else
+                    snprintf(hint, sizeof(hint), "Expected %d, got %d.",
+                             sig->param_count, nargs);
                 error_semantic_hint(n->line, n->col, hint,
                                     "Wrong number of arguments for '%s'", fname);
             }
@@ -1183,6 +1210,33 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                                     "Use toInt(), toFloat(), toString() or toBool() to convert.",
                                     "Type mismatch in assignment");
             }
+        }
+        break;
+    }
+
+    case NODE_COMPOUND_ASSIGN: {
+        const char *cname = n->u.compound_assign.name;
+        Symbol *sym = scope_lookup(ctx->current, cname);
+        if (!sym) {
+            char hint[160];
+            snprintf(hint, sizeof(hint), "'%s' must be declared before use.", cname);
+            error_semantic_hint(n->line, n->col, hint,
+                                "Undefined variable: '%s'", cname);
+            break;
+        }
+        if (sym->type != TYPE_INT && sym->type != TYPE_FLOAT) {
+            error_operator_type(n->line, n->col,
+                                n->u.compound_assign.op == OP_ADD ? "+=" :
+                                n->u.compound_assign.op == OP_SUB ? "-=" :
+                                n->u.compound_assign.op == OP_MUL ? "*=" :
+                                n->u.compound_assign.op == OP_DIV ? "/=" : "%=",
+                                "an int or float variable", sym->type);
+            break;
+        }
+        CimpleType vt = check_expr(ctx, n->u.compound_assign.value);
+        if (vt != TYPE_UNKNOWN && vt != sym->type) {
+            error_type_mismatch(n->line, n->col,
+                                "compound assignment", sym->type, vt);
         }
         break;
     }

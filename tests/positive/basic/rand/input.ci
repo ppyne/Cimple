@@ -1,0 +1,17 @@
+// randInt(min, max) returns an integer in [min, max].
+// randFloat() returns a float in [0.0, 1.0).
+void main() {
+    int r = randInt(1, 10);
+    assert(r >= 1, "randInt lower bound");
+    assert(r <= 10, "randInt upper bound");
+
+    float f = randFloat();
+    assert(f >= 0.0, "randFloat lower bound");
+    assert(f < 1.0, "randFloat upper bound");
+
+    // Degenerate: min == max
+    int fixed = randInt(7, 7);
+    assert(fixed == 7, "randInt min==max");
+
+    print("rand ok\n");
+}

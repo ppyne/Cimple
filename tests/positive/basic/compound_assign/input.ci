@@ -1,0 +1,29 @@
+// Compound assignment operators: += -= *= /= %=
+void main() {
+    int x = 10;
+    x += 5;
+    print(toString(x) + "\n");   // 15
+
+    x -= 3;
+    print(toString(x) + "\n");   // 12
+
+    x *= 2;
+    print(toString(x) + "\n");   // 24
+
+    x /= 4;
+    print(toString(x) + "\n");   // 6
+
+    x %= 4;
+    print(toString(x) + "\n");   // 2
+
+    float f = 1.0;
+    f += 0.5;
+    print(toString(f) + "\n");   // 1.5
+
+    // Compound assign in for loop
+    int sum = 0;
+    for (int i = 1; i <= 4; i++) {
+        sum += i;
+    }
+    print(toString(sum) + "\n"); // 10
+}

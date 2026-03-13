@@ -116,7 +116,8 @@ static int token_can_end_expression(TokenType t) {
 /* -----------------------------------------------------------------------
  * Operator precedence (low to high)
  * ----------------------------------------------------------------------- */
-%right     ASSIGN.
+%right     ASSIGN PLUSEQ MINUSEQ STAREQ SLASHEQ PERCENTEQ.
+%right     QUESTION.
 %right     ELSE.
 %left      OR.
 %left      AND.
@@ -449,6 +450,52 @@ stmt(S) ::= IDENT(N) ASSIGN expr(E) SEMICOLON.
     free(N.v.sval);
 }
 
+/* Compound assignment */
+stmt(S) ::= IDENT(N) PLUSEQ expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    S->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    S->u.compound_assign.op    = OP_ADD;
+    S->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
+stmt(S) ::= IDENT(N) MINUSEQ expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    S->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    S->u.compound_assign.op    = OP_SUB;
+    S->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
+stmt(S) ::= IDENT(N) STAREQ expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    S->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    S->u.compound_assign.op    = OP_MUL;
+    S->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
+stmt(S) ::= IDENT(N) SLASHEQ expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    S->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    S->u.compound_assign.op    = OP_DIV;
+    S->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
+stmt(S) ::= IDENT(N) PERCENTEQ expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    S->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    S->u.compound_assign.op    = OP_MOD;
+    S->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
 /* Index assignment */
 stmt(S) ::= IDENT(N) LBRACKET expr(I) RBRACKET ASSIGN expr(E) SEMICOLON.
 {
@@ -599,6 +646,51 @@ simple_stmt(S) ::= IDENT(N) ASSIGN expr(E) SEMICOLON.
     S = ast_new(NODE_ASSIGN, N.line, N.col);
     S->u.assign.name  = cimple_strdup(N.v.sval);
     S->u.assign.value = E;
+    free(N.v.sval);
+}
+
+simple_stmt(S) ::= IDENT(N) PLUSEQ expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    S->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    S->u.compound_assign.op    = OP_ADD;
+    S->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
+simple_stmt(S) ::= IDENT(N) MINUSEQ expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    S->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    S->u.compound_assign.op    = OP_SUB;
+    S->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
+simple_stmt(S) ::= IDENT(N) STAREQ expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    S->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    S->u.compound_assign.op    = OP_MUL;
+    S->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
+simple_stmt(S) ::= IDENT(N) SLASHEQ expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    S->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    S->u.compound_assign.op    = OP_DIV;
+    S->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
+simple_stmt(S) ::= IDENT(N) PERCENTEQ expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    S->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    S->u.compound_assign.op    = OP_MOD;
+    S->u.compound_assign.value = E;
     free(N.v.sval);
 }
 
@@ -766,6 +858,51 @@ for_update(U) ::= IDENT(N) MINUSMINUS.
     free(N.v.sval);
 }
 
+for_update(U) ::= IDENT(N) PLUSEQ expr(E).
+{
+    U = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    U->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    U->u.compound_assign.op    = OP_ADD;
+    U->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
+for_update(U) ::= IDENT(N) MINUSEQ expr(E).
+{
+    U = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    U->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    U->u.compound_assign.op    = OP_SUB;
+    U->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
+for_update(U) ::= IDENT(N) STAREQ expr(E).
+{
+    U = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    U->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    U->u.compound_assign.op    = OP_MUL;
+    U->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
+for_update(U) ::= IDENT(N) SLASHEQ expr(E).
+{
+    U = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    U->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    U->u.compound_assign.op    = OP_DIV;
+    U->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
+for_update(U) ::= IDENT(N) PERCENTEQ expr(E).
+{
+    U = ast_new(NODE_COMPOUND_ASSIGN, N.line, N.col);
+    U->u.compound_assign.name  = cimple_strdup(N.v.sval);
+    U->u.compound_assign.op    = OP_MOD;
+    U->u.compound_assign.value = E;
+    free(N.v.sval);
+}
+
 for_update(U) ::= .
 {
     U = NULL;
@@ -904,6 +1041,15 @@ expr(E) ::= BNOT(T) expr(X).
 expr(E) ::= call_expr(C). { E = C; }
 expr(E) ::= member_expr(M). { E = M; }
 expr(E) ::= method_call_expr(C). { E = C; }
+
+/* Ternary operator */
+expr(E) ::= expr(C) QUESTION expr(T) COLON expr(F). [QUESTION]
+{
+    E = ast_new(NODE_TERNARY, C->line, C->col);
+    E->u.ternary.cond      = C;
+    E->u.ternary.then_expr = T;
+    E->u.ternary.else_expr = F;
+}
 
 /* Array/string indexing */
 expr(E) ::= expr(B) LBRACKET expr(I) RBRACKET.

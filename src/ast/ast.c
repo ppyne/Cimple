@@ -184,6 +184,15 @@ void ast_free(AstNode *n) {
     case NODE_CONST:
         free(n->u.constant.name);
         break;
+    case NODE_COMPOUND_ASSIGN:
+        free(n->u.compound_assign.name);
+        ast_free(n->u.compound_assign.value);
+        break;
+    case NODE_TERNARY:
+        ast_free(n->u.ternary.cond);
+        ast_free(n->u.ternary.then_expr);
+        ast_free(n->u.ternary.else_expr);
+        break;
     default:
         break;
     }

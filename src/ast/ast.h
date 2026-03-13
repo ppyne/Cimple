@@ -104,6 +104,8 @@ typedef enum {
     NODE_INCR,           /* i++                                         */
     NODE_DECR,           /* i--                                         */
     NODE_CONST,          /* predefined constant (INT_MAX etc.)          */
+    NODE_COMPOUND_ASSIGN,/* name op= expr  (+=, -=, *=, /=, %=)        */
+    NODE_TERNARY,        /* cond ? then : else                          */
 } NodeKind;
 
 /* -----------------------------------------------------------------------
@@ -309,6 +311,20 @@ struct AstNode {
 
         /* NODE_CONST */
         struct { char *name; } constant;
+
+        /* NODE_COMPOUND_ASSIGN */
+        struct {
+            char   *name;
+            OpKind  op;     /* OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD */
+            AstNode *value;
+        } compound_assign;
+
+        /* NODE_TERNARY */
+        struct {
+            AstNode *cond;
+            AstNode *then_expr;
+            AstNode *else_expr;
+        } ternary;
     } u;
 };
 

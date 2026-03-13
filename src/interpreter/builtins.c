@@ -156,7 +156,12 @@ typedef enum {
     BI_EPOCH_TO_MINUTE,
     BI_EPOCH_TO_SECOND,
     BI_MAKE_EPOCH,
-    BI_FORMAT_DATE
+    BI_FORMAT_DATE,
+    /* Utility */
+    BI_ASSERT,
+    BI_RAND_INT,
+    BI_RAND_FLOAT,
+    BI_SLEEP
 } BuiltinId;
 
 typedef struct {
@@ -167,6 +172,7 @@ typedef struct {
 static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"abs", BI_ABS},
     {"absInt", BI_ABS_INT},
+    {"assert", BI_ASSERT},
     {"acos", BI_ACOS},
     {"appendFile", BI_APPEND_FILE},
     {"approxEqual", BI_APPROX_EQUAL},
@@ -261,10 +267,13 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"remove", BI_REMOVE},
     {"replace", BI_REPLACE},
     {"repeat", BI_REPEAT},
+    {"randFloat", BI_RAND_FLOAT},
+    {"randInt", BI_RAND_INT},
     {"round", BI_ROUND},
     {"safeDivInt", BI_SAFE_DIV_INT},
     {"safeModInt", BI_SAFE_MOD_INT},
     {"sin", BI_SIN},
+    {"sleep", BI_SLEEP},
     {"split", BI_SPLIT},
     {"sqrt", BI_SQRT},
     {"startsWith", BI_STARTS_WITH},
@@ -1910,6 +1919,46 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         REQUIRE(2);
         char *s = format_date(ARG_INT(0), ARG_STR(1));
         return val_string_own(s);
+    }
+
+    /* ---- Utility ---- */
+    if (id == BI_ASSERT) {
+        REQUIRE(1);
+        if (!ARG_BOOL(0)) {
+            if (nargs >= 2) {
+                fprintf(stderr, "[ASSERTION FAILED] %s (line %d)\n", ARG_STR(1), line);
+            } else {
+                fprintf(stderr, "[ASSERTION FAILED] at line %d\n", line);
+            }
+            exit(1);
+        }
+        return val_void();
+    }
+
+    if (id == BI_RAND_INT) {
+        REQUIRE(2);
+        int64_t lo = ARG_INT(0);
+        int64_t hi = ARG_INT(1);
+        if (lo > hi) error_runtime(line, col, "randInt: min > max");
+        int64_t range = hi - lo + 1;
+        return val_int(lo + (int64_t)((unsigned)rand() % (unsigned)range));
+    }
+
+    if (id == BI_RAND_FLOAT) {
+        return val_float((double)rand() / ((double)RAND_MAX + 1.0));
+    }
+
+    if (id == BI_SLEEP) {
+        REQUIRE(1);
+        int64_t ms = ARG_INT(0);
+#ifdef __EMSCRIPTEN__
+        error_runtime(line, col, "sleep() is not available on WebAssembly");
+#elif defined(_WIN32)
+        Sleep((DWORD)ms);
+#else
+        usleep((useconds_t)(ms * 1000));
+#endif
+        return val_void();
     }
 
     return not_a_builtin();

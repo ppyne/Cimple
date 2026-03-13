@@ -283,6 +283,31 @@ Using `i++` inside an expression (e.g. `x = i++`) is a semantic error.
 `++` and `--` only apply to `int` variables. Applying them to a `byte` variable is a
 semantic error — use `x = intToByte(byteToInt(x) + 1)` instead.
 
+### 4.5 Compound assignment operators
+
+`+=`, `-=`, `*=`, `/=` and `%=` combine an arithmetic operation with an assignment.
+They work on `int` and `float` variables:
+
+```c
+int x = 10;
+x += 5;     // x = 15
+x -= 3;     // x = 12
+x *= 2;     // x = 24
+x /= 4;     // x = 6
+x %= 4;     // x = 2
+
+float f = 1.0;
+f += 0.5;   // f = 1.5
+```
+
+Compound operators can also appear in the update clause of a `for` loop:
+
+```c
+for (int i = 1; i <= 100; i += 3) { ... }
+```
+
+Division or modulo by zero with `/=` or `%=` is a runtime error.
+
 ---
 
 ## 5. Expressions and Operators
@@ -430,6 +455,27 @@ int  wide = mask | 256;            // int  (byte | int → int)
 | `~` | `int` | bitwise NOT (result `int`) |
 | `~` | `byte` | bitwise NOT (result `byte`) |
 
+#### Ternary operator `?:`
+
+The ternary operator provides an inline conditional expression:
+
+```
+condition ? value_if_true : value_if_false
+```
+
+Both branches must produce the same type. The operator short-circuits: only one branch
+is evaluated at runtime.
+
+```c
+int x = 10;
+string s = (x > 5) ? "big" : "small";   // "big"
+int abs = (x >= 0) ? x : -x;            // 10
+
+// Nested ternary
+int n = 0;
+string sign = (n > 0) ? "positive" : (n < 0) ? "negative" : "zero";
+```
+
 ### 5.7 Operator precedence
 
 From highest to lowest:
@@ -448,8 +494,11 @@ From highest to lowest:
 | 10 | `\|` |
 | 11 | `&&` |
 | 12 | `\|\|` |
+| 13 | `?:` (right-associative) |
+| 14 | `=` `+=` `-=` `*=` `/=` `%=` (right-associative, statement only) |
 
-All binary operators are left-associative. Assignment is a statement, not an expression.
+All binary operators are left-associative unless noted. Assignment operators are
+statements, not expressions.
 
 ```c
 print(toString(2 + 3 * 4)              + "\n");  // 14  (* before +)
@@ -1500,6 +1549,68 @@ void main(string[] args) {
     print(toString(bytesToInt(dump)) + "\n");   // 42
 }
 ```
+
+### 8.14 Utility
+
+#### `assert`
+
+```c
+void assert(bool condition)
+void assert(bool condition, string message)
+```
+
+Terminates the program immediately if `condition` is `false`.
+Prints `[ASSERTION FAILED]` to stderr, with the optional custom `message` and line number.
+
+```c
+assert(x > 0);
+assert(count(items) > 0, "items list must not be empty");
+```
+
+Use `assert` to validate invariants and catch programming errors early.
+
+#### `randInt`
+
+```c
+int randInt(int min, int max)
+```
+
+Returns a random integer uniformly distributed in the closed range `[min, max]`.
+Passing `min > max` is a runtime error. Passing `min == max` always returns `min`.
+
+```c
+int dice = randInt(1, 6);
+int coin = randInt(0, 1);   // 0 = heads, 1 = tails
+```
+
+#### `randFloat`
+
+```c
+float randFloat()
+```
+
+Returns a random `float` uniformly distributed in the half-open range `[0.0, 1.0)`.
+
+```c
+float r = randFloat();
+float scaled = 10.0 * randFloat();   // in [0.0, 10.0)
+```
+
+#### `sleep`
+
+```c
+void sleep(int ms)
+```
+
+Pauses execution for `ms` milliseconds. Useful for rate limiting, simple animations,
+or delay loops.
+
+```c
+sleep(500);   // wait 500 ms
+sleep(1000);  // wait 1 second
+```
+
+> `sleep()` is not available on WebAssembly targets (runtime error).
 
 ---
 

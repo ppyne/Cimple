@@ -1125,6 +1125,13 @@ int epochToMinute(int epochMs);
 int epochToSecond(int epochMs);
 int makeEpoch(int year, int month, int day, int hour, int minute, int second);
 string formatDate(int epochMs, string fmt);
+
+// Utilitaires
+void  assert(bool condition);
+void  assert(bool condition, string message);
+int   randInt(int min, int max);
+float randFloat();
+void  sleep(int ms);
 ```
 
 La notation `T` dans les signatures des fonctions tableau indique un paramètre de type générique restreint aux quatre types tableau autorisés (`int`, `float`, `bool`, `string`). Ce polymorphisme est exclusivement réservé aux fonctions intrinsèques du runtime sur les tableaux ; il ne s'étend pas au code utilisateur et ne constitue pas une surcharge au sens de Cimple.
@@ -2930,6 +2937,90 @@ print(formatDate(now(), "[Y-m-d H:i:s] ") + "Démarrage\n");
 
 ---
 
+### 9.x Utilitaires
+
+#### `assert`
+
+```c
+void assert(bool condition)
+void assert(bool condition, string message)
+```
+
+Arrête immédiatement l'exécution si `condition` est `false`. Affiche sur `stderr` :
+
+```
+[ASSERTION FAILED] <message> (line N)   // forme à 2 arguments
+[ASSERTION FAILED] at line N            // forme à 1 argument
+```
+
+puis termine le processus avec le code de sortie `1`.
+
+Règles normatives :
+
+- `condition` doit être de type `bool` ;
+- `message` (optionnel) doit être de type `string` ;
+- l'appel avec 1 ou 2 arguments est valide ; tout autre nombre est une erreur sémantique ;
+- `assert` n'est pas désactivable (pas de mode « release » sans assertions).
+
+```c
+assert(x > 0);
+assert(count(items) > 0, "items ne peut pas être vide");
+```
+
+#### `randInt`
+
+```c
+int randInt(int min, int max)
+```
+
+Retourne un entier pseudo-aléatoire uniformément distribué dans l'intervalle **fermé** `[min, max]`.
+
+Règles normatives :
+
+- `min > max` est une **erreur runtime** ;
+- `min == max` retourne `min` ;
+- le générateur est initialisé une seule fois au démarrage du programme (via `srand(time(NULL))`).
+
+```c
+int d6    = randInt(1, 6);
+int coin  = randInt(0, 1);
+int fixed = randInt(7, 7);   // toujours 7
+```
+
+#### `randFloat`
+
+```c
+float randFloat()
+```
+
+Retourne un `float` pseudo-aléatoire uniformément distribué dans l'intervalle **semi-ouvert** `[0.0, 1.0)`.
+
+```c
+float r = randFloat();          // ex. 0.7341...
+float s = 10.0 * randFloat();   // dans [0.0, 10.0)
+```
+
+#### `sleep`
+
+```c
+void sleep(int ms)
+```
+
+Suspend l'exécution du processus pendant `ms` millisecondes.
+
+Règles normatives :
+
+- `ms` doit être de type `int` ;
+- `sleep` n'est **pas disponible sur les cibles WebAssembly** ; son appel produit une **erreur runtime** sur cette plateforme ;
+- les implémentations POSIX utilisent `usleep(ms * 1000)` ; Windows utilise `Sleep(ms)`.
+
+```c
+sleep(500);    // attend 500 ms
+sleep(1000);   // attend 1 s
+```
+
+---
+
 ## 10. Instructions prises en charge
 
 ### 10.1 Notion de statement
@@ -3307,7 +3398,64 @@ int a = i++;             // interdit : i++ utilisé comme expression
 print(toString(i++));    // interdit : i++ utilisé comme expression
 ```
 
-### 11.8 Indexation de tableau en lecture
+### 11.8 Opérateurs d'affectation composée
+
+Cimple supporte les cinq opérateurs d'affectation composée suivants, applicables aux types `int` et `float` uniquement :
+
+| Opérateur | Équivalent | Types |
+|-----------|-----------|-------|
+| `x += e`  | `x = x + e` | `int`, `float` |
+| `x -= e`  | `x = x - e` | `int`, `float` |
+| `x *= e`  | `x = x * e` | `int`, `float` |
+| `x /= e`  | `x = x / e` | `int`, `float` |
+| `x %= e`  | `x = x % e` | `int` uniquement |
+
+Règles normatives :
+
+- l'opérande gauche doit être un identifiant de variable de type `int` ou `float` ;
+- le type de l'expression droite doit correspondre au type de la variable ;
+- une division ou un modulo par zéro produit une **erreur runtime** ;
+- ces opérateurs sont valides comme instruction autonome, dans le corps d'un `if`/`while`/`for` sans bloc, et dans la clause de mise à jour d'un `for` ;
+- ils ne sont **pas** utilisables comme sous-expressions.
+
+```c
+int x = 10;
+x += 5;    // 15
+x -= 3;    // 12
+x *= 2;    // 24
+x /= 4;    // 6
+x %= 4;    // 2
+
+for (int i = 0; i < 100; i += 10) {
+    print(toString(i) + "\n");
+}
+```
+
+### 11.9 Opérateur ternaire `?:`
+
+L'opérateur ternaire est une expression conditionnelle en ligne :
+
+```
+condition ? expression_si_vrai : expression_si_faux
+```
+
+Règles normatives :
+
+- `condition` doit être de type `bool` ;
+- les deux branches doivent être du **même type** ;
+- l'évaluation est **paresseuse** (court-circuit) : seule la branche sélectionnée est évaluée ;
+- l'opérateur est **associatif à droite**, permettant l'imbrication naturelle ;
+- le type résultant est le type commun des deux branches.
+
+```c
+string s = (x > 0) ? "positif" : "non positif";
+int abs  = (x >= 0) ? x : -x;
+
+// Ternaire imbriqué
+string signe = (n > 0) ? "positif" : (n < 0) ? "négatif" : "zéro";
+```
+
+### 11.10 Indexation de tableau en lecture
 
 L'expression `array[expr]` retourne la valeur à l'indice `expr` dans le tableau `array`.
 
@@ -3342,12 +3490,15 @@ Ordre du plus fort au plus faible :
 10. `|`
 11. `&&`
 12. `||`
+13. `?:` (associatif à droite)
+14. `=`, `+=`, `-=`, `*=`, `/=`, `%=` (associatifs à droite — instructions seulement)
 
 Associativité :
 
-- la plupart des opérateurs binaires sont associatifs à gauche.
+- la plupart des opérateurs binaires sont associatifs à gauche ;
+- `?:` et les opérateurs d'affectation sont associatifs à droite.
 
-L'affectation est une instruction distincte et non une expression générale.
+L'affectation et les affectations composées sont des instructions distinctes et non des expressions générales.
 
 ---
 
@@ -5209,6 +5360,16 @@ Les décisions suivantes sont **normatives** et s'appliquent sans exception :
 37. `byte` est un type scalaire entier non signé 8 bits (0–255) ; les opérateurs `+ - * / %` et `<< >>` sur `byte` produisent un `int` ; les opérateurs `& | ^ ~` sur deux `byte` produisent un `byte` ; les opérations mixtes `byte op int` produisent un `int` ; `intToByte(n)` applique un clamp (n<0→0, n>255→255) sans erreur runtime ; les littéraux entiers dans `[0,255]` sont affectables directement à un `byte` ; l'affectation d'une variable `int` à un `byte` sans `intToByte()` est une erreur sémantique ; `bytesToString` remplace les séquences UTF-8 invalides par U+FFFD sans erreur runtime ; `intToBytes` et `floatToBytes` sont des dumps mémoire bruts (`memcpy`) dans l'ordre natif de la machine hôte, sans interprétation ni transformation ; `bytesToInt` et `bytesToFloat` sont les opérations symétriques ; la taille du tableau est vérifiée (4 octets pour `int`, 8 pour `float`), toute autre taille est une erreur runtime ; NaN et ±Infinity sont valides comme résultat de `bytesToFloat` ; le round-trip est garanti sur la même machine.
 
 38. les structures sont des types composites définis par l'utilisateur, entièrement statiques, de taille fixe connue à la compilation ; le mot-clé est `structure` ; les noms de structure sont des identifiants quelconques ; les champs de type scalaire ou tableau ont une valeur par défaut implicite (`0`, `0.0`, `false`, `""`, `0`, `[]`) si non précisée ; les champs de type structure doivent être explicitement initialisés avec `clone NomDeStructure` ; l'héritage est simple (une seule base), en chaîne autorisé, sans cycle ; la redéfinition de champ dans une sous-structure exige le même type mais autorise une valeur par défaut différente ; l'override de méthode exige une signature identique ; `super.méthode()` appelle la méthode de la base directe ; `super.champ` est interdit ; `clone NomDeStructure` est le seul opérateur de construction — `clone variable` est une erreur sémantique ; les champs récursifs sont interdits ; les structures sont passées par référence ; `NomDeStructure[]` est un type tableau valide.
+
+39. les opérateurs d'affectation composée `+=`, `-=`, `*=`, `/=`, `%=` sont des instructions autonomes (pas des expressions) ; ils s'appliquent aux variables de type `int` ou `float` uniquement ; le type de l'expression droite doit correspondre au type de la variable ; une division ou un modulo par zéro produit une erreur runtime ; ils sont autorisés dans la clause de mise à jour d'un `for`.
+
+40. l'opérateur ternaire `?:` est une expression ; la condition doit être de type `bool` ; les deux branches doivent être du même type ; l'évaluation est paresseuse (court-circuit) ; l'opérateur est associatif à droite ; sa priorité est inférieure à `||` et supérieure aux affectations.
+
+41. `assert(condition)` et `assert(condition, message)` sont des fonctions intrinsèques ; si la condition est `false`, le programme se termine immédiatement avec le code 1 et affiche `[ASSERTION FAILED]` sur stderr ; les assertions ne sont pas désactivables.
+
+42. `randInt(min, max)` retourne un entier pseudo-aléatoire dans `[min, max]` (intervalle fermé) ; `min > max` est une erreur runtime ; `randFloat()` retourne un flottant dans `[0.0, 1.0)` ; le générateur est initialisé par `srand(time(NULL))` au démarrage du programme.
+
+43. `sleep(ms)` suspend l'exécution pendant `ms` millisecondes (POSIX : `usleep`, Windows : `Sleep`) ; non disponible sur WebAssembly (erreur runtime).
 ---
 
 ## 26. Livrables attendus

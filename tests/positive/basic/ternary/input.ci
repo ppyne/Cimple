@@ -1,0 +1,21 @@
+// Ternary operator ?: — inline conditional expression
+void main() {
+    int x = 10;
+    string s = (x > 5) ? "big" : "small";
+    print(s + "\n");                          // big
+
+    int abs_val = (x >= 0) ? x : -x;
+    print(toString(abs_val) + "\n");          // 10
+
+    int neg = -3;
+    int abs_neg = (neg >= 0) ? neg : -neg;
+    print(toString(abs_neg) + "\n");          // 3
+
+    // Nested ternary
+    int n = 0;
+    string sign = (n > 0) ? "positive" : (n < 0) ? "negative" : "zero";
+    print(sign + "\n");                       // zero
+
+    // Ternary as function argument
+    print(toString((x % 2 == 0) ? x / 2 : x * 3 + 1) + "\n"); // 5
+}

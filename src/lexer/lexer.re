@@ -382,6 +382,11 @@ yybegin:
         ">>"   { tok.type = TOK_RSHIFT;      goto op_done; }
         "++"   { tok.type = TOK_PLUSPLUS;    goto op_done; }
         "--"   { tok.type = TOK_MINUSMINUS;  goto op_done; }
+        "+="   { tok.type = TOK_PLUSEQ;      goto op_done; }
+        "-="   { tok.type = TOK_MINUSEQ;     goto op_done; }
+        "*="   { tok.type = TOK_STAREQ;      goto op_done; }
+        "/="   { tok.type = TOK_SLASHEQ;     goto op_done; }
+        "%="   { tok.type = TOK_PERCENTEQ;   goto op_done; }
 
         /* Single-character operators */
         "+"    { tok.type = TOK_PLUS;      goto op_done; }
@@ -389,6 +394,7 @@ yybegin:
         "*"    { tok.type = TOK_STAR;      goto op_done; }
         "/"    { tok.type = TOK_SLASH;     goto op_done; }
         "%"    { tok.type = TOK_PERCENT;   goto op_done; }
+        "?"    { tok.type = TOK_QUESTION;  goto op_done; }
         "<"    { tok.type = TOK_LT;        goto op_done; }
         ">"    { tok.type = TOK_GT;        goto op_done; }
         "!"    { tok.type = TOK_NOT;       goto op_done; }

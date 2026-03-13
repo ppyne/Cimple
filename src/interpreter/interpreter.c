@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 /* Forward declarations */
 static Value eval_expr(Interp *ip, Scope *scope, AstNode *n);
@@ -486,6 +487,13 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         return result;
     }
 
+    case NODE_TERNARY: {
+        Value cond = eval_expr(ip, scope, n->u.ternary.cond);
+        int c = cond.u.b;
+        value_free(&cond);
+        return eval_expr(ip, scope, c ? n->u.ternary.then_expr : n->u.ternary.else_expr);
+    }
+
     case NODE_UNOP: {
         Value v = eval_expr(ip, scope, n->u.unop.operand);
         Value result;
@@ -774,6 +782,46 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
         break;
     }
 
+    case NODE_COMPOUND_ASSIGN: {
+        Symbol *sym = scope_lookup(scope, n->u.compound_assign.name);
+        if (!sym) error_runtime(n->line, n->col,
+                                "undefined variable '%s'",
+                                n->u.compound_assign.name);
+        Value rhs = eval_expr(ip, scope, n->u.compound_assign.value);
+        int is_int = (sym->val.type == TYPE_INT);
+        switch (n->u.compound_assign.op) {
+        case OP_ADD:
+            if (is_int) sym->val.u.i += rhs.u.i;
+            else        sym->val.u.f += rhs.u.f;
+            break;
+        case OP_SUB:
+            if (is_int) sym->val.u.i -= rhs.u.i;
+            else        sym->val.u.f -= rhs.u.f;
+            break;
+        case OP_MUL:
+            if (is_int) sym->val.u.i *= rhs.u.i;
+            else        sym->val.u.f *= rhs.u.f;
+            break;
+        case OP_DIV:
+            if (is_int) {
+                if (rhs.u.i == 0)
+                    error_runtime(n->line, n->col, "Division by zero");
+                sym->val.u.i /= rhs.u.i;
+            } else sym->val.u.f /= rhs.u.f;
+            break;
+        case OP_MOD:
+            if (is_int) {
+                if (rhs.u.i == 0)
+                    error_runtime(n->line, n->col, "Modulo by zero");
+                sym->val.u.i %= rhs.u.i;
+            } else sym->val.u.f = fmod(sym->val.u.f, rhs.u.f);
+            break;
+        default: break;
+        }
+        value_free(&rhs);
+        break;
+    }
+
     case NODE_EXPR_STMT: {
         Value v = eval_expr(ip, scope, n->u.expr_stmt.expr);
         value_free(&v);
@@ -944,6 +992,8 @@ static Value call_func(Interp *ip, const char *name, Value *args, int nargs,
  * interp_run — main entry point
  * ----------------------------------------------------------------------- */
 int interp_run(AstNode *program, int argc, char **argv) {
+    srand((unsigned int)time(NULL));
+
     Interp ip;
     ip.program = program;
     ip.global  = scope_new(NULL, 0);

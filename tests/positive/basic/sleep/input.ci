@@ -1,0 +1,5 @@
+// sleep(ms) — pauses execution for the given number of milliseconds.
+void main() {
+    sleep(1);   // 1 ms — essentially instant, just checking it doesn't crash
+    print("awake\n");
+}

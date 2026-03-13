@@ -1,0 +1,13 @@
+// assert(condition) — fails fast if condition is false
+// assert(condition, message) — with custom message
+void main() {
+    assert(1 == 1);
+    assert(true, "true should be true");
+    assert(2 + 2 == 4, "math works");
+
+    int x = 42;
+    assert(x > 0, "x must be positive");
+    assert(x == 42);
+
+    print("all assertions passed\n");
+}
