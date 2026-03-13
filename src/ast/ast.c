@@ -20,6 +20,8 @@ const char *type_name(CimpleType t) {
     case TYPE_STR_ARR:     return "string[]";
     case TYPE_BYTE_ARR:    return "byte[]";
     case TYPE_EXEC_RESULT: return "ExecResult";
+    case TYPE_STRUCT:      return "<structure>";
+    case TYPE_STRUCT_ARR:  return "<structure[]>";
     default:               return "<unknown>";
     }
 }
@@ -60,6 +62,7 @@ AstNode *ast_new(NodeKind kind, int line, int col) {
     n->line    = line;
     n->col     = col;
     n->type    = TYPE_UNKNOWN;
+    n->type_name_hint = NULL;
     return n;
 }
 
@@ -69,19 +72,32 @@ AstNode *ast_new(NodeKind kind, int line, int col) {
 void ast_free(AstNode *n) {
     if (!n) return;
     switch (n->kind) {
+    case NODE_STRUCT_DECL:
+        free(n->u.struct_decl.name);
+        free(n->u.struct_decl.base_name);
+        nodelist_free(&n->u.struct_decl.members);
+        break;
+    case NODE_STRUCT_FIELD:
+        free(n->u.struct_field.name);
+        free(n->u.struct_field.struct_name);
+        ast_free(n->u.struct_field.init);
+        break;
     case NODE_PROGRAM:
         nodelist_free(&n->u.program.decls);
         break;
     case NODE_FUNC_DECL:
         free(n->u.func_decl.name);
+        free(n->u.func_decl.ret_struct_name);
         nodelist_free(&n->u.func_decl.params);
         ast_free(n->u.func_decl.body);
         break;
     case NODE_PARAM:
         free(n->u.param.name);
+        free(n->u.param.struct_name);
         break;
     case NODE_VAR_DECL:
         free(n->u.var_decl.name);
+        free(n->u.var_decl.struct_name);
         ast_free(n->u.var_decl.init);
         break;
     case NODE_BLOCK:
@@ -95,6 +111,10 @@ void ast_free(AstNode *n) {
         free(n->u.index_assign.name);
         ast_free(n->u.index_assign.index);
         ast_free(n->u.index_assign.value);
+        break;
+    case NODE_MEMBER_ASSIGN:
+        ast_free(n->u.member_assign.target);
+        ast_free(n->u.member_assign.value);
         break;
     case NODE_IF:
         ast_free(n->u.if_stmt.cond);
@@ -145,6 +165,18 @@ void ast_free(AstNode *n) {
         ast_free(n->u.index.base);
         ast_free(n->u.index.index);
         break;
+    case NODE_MEMBER:
+        ast_free(n->u.member.base);
+        free(n->u.member.name);
+        break;
+    case NODE_METHOD_CALL:
+        ast_free(n->u.method_call.base);
+        free(n->u.method_call.name);
+        nodelist_free(&n->u.method_call.args);
+        break;
+    case NODE_CLONE:
+        free(n->u.clone_expr.struct_name);
+        break;
     case NODE_INCR:
     case NODE_DECR:
         free(n->u.incr_decr.name);
@@ -155,6 +187,7 @@ void ast_free(AstNode *n) {
     default:
         break;
     }
+    free(n->type_name_hint);
     free(n);
 }
 
@@ -221,4 +254,37 @@ AstNode *ast_call(const char *name, NodeList args, int line, int col) {
     n->u.call.name = cimple_strdup(name);
     n->u.call.args = args;
     return n;
+}
+
+AstNode *ast_member(AstNode *base, const char *name, int line, int col) {
+    AstNode *n = ast_new(NODE_MEMBER, line, col);
+    n->u.member.base = base;
+    n->u.member.name = cimple_strdup(name);
+    return n;
+}
+
+AstNode *ast_method_call(AstNode *base, const char *name, NodeList args,
+                         int is_super, int line, int col) {
+    AstNode *n = ast_new(NODE_METHOD_CALL, line, col);
+    n->u.method_call.base = base;
+    n->u.method_call.name = cimple_strdup(name);
+    n->u.method_call.args = args;
+    n->u.method_call.is_super = is_super;
+    return n;
+}
+
+AstNode *ast_clone(const char *struct_name, int line, int col) {
+    AstNode *n = ast_new(NODE_CLONE, line, col);
+    n->u.clone_expr.struct_name = cimple_strdup(struct_name);
+    n->type = TYPE_STRUCT;
+    n->type_name_hint = cimple_strdup(struct_name);
+    return n;
+}
+
+AstNode *ast_self(int line, int col) {
+    return ast_new(NODE_SELF, line, col);
+}
+
+AstNode *ast_super(int line, int col) {
+    return ast_new(NODE_SUPER, line, col);
 }

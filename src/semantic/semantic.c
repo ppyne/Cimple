@@ -5,6 +5,37 @@
 #include <string.h>
 #include <stdlib.h>
 
+typedef struct StructFieldSig {
+    char *name;
+    CimpleType type;
+    char *struct_name;
+    AstNode *decl;
+    struct StructFieldSig *next;
+} StructFieldSig;
+
+typedef struct StructMethodSig {
+    char *name;
+    CimpleType ret_type;
+    char *ret_struct_name;
+    FuncParam *params;
+    int param_count;
+    AstNode *decl;
+    struct StructMethodSig *next;
+} StructMethodSig;
+
+typedef struct StructInfo {
+    char *name;
+    char *base_name;
+    AstNode *decl;
+    StructFieldSig *fields;
+    StructMethodSig *methods;
+    struct StructInfo *next;
+} StructInfo;
+
+struct StructTable {
+    StructInfo *head;
+};
+
 /* -----------------------------------------------------------------------
  * Built-in function signatures
  * ----------------------------------------------------------------------- */
@@ -181,6 +212,19 @@ static void error_type_mismatch(int line, int col, const char *context,
                                 CimpleType expected, CimpleType got);
 static void error_operator_type(int line, int col, const char *op,
                                 const char *expected_types, CimpleType got);
+static int types_equal_ex(CimpleType a, const char *a_name,
+                          CimpleType b, const char *b_name);
+static StructTable *struct_table_new(void);
+static void struct_table_free(StructTable *st);
+static StructInfo *struct_table_lookup(StructTable *st, const char *name);
+static StructInfo *struct_table_define(StructTable *st, const char *name,
+                                       const char *base_name, AstNode *decl);
+static StructFieldSig *struct_lookup_field(StructTable *st, StructInfo *si, const char *name);
+static StructMethodSig *struct_lookup_method(StructTable *st, StructInfo *si, const char *name);
+static void collect_structs(SemCtx *ctx, AstNode *program);
+static void collect_functions(SemCtx *ctx, AstNode *program);
+static void validate_structs(SemCtx *ctx);
+static void check_struct_methods(SemCtx *ctx);
 
 /* Resolve intrinsic conversion overloads statically. */
 CimpleType builtin_resolve_intrinsic(const char *name, CimpleType arg_type,
@@ -219,8 +263,103 @@ static int types_equal(CimpleType a, CimpleType b) {
     return a == b;
 }
 
+static int types_equal_ex(CimpleType a, const char *a_name,
+                          CimpleType b, const char *b_name) {
+    if (a != b) return 0;
+    if (a == TYPE_STRUCT || a == TYPE_STRUCT_ARR) {
+        if (!a_name || !b_name) return 0;
+        return strcmp(a_name, b_name) == 0;
+    }
+    return 1;
+}
+
 static int is_int_like(CimpleType t) {
     return t == TYPE_INT || t == TYPE_BYTE;
+}
+
+static StructTable *struct_table_new(void) {
+    StructTable *st = ALLOC(StructTable);
+    st->head = NULL;
+    return st;
+}
+
+static void struct_table_free(StructTable *st) {
+    if (!st) return;
+    StructInfo *si = st->head;
+    while (si) {
+        StructInfo *next = si->next;
+        StructFieldSig *field = si->fields;
+        while (field) {
+            StructFieldSig *fnext = field->next;
+            free(field->name);
+            free(field->struct_name);
+            free(field);
+            field = fnext;
+        }
+        StructMethodSig *method = si->methods;
+        while (method) {
+            StructMethodSig *mnext = method->next;
+            free(method->name);
+            free(method->ret_struct_name);
+            for (int i = 0; i < method->param_count; i++) {
+                free(method->params[i].name);
+                free(method->params[i].struct_name);
+            }
+            free(method->params);
+            free(method);
+            method = mnext;
+        }
+        free(si->name);
+        free(si->base_name);
+        free(si);
+        si = next;
+    }
+    free(st);
+}
+
+static StructInfo *struct_table_lookup(StructTable *st, const char *name) {
+    for (StructInfo *it = st->head; it; it = it->next)
+        if (strcmp(it->name, name) == 0) return it;
+    return NULL;
+}
+
+static StructInfo *struct_table_define(StructTable *st, const char *name,
+                                       const char *base_name, AstNode *decl) {
+    if (struct_table_lookup(st, name)) return NULL;
+    StructInfo *si = ALLOC(StructInfo);
+    si->name = cimple_strdup(name);
+    si->base_name = base_name ? cimple_strdup(base_name) : NULL;
+    si->decl = decl;
+    si->fields = NULL;
+    si->methods = NULL;
+    si->next = NULL;
+    if (!st->head) st->head = si;
+    else {
+        StructInfo *tail = st->head;
+        while (tail->next) tail = tail->next;
+        tail->next = si;
+    }
+    return si;
+}
+
+static StructFieldSig *struct_lookup_field(StructTable *st, StructInfo *si, const char *name) {
+    for (StructFieldSig *f = si ? si->fields : NULL; f; f = f->next)
+        if (strcmp(f->name, name) == 0) return f;
+    if (si && si->base_name) {
+        StructInfo *base = struct_table_lookup(st, si->base_name);
+        if (base) return struct_lookup_field(st, base, name);
+    }
+    return NULL;
+}
+
+static StructMethodSig *struct_lookup_method(StructTable *st, StructInfo *si, const char *name) {
+    for (StructMethodSig *m = si ? si->methods : NULL; m; m = m->next)
+        if (strcmp(m->name, name) == 0) return m;
+    if (si && si->base_name) {
+        StructInfo *base = struct_table_lookup(st, si->base_name);
+        if (base) return struct_lookup_method(st, base, name);
+    }
+    return NULL;
 }
 
 static int extract_int_literal_expr(AstNode *n, int64_t *out) {
@@ -360,7 +499,53 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
             return TYPE_UNKNOWN;
         }
         n->type = sym->type;
+        free(n->type_name_hint);
+        n->type_name_hint = sym->struct_name ? cimple_strdup(sym->struct_name) : NULL;
         return sym->type;
+    }
+
+    case NODE_SELF:
+        if (!ctx->in_method || !ctx->current_struct_name) {
+            error_semantic(n->line, n->col, "'self' used outside of a structure method");
+            n->type = TYPE_UNKNOWN;
+            return TYPE_UNKNOWN;
+        }
+        n->type = TYPE_STRUCT;
+        free(n->type_name_hint);
+        n->type_name_hint = cimple_strdup(ctx->current_struct_name);
+        return TYPE_STRUCT;
+
+    case NODE_SUPER:
+        if (!ctx->in_method || !ctx->current_base_name) {
+            error_semantic(n->line, n->col, "'super' used outside of a derived structure method");
+            n->type = TYPE_UNKNOWN;
+            return TYPE_UNKNOWN;
+        }
+        n->type = TYPE_STRUCT;
+        free(n->type_name_hint);
+        n->type_name_hint = cimple_strdup(ctx->current_base_name);
+        return TYPE_STRUCT;
+
+    case NODE_CLONE: {
+        StructInfo *si = struct_table_lookup(ctx->structs, n->u.clone_expr.struct_name);
+        if (!si) {
+            Symbol *sym = scope_lookup(ctx->current, n->u.clone_expr.struct_name);
+            if (sym) {
+                error_semantic_hint(n->line, n->col,
+                                    "Use 'clone StructureName' to create an instance.",
+                                    "Cannot clone a variable: '%s'",
+                                    n->u.clone_expr.struct_name);
+            } else {
+                error_semantic(n->line, n->col,
+                               "Unknown type: '%s'", n->u.clone_expr.struct_name);
+            }
+            n->type = TYPE_UNKNOWN;
+            return TYPE_UNKNOWN;
+        }
+        n->type = TYPE_STRUCT;
+        free(n->type_name_hint);
+        n->type_name_hint = cimple_strdup(si->name);
+        return TYPE_STRUCT;
     }
 
     case NODE_ARRAY_LIT: {
@@ -585,6 +770,9 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                 if (ret == TYPE_UNKNOWN && nargs > 0 && type_is_array(arg_types[0]))
                     ret = type_elem(arg_types[0]);
                 n->type = ret;
+                free(n->type_name_hint);
+                n->type_name_hint = (ret == TYPE_STRUCT && nargs > 0 && args->items[0]->type_name_hint)
+                    ? cimple_strdup(args->items[0]->type_name_hint) : NULL;
                 return ret;
             }
 
@@ -613,7 +801,8 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                     }
                     if (expected != TYPE_UNKNOWN &&
                         arg_types[i] != TYPE_UNKNOWN &&
-                        !types_equal(arg_types[i], expected)) {
+                        !types_equal_ex(arg_types[i], args->items[i]->type_name_hint,
+                                        expected, NULL)) {
                         error_type_mismatch(args->items[i]->line, args->items[i]->col,
                                             "function call", expected, arg_types[i]);
                     }
@@ -644,13 +833,100 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         }
         else {
             for (int i = 0; i < nargs; i++) {
-                if (!types_equal(arg_types[i], fsig->params[i].type))
+                if (!types_equal_ex(arg_types[i], args->items[i]->type_name_hint,
+                                    fsig->params[i].type, fsig->params[i].struct_name))
                     error_type_mismatch(args->items[i]->line, args->items[i]->col,
                                         "function call", fsig->params[i].type, arg_types[i]);
             }
         }
         n->type = fsig->ret_type;
+        free(n->type_name_hint);
+        n->type_name_hint = fsig->ret_struct_name ? cimple_strdup(fsig->ret_struct_name) : NULL;
         return fsig->ret_type;
+    }
+
+    case NODE_MEMBER: {
+        CimpleType base_t = check_expr(ctx, n->u.member.base);
+        if (n->u.member.base->kind == NODE_SUPER) {
+            error_semantic_hint(n->line, n->col,
+                                "Use 'self.<field>' to access fields.",
+                                "Cannot access field via 'super'");
+            n->type = TYPE_UNKNOWN;
+            return TYPE_UNKNOWN;
+        }
+        if (base_t != TYPE_STRUCT || !n->u.member.base->type_name_hint) {
+            error_semantic(n->line, n->col,
+                           "Member access requires a structure instance");
+            n->type = TYPE_UNKNOWN;
+            return TYPE_UNKNOWN;
+        }
+        StructInfo *si = struct_table_lookup(ctx->structs, n->u.member.base->type_name_hint);
+        StructFieldSig *field = struct_lookup_field(ctx->structs, si, n->u.member.name);
+        if (!field) {
+            error_semantic(n->line, n->col,
+                           "Unknown field '%s' on structure '%s'",
+                           n->u.member.name, si ? si->name : n->u.member.base->type_name_hint);
+            n->type = TYPE_UNKNOWN;
+            return TYPE_UNKNOWN;
+        }
+        n->type = field->type;
+        free(n->type_name_hint);
+        n->type_name_hint = field->struct_name ? cimple_strdup(field->struct_name) : NULL;
+        return n->type;
+    }
+
+    case NODE_METHOD_CALL: {
+        CimpleType base_t = check_expr(ctx, n->u.method_call.base);
+        if (base_t != TYPE_STRUCT || !n->u.method_call.base->type_name_hint) {
+            error_semantic(n->line, n->col,
+                           "Member access requires a structure instance");
+            n->type = TYPE_UNKNOWN;
+            return TYPE_UNKNOWN;
+        }
+        StructInfo *si = struct_table_lookup(ctx->structs, n->u.method_call.base->type_name_hint);
+        if (n->u.method_call.is_super && n->u.method_call.base->kind != NODE_SUPER) {
+            n->u.method_call.is_super = 0;
+        }
+        if (n->u.method_call.is_super && !ctx->current_base_name) {
+            error_semantic(n->line, n->col, "'super' used outside of a derived structure method");
+            n->type = TYPE_UNKNOWN;
+            return TYPE_UNKNOWN;
+        }
+        if (n->u.method_call.is_super && si && si->base_name) {
+            si = struct_table_lookup(ctx->structs, si->base_name);
+        }
+        StructMethodSig *method = struct_lookup_method(ctx->structs, si, n->u.method_call.name);
+        if (!method) {
+            error_semantic(n->line, n->col,
+                           "Unknown method '%s' on structure '%s'",
+                           n->u.method_call.name,
+                           si ? si->name : n->u.method_call.base->type_name_hint);
+            n->type = TYPE_UNKNOWN;
+            return TYPE_UNKNOWN;
+        }
+        for (int i = 0; i < n->u.method_call.args.count; i++)
+            (void)check_expr(ctx, n->u.method_call.args.items[i]);
+        if (n->u.method_call.args.count != method->param_count) {
+            char hint[128];
+            snprintf(hint, sizeof(hint), "Expected %d, got %d.",
+                     method->param_count, n->u.method_call.args.count);
+            error_semantic_hint(n->line, n->col, hint,
+                                "Wrong number of arguments for '%s'",
+                                n->u.method_call.name);
+        } else {
+            for (int i = 0; i < method->param_count; i++) {
+                AstNode *arg = n->u.method_call.args.items[i];
+                if (!types_equal_ex(arg->type, arg->type_name_hint,
+                                    method->params[i].type, method->params[i].struct_name)) {
+                    error_type_mismatch(arg->line, arg->col, "function call",
+                                        method->params[i].type, arg->type);
+                }
+            }
+        }
+        n->type = method->ret_type;
+        free(n->type_name_hint);
+        n->type_name_hint = method->ret_struct_name ? cimple_strdup(method->ret_struct_name) : NULL;
+        return n->type;
     }
 
     case NODE_INDEX: {
@@ -666,6 +942,9 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         if (type_is_array(base_t)) {
             CimpleType elem = type_elem(base_t);
             n->type = elem;
+            free(n->type_name_hint);
+            n->type_name_hint = (elem == TYPE_STRUCT && n->u.index.base->type_name_hint)
+                ? cimple_strdup(n->u.index.base->type_name_hint) : NULL;
             return elem;
         }
         if (base_t != TYPE_UNKNOWN)
@@ -746,7 +1025,9 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         }
 
         /* Define in current scope */
-        Symbol *sym = scope_define(ctx->current, name, t, n->line, n->col);
+        Symbol *sym = scope_define(ctx->current, name, t,
+                                   n->u.var_decl.struct_name,
+                                   n->line, n->col);
         if (!sym) {
             Symbol *existing = scope_lookup_local(ctx->current, name);
             char hint[128];
@@ -770,7 +1051,9 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                        array_lit_matches_declared_type(n->u.var_decl.init, t)) {
                 coerce_array_lit_to_type(n->u.var_decl.init, t);
                 /* ok */
-            } else if (it != TYPE_UNKNOWN && !types_equal(it, t)) {
+            } else if (it != TYPE_UNKNOWN &&
+                       !types_equal_ex(it, n->u.var_decl.init->type_name_hint,
+                                       t, n->u.var_decl.struct_name)) {
                 int64_t literal_value;
                 if (t == TYPE_BYTE && extract_int_literal_expr(n->u.var_decl.init, &literal_value)) {
                     error_byte_literal_out_of_range(n->u.var_decl.init->line,
@@ -830,7 +1113,13 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         if (sym->type == TYPE_BYTE && is_byte_compatible_literal_expr(n->u.assign.value)) {
             break;
         }
-        if (vt != TYPE_UNKNOWN && !types_equal(vt, sym->type)) {
+        if (strcmp(n->u.assign.name, "self") == 0) {
+            error_semantic(n->line, n->col, "Cannot reassign 'self'");
+            break;
+        }
+        if (vt != TYPE_UNKNOWN &&
+            !types_equal_ex(vt, n->u.assign.value->type_name_hint,
+                            sym->type, sym->struct_name)) {
             int64_t literal_value;
             if (sym->type == TYPE_BYTE && extract_int_literal_expr(n->u.assign.value, &literal_value)) {
                 error_byte_literal_out_of_range(n->u.assign.value->line,
@@ -879,7 +1168,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         if (elem == TYPE_BYTE && is_byte_compatible_literal_expr(n->u.index_assign.value)) {
             break;
         }
-        if (val_t != TYPE_UNKNOWN && !types_equal(val_t, elem)) {
+        if (val_t != TYPE_UNKNOWN &&
+            !types_equal_ex(val_t, n->u.index_assign.value->type_name_hint, elem, NULL)) {
             int64_t literal_value;
             if (elem == TYPE_BYTE && extract_int_literal_expr(n->u.index_assign.value, &literal_value)) {
                 error_byte_literal_out_of_range(n->u.index_assign.value->line,
@@ -895,6 +1185,19 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                                     n->u.index_assign.value->col,
                                     "array assignment", elem, val_t);
             }
+        }
+        break;
+    }
+
+    case NODE_MEMBER_ASSIGN: {
+        CimpleType lhs_t = check_expr(ctx, n->u.member_assign.target);
+        CimpleType rhs_t = check_expr(ctx, n->u.member_assign.value);
+        if (rhs_t != TYPE_UNKNOWN &&
+            !types_equal_ex(rhs_t, n->u.member_assign.value->type_name_hint,
+                            lhs_t, n->u.member_assign.target->type_name_hint)) {
+            error_semantic_hint(n->line, n->col,
+                                "Use a value of the same member type.",
+                                "Type mismatch in assignment");
         }
         break;
     }
@@ -935,7 +1238,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
             if (init->kind == NODE_FOR_INIT) {
                 Symbol *sym = scope_define(ctx->current,
                                            init->u.for_init.name,
-                                           TYPE_INT, init->line, init->col);
+                                           TYPE_INT, NULL,
+                                           init->line, init->col);
                 if (!sym)
                     error_semantic(init->line, init->col,
                                    "Variable '%s' already declared",
@@ -1009,6 +1313,9 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         check_expr(ctx, n->u.expr_stmt.expr);
         break;
 
+    case NODE_STRUCT_DECL:
+        break;
+
     default:
         break;
     }
@@ -1017,6 +1324,155 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
 /* -----------------------------------------------------------------------
  * First pass — collect all function signatures
  * ----------------------------------------------------------------------- */
+static void collect_structs(SemCtx *ctx, AstNode *program) {
+    NodeList *decls = &program->u.program.decls;
+    for (int i = 0; i < decls->count; i++) {
+        AstNode *d = decls->items[i];
+        if (d->kind != NODE_STRUCT_DECL) continue;
+        if (!struct_table_define(ctx->structs, d->u.struct_decl.name,
+                                 d->u.struct_decl.base_name, d)) {
+            error_semantic(d->line, d->col,
+                           "structure '%s' already declared",
+                           d->u.struct_decl.name);
+        }
+    }
+}
+
+static int struct_method_signature_matches(const StructMethodSig *a,
+                                           const StructMethodSig *b) {
+    if (a->ret_type != b->ret_type) return 0;
+    if (!types_equal_ex(a->ret_type, a->ret_struct_name,
+                        b->ret_type, b->ret_struct_name)) return 0;
+    if (a->param_count != b->param_count) return 0;
+    for (int i = 0; i < a->param_count; i++) {
+        if (!types_equal_ex(a->params[i].type, a->params[i].struct_name,
+                            b->params[i].type, b->params[i].struct_name)) return 0;
+    }
+    return 1;
+}
+
+static int struct_depends_on(StructTable *st, const char *from, const char *target) {
+    StructInfo *si = struct_table_lookup(st, from);
+    if (!si) return 0;
+    for (StructFieldSig *f = si->fields; f; f = f->next) {
+        if (f->type == TYPE_STRUCT && f->struct_name) {
+            if (strcmp(f->struct_name, target) == 0) return 1;
+            if (struct_depends_on(st, f->struct_name, target)) return 1;
+        }
+    }
+    return 0;
+}
+
+static void validate_structs(SemCtx *ctx) {
+    for (StructInfo *si = ctx->structs->head; si; si = si->next) {
+        if (!(si->name[0] >= 'A' && si->name[0] <= 'Z')) {
+            error_semantic(si->decl->line, si->decl->col,
+                           "Structure name must start with an uppercase letter: '%s'",
+                           si->name);
+        }
+        if (si->base_name && !struct_table_lookup(ctx->structs, si->base_name)) {
+            error_semantic(si->decl->line, si->decl->col,
+                           "Unknown base structure: '%s'", si->base_name);
+        }
+
+        StructInfo *base = si->base_name ? struct_table_lookup(ctx->structs, si->base_name) : NULL;
+        NodeList *members = &si->decl->u.struct_decl.members;
+        for (int i = 0; i < members->count; i++) {
+            AstNode *m = members->items[i];
+            if (m->kind == NODE_STRUCT_FIELD) {
+                StructFieldSig *field = ALLOC(StructFieldSig);
+                field->name = cimple_strdup(m->u.struct_field.name);
+                field->type = m->u.struct_field.type;
+                field->struct_name = m->u.struct_field.struct_name
+                    ? cimple_strdup(m->u.struct_field.struct_name) : NULL;
+                field->decl = m;
+                field->next = si->fields;
+                si->fields = field;
+
+                if (field->type == TYPE_STRUCT && !m->u.struct_field.init) {
+                    error_semantic_hint(m->line, m->col,
+                                        "Fields of structure type must be explicitly initialized with 'clone StructureName'.",
+                                        "Field '%s' in structure '%s' has no default value",
+                                        field->name, si->name);
+                }
+                if (field->type == TYPE_STRUCT && (!field->struct_name || !struct_table_lookup(ctx->structs, field->struct_name))) {
+                    error_semantic(m->line, m->col,
+                                   "Unknown type: '%s'", field->struct_name ? field->struct_name : "<unknown>");
+                }
+                if (field->type == TYPE_STRUCT &&
+                    (!m->u.struct_field.init ||
+                     m->u.struct_field.init->kind != NODE_CLONE ||
+                     strcmp(m->u.struct_field.init->u.clone_expr.struct_name, field->struct_name) != 0)) {
+                    error_semantic_hint(m->line, m->col,
+                                        "Fields of structure type must be explicitly initialized with 'clone StructureName'.",
+                                        "Field '%s' in structure '%s' has no default value",
+                                        field->name, si->name);
+                }
+                if (field->type == TYPE_STRUCT && field->struct_name &&
+                    (strcmp(field->struct_name, si->name) == 0 ||
+                     struct_depends_on(ctx->structs, field->struct_name, si->name))) {
+                    error_semantic_hint(m->line, m->col,
+                                        "Structures cannot contain fields of their own type (direct or indirect).",
+                                        "Recursive field '%s' in structure '%s'",
+                                        field->name, si->name);
+                }
+                for (StructFieldSig *other = si->fields->next; other; other = other->next) {
+                    if (strcmp(other->name, field->name) == 0) {
+                        error_semantic(m->line, m->col,
+                                       "Duplicate field '%s' in structure '%s'",
+                                       field->name, si->name);
+                    }
+                }
+                if (base) {
+                    StructFieldSig *base_field = struct_lookup_field(ctx->structs, base, field->name);
+                    if (base_field &&
+                        !types_equal_ex(field->type, field->struct_name,
+                                        base_field->type, base_field->struct_name)) {
+                        error_semantic_hint(m->line, m->col,
+                                            "Redefined fields must have the same type (default value may differ).",
+                                            "Field '%s' in '%s' redefines '%s.%s' with a different type",
+                                            field->name, si->name, base->name, field->name);
+                    }
+                }
+            } else if (m->kind == NODE_FUNC_DECL) {
+                StructMethodSig *method = ALLOC(StructMethodSig);
+                method->name = cimple_strdup(m->u.func_decl.name);
+                method->ret_type = m->u.func_decl.ret_type;
+                method->ret_struct_name = m->u.func_decl.ret_struct_name
+                    ? cimple_strdup(m->u.func_decl.ret_struct_name) : NULL;
+                method->param_count = m->u.func_decl.params.count;
+                method->params = method->param_count ? ALLOC_N(FuncParam, method->param_count) : NULL;
+                for (int j = 0; j < method->param_count; j++) {
+                    AstNode *p = m->u.func_decl.params.items[j];
+                    method->params[j].name = cimple_strdup(p->u.param.name);
+                    method->params[j].type = p->u.param.type;
+                    method->params[j].struct_name = p->u.param.struct_name
+                        ? cimple_strdup(p->u.param.struct_name) : NULL;
+                }
+                method->decl = m;
+                method->next = si->methods;
+                si->methods = method;
+                for (StructMethodSig *other = si->methods->next; other; other = other->next) {
+                    if (strcmp(other->name, method->name) == 0) {
+                        error_semantic(m->line, m->col,
+                                       "Duplicate method '%s' in structure '%s'",
+                                       method->name, si->name);
+                    }
+                }
+                if (base) {
+                    StructMethodSig *base_method = struct_lookup_method(ctx->structs, base, method->name);
+                    if (base_method && !struct_method_signature_matches(method, base_method)) {
+                        error_semantic_hint(m->line, m->col,
+                                            "Signatures must be identical to override a method.",
+                                            "Method '%s' in '%s' overrides '%s.%s' with a different signature",
+                                            method->name, si->name, base->name, method->name);
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void collect_functions(SemCtx *ctx, AstNode *program) {
     NodeList *decls = &program->u.program.decls;
     for (int i = 0; i < decls->count; i++) {
@@ -1039,16 +1495,55 @@ static void collect_functions(SemCtx *ctx, AstNode *program) {
         for (int j = 0; j < params->count; j++) {
             fp[j].name = cimple_strdup(params->items[j]->u.param.name);
             fp[j].type = params->items[j]->u.param.type;
+            fp[j].struct_name = params->items[j]->u.param.struct_name
+                ? cimple_strdup(params->items[j]->u.param.struct_name) : NULL;
         }
 
         if (!func_table_define(ctx->funcs, name,
                                d->u.func_decl.ret_type,
+                               d->u.func_decl.ret_struct_name,
                                fp, params->count,
                                d->line, d->col)) {
             error_semantic(d->line, d->col,
                            "function '%s' already declared", name);
         }
+        for (int j = 0; j < params->count; j++)
+            free(fp[j].struct_name);
         free(fp);
+    }
+}
+
+static void check_struct_methods(SemCtx *ctx) {
+    for (StructInfo *si = ctx->structs->head; si; si = si->next) {
+        for (StructMethodSig *method = si->methods; method; method = method->next) {
+            AstNode *f = method->decl;
+            push_scope(ctx, 1);
+            ctx->current_ret = f->u.func_decl.ret_type;
+            ctx->current_struct_name = si->name;
+            ctx->current_base_name = si->base_name;
+            ctx->in_method = 1;
+
+            scope_define(ctx->current, "self", TYPE_STRUCT, si->name, f->line, f->col);
+            for (int i = 0; i < f->u.func_decl.params.count; i++) {
+                AstNode *p = f->u.func_decl.params.items[i];
+                scope_define(ctx->current, p->u.param.name, p->u.param.type,
+                             p->u.param.struct_name, p->line, p->col);
+            }
+            NodeList *stmts = &f->u.func_decl.body->u.block.stmts;
+            for (int i = 0; i < stmts->count; i++)
+                check_stmt(ctx, stmts->items[i]);
+            if (ctx->current_ret != TYPE_VOID &&
+                !block_always_returns(f->u.func_decl.body)) {
+                error_semantic_hint(f->line, f->col,
+                                    "Function returns a value but not all paths return one.",
+                                    "Missing return in function '%s'",
+                                    f->u.func_decl.name);
+            }
+            ctx->current_struct_name = NULL;
+            ctx->current_base_name = NULL;
+            ctx->in_method = 0;
+            pop_scope(ctx);
+        }
     }
 }
 
@@ -1064,7 +1559,7 @@ static void check_func(SemCtx *ctx, AstNode *f) {
     for (int i = 0; i < params->count; i++) {
         AstNode *p = params->items[i];
         scope_define(ctx->current, p->u.param.name, p->u.param.type,
-                     p->line, p->col);
+                     p->u.param.struct_name, p->line, p->col);
     }
 
     /* Check body */
@@ -1142,12 +1637,18 @@ static void check_main(SemCtx *ctx, AstNode *program) {
 int semantic_check(AstNode *program) {
     SemCtx ctx;
     ctx.funcs        = func_table_new();
+    ctx.structs      = struct_table_new();
     ctx.global_scope = scope_new(NULL, 0);
     ctx.current      = ctx.global_scope;
     ctx.current_ret  = TYPE_VOID;
     ctx.in_loop      = 0;
     ctx.has_return   = 0;
+    ctx.current_struct_name = NULL;
+    ctx.current_base_name = NULL;
+    ctx.in_method = 0;
 
+    collect_structs(&ctx, program);
+    validate_structs(&ctx);
     /* Collect all function signatures first */
     collect_functions(&ctx, program);
 
@@ -1171,10 +1672,12 @@ int semantic_check(AstNode *program) {
             check_func(&ctx, d);
         }
     }
+    check_struct_methods(&ctx);
 
     int had_errors = error_flush_semantic();
 
     func_table_free(ctx.funcs);
+    struct_table_free(ctx.structs);
     scope_free(ctx.global_scope);
 
     return had_errors;

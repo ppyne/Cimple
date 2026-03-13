@@ -1,0 +1,15 @@
+structure Counter {
+    int value = 0;
+    void inc() { self.value = self.value + 1; }
+}
+
+void bump(Counter c) {
+    c.inc();
+}
+
+void main() {
+    Counter c = clone Counter;
+    bump(c);
+    c.inc();
+    print(toString(c.value) + "\n");
+}

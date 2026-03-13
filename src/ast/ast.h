@@ -21,12 +21,14 @@ typedef enum {
     TYPE_BYTE_ARR  = 10,
     /* Opaque */
     TYPE_EXEC_RESULT = 11,
-    TYPE_UNKNOWN   = 12
+    TYPE_STRUCT      = 12,
+    TYPE_STRUCT_ARR  = 13,
+    TYPE_UNKNOWN     = 14
 } CimpleType;
 
 /* Returns true if t is an array type. */
 static inline int type_is_array(CimpleType t) {
-    return t >= TYPE_INT_ARR && t <= TYPE_BYTE_ARR;
+    return (t >= TYPE_INT_ARR && t <= TYPE_BYTE_ARR) || t == TYPE_STRUCT_ARR;
 }
 
 /* Returns the element type of an array type. */
@@ -37,6 +39,7 @@ static inline CimpleType type_elem(CimpleType t) {
     case TYPE_BOOL_ARR:  return TYPE_BOOL;
     case TYPE_STR_ARR:   return TYPE_STRING;
     case TYPE_BYTE_ARR:  return TYPE_BYTE;
+    case TYPE_STRUCT_ARR:return TYPE_STRUCT;
     default:             return TYPE_UNKNOWN;
     }
 }
@@ -49,6 +52,7 @@ static inline CimpleType type_make_array(CimpleType t) {
     case TYPE_BOOL:   return TYPE_BOOL_ARR;
     case TYPE_STRING: return TYPE_STR_ARR;
     case TYPE_BYTE:   return TYPE_BYTE_ARR;
+    case TYPE_STRUCT: return TYPE_STRUCT_ARR;
     default:          return TYPE_UNKNOWN;
     }
 }
@@ -64,11 +68,14 @@ typedef enum {
     NODE_FUNC_DECL,      /* function declaration                        */
     NODE_PARAM,          /* single parameter                            */
     NODE_VAR_DECL,       /* variable declaration (scalar or array)      */
+    NODE_STRUCT_DECL,    /* structure declaration                       */
+    NODE_STRUCT_FIELD,   /* field declaration inside a structure        */
 
     /* Statements */
     NODE_BLOCK,          /* { stmt* }                                   */
     NODE_ASSIGN,         /* ident = expr                                */
     NODE_INDEX_ASSIGN,   /* ident[expr] = expr                          */
+    NODE_MEMBER_ASSIGN,  /* member = expr                               */
     NODE_IF,             /* if (cond) stmt [else stmt]                  */
     NODE_WHILE,          /* while (cond) stmt                           */
     NODE_FOR,            /* for (init; cond; update) stmt               */
@@ -89,6 +96,11 @@ typedef enum {
     NODE_UNOP,           /* unary operator                              */
     NODE_CALL,           /* function call                               */
     NODE_INDEX,          /* expr[expr]                                  */
+    NODE_MEMBER,         /* expr.ident / self.ident                     */
+    NODE_METHOD_CALL,    /* expr.method(...) / super.method(...)        */
+    NODE_CLONE,          /* clone StructName                            */
+    NODE_SELF,           /* self                                        */
+    NODE_SUPER,          /* super                                       */
     NODE_INCR,           /* i++                                         */
     NODE_DECR,           /* i--                                         */
     NODE_CONST,          /* predefined constant (INT_MAX etc.)          */
@@ -128,6 +140,7 @@ struct AstNode {
     int       line;
     int       col;
     CimpleType type;   /* inferred/declared type (set by semantic pass) */
+    char     *type_name_hint; /* structure name when type is TYPE_STRUCT/_ARR */
 
     union {
         /* NODE_PROGRAM */
@@ -137,6 +150,7 @@ struct AstNode {
         struct {
             char      *name;
             CimpleType ret_type;
+            char      *ret_struct_name;
             NodeList   params;   /* NODE_PARAM */
             AstNode   *body;     /* NODE_BLOCK  */
         } func_decl;
@@ -145,15 +159,32 @@ struct AstNode {
         struct {
             char      *name;
             CimpleType type;
+            char      *struct_name;
         } param;
 
         /* NODE_VAR_DECL */
         struct {
             char      *name;
             CimpleType type;
+            char      *struct_name;
             AstNode   *init;    /* NULL if uninitialized                */
             int        is_global;
         } var_decl;
+
+        /* NODE_STRUCT_DECL */
+        struct {
+            char    *name;
+            char    *base_name;   /* NULL if no base */
+            NodeList members;     /* NODE_STRUCT_FIELD and NODE_FUNC_DECL */
+        } struct_decl;
+
+        /* NODE_STRUCT_FIELD */
+        struct {
+            char      *name;
+            CimpleType type;
+            char      *struct_name;
+            AstNode   *init;
+        } struct_field;
 
         /* NODE_BLOCK */
         struct { NodeList stmts; } block;
@@ -170,6 +201,12 @@ struct AstNode {
             AstNode *index;
             AstNode *value;
         } index_assign;
+
+        /* NODE_MEMBER_ASSIGN */
+        struct {
+            AstNode *target;
+            AstNode *value;
+        } member_assign;
 
         /* NODE_IF */
         struct {
@@ -250,6 +287,23 @@ struct AstNode {
             AstNode *index;
         } index;
 
+        /* NODE_MEMBER */
+        struct {
+            AstNode *base;
+            char    *name;
+        } member;
+
+        /* NODE_METHOD_CALL */
+        struct {
+            AstNode *base;   /* NULL only for super.method(...) */
+            char    *name;
+            NodeList args;
+            int      is_super;
+        } method_call;
+
+        /* NODE_CLONE */
+        struct { char *struct_name; } clone_expr;
+
         /* NODE_INCR / NODE_DECR */
         struct { char *name; } incr_decr;
 
@@ -274,5 +328,11 @@ AstNode *ast_const(const char *name, int line, int col);
 AstNode *ast_binop(OpKind op, AstNode *l, AstNode *r, int line, int col);
 AstNode *ast_unop(OpKind op, AstNode *operand, int line, int col);
 AstNode *ast_call(const char *name, NodeList args, int line, int col);
+AstNode *ast_member(AstNode *base, const char *name, int line, int col);
+AstNode *ast_method_call(AstNode *base, const char *name, NodeList args,
+                         int is_super, int line, int col);
+AstNode *ast_clone(const char *struct_name, int line, int col);
+AstNode *ast_self(int line, int col);
+AstNode *ast_super(int line, int col);
 
 #endif /* CIMPLE_AST_H */

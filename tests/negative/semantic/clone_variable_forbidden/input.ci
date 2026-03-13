@@ -1,0 +1,7 @@
+structure Point {
+    int x = 0;
+}
+void main() {
+    Point p = clone Point;
+    Point q = clone p;
+}

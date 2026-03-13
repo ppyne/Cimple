@@ -147,6 +147,10 @@ const char *token_type_name(TokenType t) {
     case TOK_KW_VOID:      return "'void'";
     case TOK_KW_EXECRESULT:return "'ExecResult'";
     case TOK_KW_IMPORT:    return "'import'";
+    case TOK_KW_STRUCTURE: return "'structure'";
+    case TOK_KW_CLONE:     return "'clone'";
+    case TOK_KW_SELF:      return "'self'";
+    case TOK_KW_SUPER:     return "'super'";
     case TOK_IF:           return "'if'";
     case TOK_ELSE:         return "'else'";
     case TOK_WHILE:        return "'while'";
@@ -155,6 +159,7 @@ const char *token_type_name(TokenType t) {
     case TOK_CONTINUE:     return "'continue'";
     case TOK_RETURN:       return "'return'";
     case TOK_IDENT:        return "identifier";
+    case TOK_TYPE_IDENT:   return "type identifier";
     case TOK_PLUS:         return "'+'";
     case TOK_MINUS:        return "'-'";
     case TOK_STAR:         return "'*'";
@@ -186,6 +191,8 @@ const char *token_type_name(TokenType t) {
     case TOK_RBRACE:       return "'}'";
     case TOK_SEMICOLON:    return "';'";
     case TOK_COMMA:        return "','";
+    case TOK_DOT:          return "'.'";
+    case TOK_COLON:        return "':'";
     case TOK_EOF:          return "end of file";
     case TOK_ERROR:        return "<error>";
     }
@@ -341,6 +348,10 @@ yybegin:
         "void"          { tok.type = TOK_KW_VOID;       goto kw_done; }
         "ExecResult"    { tok.type = TOK_KW_EXECRESULT; goto kw_done; }
         "import"        { tok.type = TOK_KW_IMPORT;     goto kw_done; }
+        "structure"     { tok.type = TOK_KW_STRUCTURE;  goto kw_done; }
+        "clone"         { tok.type = TOK_KW_CLONE;      goto kw_done; }
+        "self"          { tok.type = TOK_KW_SELF;       goto kw_done; }
+        "super"         { tok.type = TOK_KW_SUPER;      goto kw_done; }
         "if"            { tok.type = TOK_IF;            goto kw_done; }
         "else"          { tok.type = TOK_ELSE;          goto kw_done; }
         "while"         { tok.type = TOK_WHILE;         goto kw_done; }
@@ -394,6 +405,8 @@ yybegin:
         "}"    { tok.type = TOK_RBRACE;    goto op_done; }
         ";"    { tok.type = TOK_SEMICOLON; goto op_done; }
         ","    { tok.type = TOK_COMMA;     goto op_done; }
+        "."    { tok.type = TOK_DOT;       goto op_done; }
+        ":"    { tok.type = TOK_COLON;     goto op_done; }
 
         /* End of input */
         "\000" {

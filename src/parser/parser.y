@@ -14,6 +14,18 @@
 #include "../common/memory.h"
 #include "../common/error.h"
 
+typedef struct {
+    CimpleType type;
+    char      *struct_name;
+} ParsedType;
+
+static ParsedType parsed_type_make(CimpleType type, const char *struct_name) {
+    ParsedType pt;
+    pt.type = type;
+    pt.struct_name = struct_name ? cimple_strdup(struct_name) : NULL;
+    return pt;
+}
+
 static int token_starts_statement_or_decl(TokenType t) {
     switch (t) {
     case TOK_RETURN:
@@ -30,6 +42,10 @@ static int token_starts_statement_or_decl(TokenType t) {
     case TOK_KW_BYTE:
     case TOK_KW_VOID:
     case TOK_KW_EXECRESULT:
+    case TOK_KW_STRUCTURE:
+    case TOK_KW_SELF:
+    case TOK_KW_SUPER:
+    case TOK_KW_CLONE:
         return 1;
     default:
         return 0;
@@ -48,6 +64,8 @@ static int token_can_end_expression(TokenType t) {
     case TOK_RBRACKET:
     case TOK_PLUSPLUS:
     case TOK_MINUSMINUS:
+    case TOK_KW_SELF:
+    case TOK_KW_SUPER:
         return 1;
     default:
         return 0;
@@ -111,6 +129,7 @@ static int token_can_end_expression(TokenType t) {
 %left      PLUS MINUS.
 %left      STAR SLASH PERCENT.
 %right     UMINUS NOT BNOT.
+%left      DOT.
 %nonassoc  LBRACKET.
 
 /* -----------------------------------------------------------------------
@@ -142,104 +161,56 @@ decl_list(L) ::= decl_list(LL) decl(D).
 /* -----------------------------------------------------------------------
  * Top-level declarations
  * ----------------------------------------------------------------------- */
-decl(D) ::= scalar_type(T) IDENT(N) SEMICOLON.
+decl(D) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
 {
     D = ast_new(NODE_VAR_DECL, N.line, N.col);
-    D->u.var_decl.name      = cimple_strdup(N.v.sval);
-    D->u.var_decl.type      = T;
-    D->u.var_decl.init      = NULL;
-    D->u.var_decl.is_global = 1;
+    D->u.var_decl.name        = cimple_strdup(N.v.sval);
+    D->u.var_decl.type        = T.type;
+    D->u.var_decl.struct_name = T.struct_name;
+    D->u.var_decl.init        = NULL;
+    D->u.var_decl.is_global   = 1;
+    D->type_name_hint         = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
     free(N.v.sval);
 }
 
-decl(D) ::= scalar_type(T) IDENT(N) ASSIGN expr(E) SEMICOLON.
+decl(D) ::= nonvoid_type(T) IDENT(N) ASSIGN expr(E) SEMICOLON.
 {
     D = ast_new(NODE_VAR_DECL, N.line, N.col);
-    D->u.var_decl.name      = cimple_strdup(N.v.sval);
-    D->u.var_decl.type      = T;
-    D->u.var_decl.init      = E;
-    D->u.var_decl.is_global = 1;
+    D->u.var_decl.name        = cimple_strdup(N.v.sval);
+    D->u.var_decl.type        = T.type;
+    D->u.var_decl.struct_name = T.struct_name;
+    D->u.var_decl.init        = E;
+    D->u.var_decl.is_global   = 1;
+    D->type_name_hint         = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
     free(N.v.sval);
 }
 
-decl(D) ::= scalar_type(T) IDENT(N) LPAREN param_list(PL) RPAREN block(B).
+decl(D) ::= nonvoid_type(T) IDENT(N) LPAREN param_list(PL) RPAREN block(B).
 {
     D = ast_new(NODE_FUNC_DECL, N.line, N.col);
-    D->u.func_decl.name     = cimple_strdup(N.v.sval);
-    D->u.func_decl.ret_type = T;
-    D->u.func_decl.params   = PL;
-    D->u.func_decl.body     = B;
-    free(N.v.sval);
-}
-
-decl(D) ::= array_type(T) IDENT(N) SEMICOLON.
-{
-    D = ast_new(NODE_VAR_DECL, N.line, N.col);
-    D->u.var_decl.name      = cimple_strdup(N.v.sval);
-    D->u.var_decl.type      = T;
-    D->u.var_decl.init      = NULL;
-    D->u.var_decl.is_global = 1;
-    free(N.v.sval);
-}
-
-decl(D) ::= array_type(T) IDENT(N) ASSIGN expr(E) SEMICOLON.
-{
-    D = ast_new(NODE_VAR_DECL, N.line, N.col);
-    D->u.var_decl.name      = cimple_strdup(N.v.sval);
-    D->u.var_decl.type      = T;
-    D->u.var_decl.init      = E;
-    D->u.var_decl.is_global = 1;
-    free(N.v.sval);
-}
-
-decl(D) ::= array_type(T) IDENT(N) LPAREN param_list(PL) RPAREN block(B).
-{
-    D = ast_new(NODE_FUNC_DECL, N.line, N.col);
-    D->u.func_decl.name     = cimple_strdup(N.v.sval);
-    D->u.func_decl.ret_type = T;
-    D->u.func_decl.params   = PL;
-    D->u.func_decl.body     = B;
+    D->u.func_decl.name            = cimple_strdup(N.v.sval);
+    D->u.func_decl.ret_type        = T.type;
+    D->u.func_decl.ret_struct_name = T.struct_name;
+    D->u.func_decl.params          = PL;
+    D->u.func_decl.body            = B;
+    D->type_name_hint              = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
     free(N.v.sval);
 }
 
 decl(D) ::= KW_VOID IDENT(N) LPAREN param_list(PL) RPAREN block(B).
 {
     D = ast_new(NODE_FUNC_DECL, N.line, N.col);
-    D->u.func_decl.name     = cimple_strdup(N.v.sval);
+    D->u.func_decl.name = cimple_strdup(N.v.sval);
     D->u.func_decl.ret_type = TYPE_VOID;
-    D->u.func_decl.params   = PL;
-    D->u.func_decl.body     = B;
+    D->u.func_decl.ret_struct_name = NULL;
+    D->u.func_decl.params = PL;
+    D->u.func_decl.body = B;
     free(N.v.sval);
 }
 
-decl(D) ::= KW_EXECRESULT IDENT(N) SEMICOLON.
+decl(D) ::= structure_decl(SD).
 {
-    D = ast_new(NODE_VAR_DECL, N.line, N.col);
-    D->u.var_decl.name      = cimple_strdup(N.v.sval);
-    D->u.var_decl.type      = TYPE_EXEC_RESULT;
-    D->u.var_decl.init      = NULL;
-    D->u.var_decl.is_global = 1;
-    free(N.v.sval);
-}
-
-decl(D) ::= KW_EXECRESULT IDENT(N) ASSIGN expr(E) SEMICOLON.
-{
-    D = ast_new(NODE_VAR_DECL, N.line, N.col);
-    D->u.var_decl.name      = cimple_strdup(N.v.sval);
-    D->u.var_decl.type      = TYPE_EXEC_RESULT;
-    D->u.var_decl.init      = E;
-    D->u.var_decl.is_global = 1;
-    free(N.v.sval);
-}
-
-decl(D) ::= KW_EXECRESULT IDENT(N) LPAREN param_list(PL) RPAREN block(B).
-{
-    D = ast_new(NODE_FUNC_DECL, N.line, N.col);
-    D->u.func_decl.name     = cimple_strdup(N.v.sval);
-    D->u.func_decl.ret_type = TYPE_EXEC_RESULT;
-    D->u.func_decl.params   = PL;
-    D->u.func_decl.body     = B;
-    free(N.v.sval);
+    D = SD;
 }
 
 decl(D) ::= KW_IMPORT STRING_LIT(S) SEMICOLON.
@@ -249,27 +220,137 @@ decl(D) ::= KW_IMPORT STRING_LIT(S) SEMICOLON.
 }
 
 /* -----------------------------------------------------------------------
+ * Structures
+ * ----------------------------------------------------------------------- */
+%type structure_decl { AstNode * }
+%type structure_header { AstNode * }
+%type structure_member_list { NodeList }
+%type structure_member { AstNode * }
+
+structure_header(H) ::= KW_STRUCTURE(T) IDENT(N) LBRACE.
+{
+    H = ast_new(NODE_STRUCT_DECL, T.line, T.col);
+    H->u.struct_decl.name = cimple_strdup(N.v.sval);
+    H->u.struct_decl.base_name = NULL;
+    nodelist_init(&H->u.struct_decl.members);
+    parse_state_add_struct(ps, N.v.sval);
+    free(N.v.sval);
+}
+
+structure_header(H) ::= KW_STRUCTURE(T) IDENT(N) COLON TYPE_IDENT(B) LBRACE.
+{
+    H = ast_new(NODE_STRUCT_DECL, T.line, T.col);
+    H->u.struct_decl.name = cimple_strdup(N.v.sval);
+    H->u.struct_decl.base_name = cimple_strdup(B.v.sval);
+    nodelist_init(&H->u.struct_decl.members);
+    parse_state_add_struct(ps, N.v.sval);
+    free(N.v.sval);
+    free(B.v.sval);
+}
+
+structure_decl(D) ::= structure_header(H) structure_member_list(M) RBRACE.
+{
+    D = H;
+    D->u.struct_decl.members = M;
+}
+
+structure_member_list(L) ::= .
+{
+    nodelist_init(&L);
+}
+
+structure_member_list(L) ::= structure_member_list(LL) structure_member(M).
+{
+    L = LL;
+    nodelist_push(&L, M);
+}
+
+structure_member(M) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
+{
+    M = ast_new(NODE_STRUCT_FIELD, N.line, N.col);
+    M->u.struct_field.name = cimple_strdup(N.v.sval);
+    M->u.struct_field.type = T.type;
+    M->u.struct_field.struct_name = T.struct_name;
+    M->u.struct_field.init = NULL;
+    M->type_name_hint = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    free(N.v.sval);
+}
+
+structure_member(M) ::= nonvoid_type(T) IDENT(N) ASSIGN expr(E) SEMICOLON.
+{
+    M = ast_new(NODE_STRUCT_FIELD, N.line, N.col);
+    M->u.struct_field.name = cimple_strdup(N.v.sval);
+    M->u.struct_field.type = T.type;
+    M->u.struct_field.struct_name = T.struct_name;
+    M->u.struct_field.init = E;
+    M->type_name_hint = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    free(N.v.sval);
+}
+
+structure_member(M) ::= nonvoid_type(T) IDENT(N) LPAREN param_list(PL) RPAREN block(B).
+{
+    M = ast_new(NODE_FUNC_DECL, N.line, N.col);
+    M->u.func_decl.name = cimple_strdup(N.v.sval);
+    M->u.func_decl.ret_type = T.type;
+    M->u.func_decl.ret_struct_name = T.struct_name;
+    M->u.func_decl.params = PL;
+    M->u.func_decl.body = B;
+    M->type_name_hint = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    free(N.v.sval);
+}
+
+structure_member(M) ::= KW_VOID IDENT(N) LPAREN param_list(PL) RPAREN block(B).
+{
+    M = ast_new(NODE_FUNC_DECL, N.line, N.col);
+    M->u.func_decl.name = cimple_strdup(N.v.sval);
+    M->u.func_decl.ret_type = TYPE_VOID;
+    M->u.func_decl.ret_struct_name = NULL;
+    M->u.func_decl.params = PL;
+    M->u.func_decl.body = B;
+    free(N.v.sval);
+}
+
+/* -----------------------------------------------------------------------
  * Types
  * ----------------------------------------------------------------------- */
-%type scalar_type  { CimpleType }
-%type array_type   { CimpleType }
-%type param_type   { CimpleType }
+%type scalar_type  { ParsedType }
+%type array_type   { ParsedType }
+%type struct_type  { ParsedType }
+%type struct_array_type { ParsedType }
+%type nonvoid_type { ParsedType }
+%type param_type   { ParsedType }
 
-scalar_type(T) ::= KW_INT.    { T = TYPE_INT;    }
-scalar_type(T) ::= KW_FLOAT.  { T = TYPE_FLOAT;  }
-scalar_type(T) ::= KW_BOOL.   { T = TYPE_BOOL;   }
-scalar_type(T) ::= KW_STRING. { T = TYPE_STRING; }
-scalar_type(T) ::= KW_BYTE.   { T = TYPE_BYTE;   }
+scalar_type(T) ::= KW_INT.    { T = parsed_type_make(TYPE_INT, NULL); }
+scalar_type(T) ::= KW_FLOAT.  { T = parsed_type_make(TYPE_FLOAT, NULL); }
+scalar_type(T) ::= KW_BOOL.   { T = parsed_type_make(TYPE_BOOL, NULL); }
+scalar_type(T) ::= KW_STRING. { T = parsed_type_make(TYPE_STRING, NULL); }
+scalar_type(T) ::= KW_BYTE.   { T = parsed_type_make(TYPE_BYTE, NULL); }
 
-array_type(T) ::= KW_INT    LBRACKET RBRACKET. { T = TYPE_INT_ARR;   }
-array_type(T) ::= KW_FLOAT  LBRACKET RBRACKET. { T = TYPE_FLOAT_ARR; }
-array_type(T) ::= KW_BOOL   LBRACKET RBRACKET. { T = TYPE_BOOL_ARR;  }
-array_type(T) ::= KW_STRING LBRACKET RBRACKET. { T = TYPE_STR_ARR;   }
-array_type(T) ::= KW_BYTE   LBRACKET RBRACKET. { T = TYPE_BYTE_ARR;  }
+array_type(T) ::= KW_INT    LBRACKET RBRACKET. { T = parsed_type_make(TYPE_INT_ARR, NULL); }
+array_type(T) ::= KW_FLOAT  LBRACKET RBRACKET. { T = parsed_type_make(TYPE_FLOAT_ARR, NULL); }
+array_type(T) ::= KW_BOOL   LBRACKET RBRACKET. { T = parsed_type_make(TYPE_BOOL_ARR, NULL); }
+array_type(T) ::= KW_STRING LBRACKET RBRACKET. { T = parsed_type_make(TYPE_STR_ARR, NULL); }
+array_type(T) ::= KW_BYTE   LBRACKET RBRACKET. { T = parsed_type_make(TYPE_BYTE_ARR, NULL); }
 
-param_type(T) ::= scalar_type(S).  { T = S; }
-param_type(T) ::= array_type(A).   { T = A; }
-param_type(T) ::= KW_EXECRESULT.   { T = TYPE_EXEC_RESULT; }
+struct_type(T) ::= TYPE_IDENT(N).
+{
+    T = parsed_type_make(TYPE_STRUCT, N.v.sval);
+    free(N.v.sval);
+}
+
+struct_array_type(T) ::= TYPE_IDENT(N) LBRACKET RBRACKET.
+{
+    T = parsed_type_make(TYPE_STRUCT_ARR, N.v.sval);
+    free(N.v.sval);
+}
+
+nonvoid_type(T) ::= scalar_type(S).       { T = S; }
+nonvoid_type(T) ::= array_type(A).        { T = A; }
+nonvoid_type(T) ::= struct_type(S).       { T = S; }
+nonvoid_type(T) ::= struct_array_type(A). { T = A; }
+nonvoid_type(T) ::= KW_EXECRESULT.        { T = parsed_type_make(TYPE_EXEC_RESULT, NULL); }
+
+param_type(T) ::= nonvoid_type(S).  { T = S; }
 
 /* -----------------------------------------------------------------------
  * Parameter list
@@ -298,7 +379,9 @@ param(P) ::= param_type(T) IDENT(N).
 {
     P = ast_new(NODE_PARAM, N.line, N.col);
     P->u.param.name = cimple_strdup(N.v.sval);
-    P->u.param.type = T;
+    P->u.param.type = T.type;
+    P->u.param.struct_name = T.struct_name;
+    P->type_name_hint = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
     free(N.v.sval);
 }
 
@@ -333,63 +416,27 @@ stmt_list(L) ::= stmt_list(LL) stmt(S).
 %type stmt { AstNode * }
 
 /* Variable declarations */
-stmt(S) ::= scalar_type(T) IDENT(N) SEMICOLON.
+stmt(S) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
 {
     S = ast_new(NODE_VAR_DECL, N.line, N.col);
-    S->u.var_decl.name      = cimple_strdup(N.v.sval);
-    S->u.var_decl.type      = T;
-    S->u.var_decl.init      = NULL;
-    S->u.var_decl.is_global = 0;
+    S->u.var_decl.name        = cimple_strdup(N.v.sval);
+    S->u.var_decl.type        = T.type;
+    S->u.var_decl.struct_name = T.struct_name;
+    S->u.var_decl.init        = NULL;
+    S->u.var_decl.is_global   = 0;
+    S->type_name_hint         = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
     free(N.v.sval);
 }
 
-stmt(S) ::= scalar_type(T) IDENT(N) ASSIGN expr(E) SEMICOLON.
+stmt(S) ::= nonvoid_type(T) IDENT(N) ASSIGN expr(E) SEMICOLON.
 {
     S = ast_new(NODE_VAR_DECL, N.line, N.col);
-    S->u.var_decl.name      = cimple_strdup(N.v.sval);
-    S->u.var_decl.type      = T;
-    S->u.var_decl.init      = E;
-    S->u.var_decl.is_global = 0;
-    free(N.v.sval);
-}
-
-stmt(S) ::= array_type(T) IDENT(N) SEMICOLON.
-{
-    S = ast_new(NODE_VAR_DECL, N.line, N.col);
-    S->u.var_decl.name      = cimple_strdup(N.v.sval);
-    S->u.var_decl.type      = T;
-    S->u.var_decl.init      = NULL;
-    S->u.var_decl.is_global = 0;
-    free(N.v.sval);
-}
-
-stmt(S) ::= array_type(T) IDENT(N) ASSIGN expr(E) SEMICOLON.
-{
-    S = ast_new(NODE_VAR_DECL, N.line, N.col);
-    S->u.var_decl.name      = cimple_strdup(N.v.sval);
-    S->u.var_decl.type      = T;
-    S->u.var_decl.init      = E;
-    S->u.var_decl.is_global = 0;
-    free(N.v.sval);
-}
-
-stmt(S) ::= KW_EXECRESULT IDENT(N) ASSIGN expr(E) SEMICOLON.
-{
-    S = ast_new(NODE_VAR_DECL, N.line, N.col);
-    S->u.var_decl.name      = cimple_strdup(N.v.sval);
-    S->u.var_decl.type      = TYPE_EXEC_RESULT;
-    S->u.var_decl.init      = E;
-    S->u.var_decl.is_global = 0;
-    free(N.v.sval);
-}
-
-stmt(S) ::= KW_EXECRESULT IDENT(N) SEMICOLON.
-{
-    S = ast_new(NODE_VAR_DECL, N.line, N.col);
-    S->u.var_decl.name      = cimple_strdup(N.v.sval);
-    S->u.var_decl.type      = TYPE_EXEC_RESULT;
-    S->u.var_decl.init      = NULL;
-    S->u.var_decl.is_global = 0;
+    S->u.var_decl.name        = cimple_strdup(N.v.sval);
+    S->u.var_decl.type        = T.type;
+    S->u.var_decl.struct_name = T.struct_name;
+    S->u.var_decl.init        = E;
+    S->u.var_decl.is_global   = 0;
+    S->type_name_hint         = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
     free(N.v.sval);
 }
 
@@ -412,6 +459,27 @@ stmt(S) ::= IDENT(N) LBRACKET expr(I) RBRACKET ASSIGN expr(E) SEMICOLON.
     free(N.v.sval);
 }
 
+stmt(S) ::= IDENT(N) LBRACKET expr(I) RBRACKET DOT IDENT(F) ASSIGN expr(E) SEMICOLON.
+{
+    AstNode *base = ast_ident(N.v.sval, N.line, N.col);
+    AstNode *idx = ast_new(NODE_INDEX, N.line, N.col);
+    idx->u.index.base = base;
+    idx->u.index.index = I;
+    AstNode *member = ast_member(idx, F.v.sval, F.line, F.col);
+    S = ast_new(NODE_MEMBER_ASSIGN, F.line, F.col);
+    S->u.member_assign.target = member;
+    S->u.member_assign.value = E;
+    free(N.v.sval);
+    free(F.v.sval);
+}
+
+stmt(S) ::= member_expr(M) ASSIGN expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_MEMBER_ASSIGN, M->line, M->col);
+    S->u.member_assign.target = M;
+    S->u.member_assign.value = E;
+}
+
 /* Increment / decrement as statements */
 stmt(S) ::= IDENT(N) PLUSPLUS SEMICOLON.
 {
@@ -432,6 +500,25 @@ stmt(S) ::= call_expr(C) SEMICOLON.
 {
     S = ast_new(NODE_EXPR_STMT, C->line, C->col);
     S->u.expr_stmt.expr = C;
+}
+
+stmt(S) ::= method_call_expr(C) SEMICOLON.
+{
+    S = ast_new(NODE_EXPR_STMT, C->line, C->col);
+    S->u.expr_stmt.expr = C;
+}
+
+stmt(S) ::= IDENT(N) LBRACKET expr(I) RBRACKET DOT IDENT(M) LPAREN arg_list(AL) RPAREN SEMICOLON.
+{
+    AstNode *base = ast_ident(N.v.sval, N.line, N.col);
+    AstNode *idx = ast_new(NODE_INDEX, N.line, N.col);
+    idx->u.index.base = base;
+    idx->u.index.index = I;
+    AstNode *call = ast_method_call(idx, M.v.sval, AL, 0, M.line, M.col);
+    S = ast_new(NODE_EXPR_STMT, call->line, call->col);
+    S->u.expr_stmt.expr = call;
+    free(N.v.sval);
+    free(M.v.sval);
 }
 
 /* if */
@@ -524,6 +611,27 @@ simple_stmt(S) ::= IDENT(N) LBRACKET expr(I) RBRACKET ASSIGN expr(E) SEMICOLON.
     free(N.v.sval);
 }
 
+simple_stmt(S) ::= IDENT(N) LBRACKET expr(I) RBRACKET DOT IDENT(F) ASSIGN expr(E) SEMICOLON.
+{
+    AstNode *base = ast_ident(N.v.sval, N.line, N.col);
+    AstNode *idx = ast_new(NODE_INDEX, N.line, N.col);
+    idx->u.index.base = base;
+    idx->u.index.index = I;
+    AstNode *member = ast_member(idx, F.v.sval, F.line, F.col);
+    S = ast_new(NODE_MEMBER_ASSIGN, F.line, F.col);
+    S->u.member_assign.target = member;
+    S->u.member_assign.value = E;
+    free(N.v.sval);
+    free(F.v.sval);
+}
+
+simple_stmt(S) ::= member_expr(M) ASSIGN expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_MEMBER_ASSIGN, M->line, M->col);
+    S->u.member_assign.target = M;
+    S->u.member_assign.value = E;
+}
+
 simple_stmt(S) ::= IDENT(N) PLUSPLUS SEMICOLON.
 {
     S = ast_new(NODE_INCR, N.line, N.col);
@@ -542,6 +650,25 @@ simple_stmt(S) ::= call_expr(C) SEMICOLON.
 {
     S = ast_new(NODE_EXPR_STMT, C->line, C->col);
     S->u.expr_stmt.expr = C;
+}
+
+simple_stmt(S) ::= method_call_expr(C) SEMICOLON.
+{
+    S = ast_new(NODE_EXPR_STMT, C->line, C->col);
+    S->u.expr_stmt.expr = C;
+}
+
+simple_stmt(S) ::= IDENT(N) LBRACKET expr(I) RBRACKET DOT IDENT(M) LPAREN arg_list(AL) RPAREN SEMICOLON.
+{
+    AstNode *base = ast_ident(N.v.sval, N.line, N.col);
+    AstNode *idx = ast_new(NODE_INDEX, N.line, N.col);
+    idx->u.index.base = base;
+    idx->u.index.index = I;
+    AstNode *call = ast_method_call(idx, M.v.sval, AL, 0, M.line, M.col);
+    S = ast_new(NODE_EXPR_STMT, call->line, call->col);
+    S->u.expr_stmt.expr = call;
+    free(N.v.sval);
+    free(M.v.sval);
 }
 
 simple_stmt(S) ::= RETURN(T) SEMICOLON.
@@ -709,9 +836,22 @@ expr(E) ::= STRING_LIT(T).
 }
 
 expr(E) ::= array_lit(A). { E = A; }
+expr(E) ::= KW_SELF(T).  { E = ast_self(T.line, T.col); }
+expr(E) ::= KW_SUPER(T). { E = ast_super(T.line, T.col); }
+expr(E) ::= KW_CLONE(T) TYPE_IDENT(N).
+{
+    E = ast_clone(N.v.sval, T.line, T.col);
+    free(N.v.sval);
+}
+
+expr(E) ::= KW_CLONE(T) IDENT(N).
+{
+    E = ast_clone(N.v.sval, T.line, T.col);
+    free(N.v.sval);
+}
 
 /* Identifier or predefined constant */
-expr(E) ::= IDENT(N).
+expr(E) ::= IDENT(N). [PLUS]
 {
     if (is_predefined_constant(N.v.sval)) {
         E = ast_const(N.v.sval, N.line, N.col);
@@ -762,6 +902,8 @@ expr(E) ::= BNOT(T) expr(X).
 
 /* Function call */
 expr(E) ::= call_expr(C). { E = C; }
+expr(E) ::= member_expr(M). { E = M; }
+expr(E) ::= method_call_expr(C). { E = C; }
 
 /* Array/string indexing */
 expr(E) ::= expr(B) LBRACKET expr(I) RBRACKET.
@@ -775,11 +917,25 @@ expr(E) ::= expr(B) LBRACKET expr(I) RBRACKET.
  * Function call expression (separate to allow as statement)
  * ----------------------------------------------------------------------- */
 %type call_expr { AstNode * }
+%type method_call_expr { AstNode * }
+%type member_expr { AstNode * }
 %type arg_list  { NodeList  }
 
 call_expr(C) ::= IDENT(N) LPAREN arg_list(AL) RPAREN.
 {
     C = ast_call(N.v.sval, AL, N.line, N.col);
+    free(N.v.sval);
+}
+
+member_expr(M) ::= expr(B) DOT IDENT(N).
+{
+    M = ast_member(B, N.v.sval, N.line, N.col);
+    free(N.v.sval);
+}
+
+method_call_expr(C) ::= expr(B) DOT IDENT(N) LPAREN arg_list(AL) RPAREN.
+{
+    C = ast_method_call(B, N.v.sval, AL, B->kind == NODE_SUPER, N.line, N.col);
     free(N.v.sval);
 }
 

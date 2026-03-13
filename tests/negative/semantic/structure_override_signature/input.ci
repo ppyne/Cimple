@@ -1,0 +1,9 @@
+structure Base {
+    void ping(int x) {}
+}
+
+structure Child : Base {
+    void ping(float x) {}
+}
+
+void main() {}

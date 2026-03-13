@@ -1,0 +1,24 @@
+structure A {
+    int x = 1;
+    void bump() { self.x = self.x + 1; }
+}
+
+structure B : A {
+    void bump() {
+        super.bump();
+        self.x = self.x + 2;
+    }
+}
+
+structure C : B {
+    void bump() {
+        super.bump();
+        self.x = self.x + 3;
+    }
+}
+
+void main() {
+    C c = clone C;
+    c.bump();
+    print(toString(c.x) + "\n");
+}

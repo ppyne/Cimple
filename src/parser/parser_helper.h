@@ -8,12 +8,18 @@
 /* -----------------------------------------------------------------------
  * Parser state — passed as extra argument to Lemon
  * ----------------------------------------------------------------------- */
+typedef struct ParseStructName {
+    char *name;
+    struct ParseStructName *next;
+} ParseStructName;
+
 typedef struct {
     AstNode  *root;     /* result of the parse */
     int       error;    /* non-zero if a parse error occurred */
     TokenType last_token_type;
     int       last_token_line;
     int       last_token_col;
+    ParseStructName *struct_names;
 } ParseState;
 
 /* -----------------------------------------------------------------------
@@ -41,5 +47,8 @@ const char *token_type_name(TokenType t);
  * Parser entry point (wraps Lemon-generated Parse())
  * ----------------------------------------------------------------------- */
 AstNode *parse_program(const char *source);
+int parse_state_has_struct(const ParseState *ps, const char *name);
+void parse_state_add_struct(ParseState *ps, const char *name);
+void parse_state_free(ParseState *ps);
 
 #endif /* CIMPLE_PARSER_HELPER_H */

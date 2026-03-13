@@ -1,0 +1,25 @@
+structure Vec2 {
+    float x = 0.0;
+    float y = 0.0;
+}
+
+structure Entity {
+    Vec2 pos = clone Vec2;
+    void move(float dx, float dy) {
+        self.pos.x = self.pos.x + dx;
+        self.pos.y = self.pos.y + dy;
+    }
+}
+
+structure Player : Entity {
+    void move(float dx, float dy) {
+        super.move(dx, dy);
+        self.pos.x = self.pos.x + 1.0;
+    }
+}
+
+void main() {
+    Player p = clone Player;
+    p.move(2.0, 3.0);
+    print(toString(p.pos.x) + "," + toString(p.pos.y) + "\n");
+}

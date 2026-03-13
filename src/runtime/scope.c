@@ -31,6 +31,7 @@ void scope_free(Scope *s) {
         while (sym) {
             Symbol *next = sym->next;
             free(sym->name);
+            free(sym->struct_name);
             value_free(&sym->val);
             free(sym);
             sym = next;
@@ -60,12 +61,13 @@ Symbol *scope_lookup(Scope *s, const char *name) {
 }
 
 Symbol *scope_define(Scope *s, const char *name, CimpleType type,
-                     int line, int col) {
+                     const char *struct_name, int line, int col) {
     if (scope_lookup_local(s, name))
         return NULL; /* already defined */
     Symbol *sym  = ALLOC(Symbol);
     sym->name     = cimple_strdup(name);
     sym->type     = type;
+    sym->struct_name = struct_name ? cimple_strdup(struct_name) : NULL;
     sym->val      = value_default(type);
     sym->is_const = 0;
     sym->line     = line;
@@ -95,8 +97,11 @@ void func_table_free(FuncTable *ft) {
         while (sig) {
             FuncSig *next = sig->next;
             free(sig->name);
+            free(sig->ret_struct_name);
             for (int j = 0; j < sig->param_count; j++)
                 free(sig->params[j].name);
+            for (int j = 0; j < sig->param_count; j++)
+                free(sig->params[j].struct_name);
             free(sig->params);
             free(sig);
             sig = next;
@@ -119,6 +124,7 @@ FuncSig *func_table_lookup(FuncTable *ft, const char *name) {
 
 int func_table_define(FuncTable *ft, const char *name,
                       CimpleType ret_type,
+                      const char *ret_struct_name,
                       FuncParam *params, int param_count,
                       int line, int col) {
     if (func_table_lookup(ft, name))
@@ -126,11 +132,14 @@ int func_table_define(FuncTable *ft, const char *name,
     FuncSig *sig   = ALLOC(FuncSig);
     sig->name      = cimple_strdup(name);
     sig->ret_type  = ret_type;
+    sig->ret_struct_name = ret_struct_name ? cimple_strdup(ret_struct_name) : NULL;
     sig->param_count = param_count;
     sig->params    = ALLOC_N(FuncParam, param_count);
     for (int i = 0; i < param_count; i++) {
         sig->params[i].name = cimple_strdup(params[i].name);
         sig->params[i].type = params[i].type;
+        sig->params[i].struct_name = params[i].struct_name
+            ? cimple_strdup(params[i].struct_name) : NULL;
     }
     sig->line      = line;
     sig->col       = col;

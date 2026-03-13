@@ -8,15 +8,21 @@
  * Runtime value
  * ----------------------------------------------------------------------- */
 
-/* Dynamic array (used for int[], float[], bool[], string[] at runtime). */
+typedef struct Value Value;
+typedef struct StructFieldVal StructFieldVal;
+typedef struct StructVal StructVal;
+
+/* Dynamic array (used for arrays at runtime). */
 typedef struct {
     CimpleType elem_type;
+    char      *struct_name;
     union {
         int64_t *ints;
         double  *floats;
         int     *bools;
         char   **strings;
         unsigned char *bytes;
+        struct StructVal **structs;
     } data;
     int count;
     int cap;
@@ -29,8 +35,6 @@ typedef struct {
     char  *err;
 } ExecResultVal;
 
-typedef struct Value Value;
-
 struct Value {
     CimpleType type;
     union {
@@ -39,8 +43,22 @@ struct Value {
         int           b;
         char         *s;
         ArrayVal     *arr;
+        StructVal    *st;
         ExecResultVal exec;
     } u;
+};
+
+struct StructFieldVal {
+    char      *name;
+    CimpleType type;
+    char      *struct_name;
+    Value      value;
+};
+
+struct StructVal {
+    char           *struct_name;
+    StructFieldVal *fields;
+    int             field_count;
 };
 
 /* -----------------------------------------------------------------------
@@ -54,6 +72,7 @@ Value  val_string(const char *s);      /* duplicates s */
 Value  val_string_own(char *s);        /* takes ownership */
 Value  val_void(void);
 Value  val_array(CimpleType elem_type);
+Value  val_struct(const char *struct_name, int field_count);
 Value  val_exec(int status, char *out, char *err);
 
 /* -----------------------------------------------------------------------

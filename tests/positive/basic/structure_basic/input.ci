@@ -1,0 +1,19 @@
+structure Point {
+    float x = 1.0;
+    float y = 2.0;
+
+    void move(float dx, float dy) {
+        self.x = self.x + dx;
+        self.y = self.y + dy;
+    }
+
+    float sum() {
+        return self.x + self.y;
+    }
+}
+
+void main() {
+    Point p = clone Point;
+    p.move(3.0, 4.0);
+    print(toString(p.x) + "," + toString(p.y) + "," + toString(p.sum()) + "\n");
+}

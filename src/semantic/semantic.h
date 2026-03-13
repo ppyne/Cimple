@@ -4,11 +4,14 @@
 #include "../ast/ast.h"
 #include "../runtime/scope.h"
 
+typedef struct StructTable StructTable;
+
 /* -----------------------------------------------------------------------
  * Semantic analysis context
  * ----------------------------------------------------------------------- */
 typedef struct {
     FuncTable *funcs;         /* all declared functions              */
+    StructTable *structs;     /* all declared structures             */
     Scope     *global_scope;  /* global variable scope               */
     Scope     *current;       /* current innermost scope             */
 
@@ -16,6 +19,9 @@ typedef struct {
     CimpleType  current_ret;  /* return type of the function being checked */
     int         in_loop;      /* depth counter for break/continue checking */
     int         has_return;   /* used during path analysis                */
+    const char *current_struct_name;
+    const char *current_base_name;
+    int         in_method;
 } SemCtx;
 
 /* -----------------------------------------------------------------------

@@ -26,6 +26,17 @@ typedef struct {
     int bucket_count;
 } FuncDeclTable;
 
+typedef struct StructDeclEntry {
+    const char *name;
+    AstNode *decl;
+    struct StructDeclEntry *next;
+} StructDeclEntry;
+
+typedef struct {
+    StructDeclEntry **buckets;
+    int bucket_count;
+} StructDeclTable;
+
 /* -----------------------------------------------------------------------
  * Interpreter context
  * ----------------------------------------------------------------------- */
@@ -34,10 +45,13 @@ typedef struct {
     Scope      *global;
     FuncTable  *funcs;      /* user-defined function table */
     FuncDeclTable *func_decls;
+    StructDeclTable *struct_decls;
 
     /* Current execution state */
     Signal      signal;
     Value       ret_val;    /* value set by SIGNAL_RETURN */
+    const char *current_method_struct;
+    const char *current_method_base;
 } Interp;
 
 /* -----------------------------------------------------------------------

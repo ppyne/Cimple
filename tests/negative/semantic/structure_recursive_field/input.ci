@@ -1,0 +1,5 @@
+structure A {
+    A inner = clone A;
+}
+
+void main() {}

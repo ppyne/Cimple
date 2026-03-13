@@ -22,6 +22,7 @@ This document is the authoritative user-facing manual for the current reference 
 7. [Functions](#7-functions)
 8. [Standard Library](#8-standard-library)
 9. [Imports](#9-imports)
+10. [Structures](#structures)
 10. [Predefined Constants](#10-predefined-constants)
 11. [Scoping Rules](#11-scoping-rules)
 12. [Keywords](#12-keywords)
@@ -1547,6 +1548,92 @@ int addThree(int n) {
 // math/more.ci
 int addOne(int n) { return n + 1; }
 ```
+
+---
+
+## Structures
+
+Structures are user-defined composite types with fields and methods.
+
+```c
+structure Point {
+    float x = 0.0;
+    float y = 0.0;
+
+    void move(float dx, float dy) {
+        self.x = self.x + dx;
+        self.y = self.y + dy;
+    }
+}
+```
+
+Rules:
+
+- a structure name must start with an uppercase letter
+- fields may have explicit defaults; scalar and array fields otherwise use their implicit default
+- a field of structure type must be initialized with `clone StructureName`
+- methods are declared inside the structure body
+- `self` is only available inside structure methods
+- `super.method(...)` is only available inside a derived structure method
+- `super.field` is invalid; fields are always accessed through `self`
+
+### Cloning
+
+Use `clone` to create a new instance:
+
+```c
+Point p = clone Point;
+```
+
+Each `clone` creates an independent instance initialized from the structure defaults.
+
+### Inheritance
+
+Use `:` for single inheritance:
+
+```c
+structure Animal {
+    string name = "animal";
+    void speak() { print("...\n"); }
+}
+
+structure Dog : Animal {
+    string name = "dog";
+
+    void speak() {
+        super.speak();
+        print(self.name + "\n");
+    }
+}
+```
+
+Derived structures inherit base fields and methods. A field may be redefined only with the
+same type. A method override must keep the exact same signature.
+
+### Structures in functions
+
+- structure arguments are passed by reference
+- returning a structure from a global function returns a copy
+
+```c
+void resetPoint(Point p) {
+    p.x = 0.0;
+    p.y = 0.0;
+}
+```
+
+### Arrays of structures
+
+`StructureName[]` works like the built-in array types:
+
+```c
+Point[] pts = [];
+arrayPush(pts, clone Point);
+pts[0].x = 3.0;
+```
+
+`arrayGet(pts, i)` returns a copy. To mutate the stored element in place, use direct indexed
+member access such as `pts[i].x = 3.0`.
 
 ---
 

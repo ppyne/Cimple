@@ -1,0 +1,16 @@
+structure Animal {
+    string name = "animal";
+    void speak() { print("...\n"); }
+}
+structure Dog : Animal {
+    string name = "dog";
+    void speak() {
+        super.speak();
+        print(self.name + "\n");
+    }
+}
+void main() {
+    Dog d = clone Dog;
+    print(d.name + "\n");
+    d.speak();
+}

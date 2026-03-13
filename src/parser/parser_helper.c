@@ -9,13 +9,39 @@ void *ParseAlloc(void *(*mallocProc)(size_t));
 void Parse(void *parser, int tokenType, Token token, ParseState *ps);
 void ParseFree(void *parser, void (*freeProc)(void *));
 
+int parse_state_has_struct(const ParseState *ps, const char *name) {
+    for (ParseStructName *it = ps->struct_names; it; it = it->next)
+        if (strcmp(it->name, name) == 0) return 1;
+    return 0;
+}
+
+void parse_state_add_struct(ParseState *ps, const char *name) {
+    if (parse_state_has_struct(ps, name)) return;
+    ParseStructName *entry = ALLOC(ParseStructName);
+    entry->name = cimple_strdup(name);
+    entry->next = ps->struct_names;
+    ps->struct_names = entry;
+}
+
+void parse_state_free(ParseState *ps) {
+    ParseStructName *it = ps->struct_names;
+    while (it) {
+        ParseStructName *next = it->next;
+        free(it->name);
+        free(it);
+        it = next;
+    }
+    ps->struct_names = NULL;
+}
+
 /* -----------------------------------------------------------------------
  * Parse driver
  * Feeds tokens produced by the lexer into the Lemon-generated parser.
  * ----------------------------------------------------------------------- */
 AstNode *parse_program(const char *source) {
     Lexer      lex;
-    ParseState ps = { NULL, 0, TOK_EOF, 0, 0 };
+    ParseState ps = { NULL, 0, TOK_EOF, 0, 0, NULL };
+    TokenType prev_type = TOK_EOF;
 
     lexer_init(&lex, source);
 
@@ -23,6 +49,12 @@ AstNode *parse_program(const char *source) {
 
     for (;;) {
         Token tok = lexer_next(&lex);
+
+        if (prev_type == TOK_KW_STRUCTURE && tok.type == TOK_IDENT)
+            parse_state_add_struct(&ps, tok.v.sval);
+        if (prev_type != TOK_KW_STRUCTURE &&
+            tok.type == TOK_IDENT && parse_state_has_struct(&ps, tok.v.sval))
+            tok.type = TOK_TYPE_IDENT;
 
         if (tok.type == TOK_ERROR)
             break;
@@ -32,6 +64,7 @@ AstNode *parse_program(const char *source) {
         ps.last_token_type = tok.type;
         ps.last_token_line = tok.line;
         ps.last_token_col = tok.col;
+        prev_type = tok.type;
 
         if (tok.type == TOK_EOF) {
             break;
@@ -39,5 +72,6 @@ AstNode *parse_program(const char *source) {
     }
 
     ParseFree(parser, free);
+    parse_state_free(&ps);
     return ps.root;
 }

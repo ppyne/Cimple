@@ -1,0 +1,11 @@
+structure Point {
+    float x = 0.0;
+}
+void main() {
+    Point[] pts = [];
+    arrayPush(pts, clone Point);
+    pts[0].x = 5.0;
+    Point p = arrayGet(pts, 0);
+    p.x = 7.0;
+    print(toString(pts[0].x) + "," + toString(p.x) + "," + toString(count(pts)) + "\n");
+}

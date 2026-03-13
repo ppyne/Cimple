@@ -1,0 +1,13 @@
+structure Color {
+    float r = 1.0;
+}
+
+structure Pixel {
+    Color color = clone Color;
+}
+
+void main() {
+    Pixel px = clone Pixel;
+    px.color.r = 0.5;
+    print(toString(px.color.r) + "\n");
+}

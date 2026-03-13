@@ -34,9 +34,22 @@ Value val_array(CimpleType elem_type) {
     r.type  = type_make_array(elem_type);
     r.u.arr = ALLOC(ArrayVal);
     r.u.arr->elem_type = elem_type;
+    r.u.arr->struct_name = NULL;
     r.u.arr->count     = 0;
     r.u.arr->cap       = 0;
     r.u.arr->data.ints = NULL;
+    return r;
+}
+
+Value val_struct(const char *struct_name, int field_count) {
+    Value r;
+    r.type = TYPE_STRUCT;
+    r.u.st = ALLOC(StructVal);
+    r.u.st->struct_name = cimple_strdup(struct_name);
+    r.u.st->field_count = field_count;
+    r.u.st->fields = field_count ? ALLOC_N(StructFieldVal, field_count) : NULL;
+    if (field_count > 0)
+        memset(r.u.st->fields, 0, (size_t)field_count * sizeof(StructFieldVal));
     return r;
 }
 
@@ -64,6 +77,7 @@ Value value_default(CimpleType t) {
     case TYPE_BOOL_ARR:  return val_array(TYPE_BOOL);
     case TYPE_STR_ARR:   return val_array(TYPE_STRING);
     case TYPE_BYTE_ARR:  return val_array(TYPE_BYTE);
+    case TYPE_STRUCT_ARR: return val_array(TYPE_STRUCT);
     default: { Value v; v.type = TYPE_VOID; v.u.i = 0; return v; }
     }
 }
@@ -96,6 +110,10 @@ static void arr_ensure(ArrayVal *a, int new_count) {
         a->data.bytes = (unsigned char *)cimple_realloc(a->data.bytes,
                                                    (size_t)new_cap * sizeof(unsigned char));
         break;
+    case TYPE_STRUCT:
+        a->data.structs = (StructVal **)cimple_realloc(a->data.structs,
+                                                   (size_t)new_cap * sizeof(StructVal *));
+        break;
     default: break;
     }
     a->cap = new_cap;
@@ -109,6 +127,7 @@ void array_push(ArrayVal *a, Value v) {
     case TYPE_BOOL:   a->data.bools[a->count]   = v.u.b; break;
     case TYPE_STRING: a->data.strings[a->count] = cimple_strdup(v.u.s); break;
     case TYPE_BYTE:   a->data.bytes[a->count]   = (unsigned char)v.u.i; break;
+    case TYPE_STRUCT: a->data.structs[a->count] = value_copy(v).u.st; break;
     default: break;
     }
     a->count++;
@@ -134,6 +153,11 @@ void array_push_owned(ArrayVal *a, Value *v) {
     case TYPE_BYTE:
         a->data.bytes[a->count++] = (unsigned char)v->u.i;
         break;
+    case TYPE_STRUCT:
+        a->data.structs[a->count++] = v->u.st;
+        v->u.st = NULL;
+        v->type = TYPE_VOID;
+        break;
     default:
         break;
     }
@@ -153,6 +177,9 @@ Value array_pop(ArrayVal *a, int line, int col) {
         return val_string_own(s);
     }
     case TYPE_BYTE:   return val_byte(a->data.bytes[a->count]);
+    case TYPE_STRUCT: {
+        Value v; v.type = TYPE_STRUCT; v.u.st = a->data.structs[a->count]; a->data.structs[a->count] = NULL; return v;
+    }
     default: return val_void();
     }
 }
@@ -189,6 +216,11 @@ void array_insert(ArrayVal *a, int idx, Value v, int line, int col) {
                 (size_t)(a->count - idx) * sizeof(unsigned char));
         a->data.bytes[idx] = (unsigned char)v.u.i;
         break;
+    case TYPE_STRUCT:
+        memmove(&a->data.structs[idx + 1], &a->data.structs[idx],
+                (size_t)(a->count - idx) * sizeof(StructVal *));
+        a->data.structs[idx] = value_copy(v).u.st;
+        break;
     default: break;
     }
     a->count++;
@@ -201,6 +233,10 @@ void array_remove(ArrayVal *a, int idx, int line, int col) {
                       idx, a->count);
     if (a->elem_type == TYPE_STRING)
         free(a->data.strings[idx]);
+    if (a->elem_type == TYPE_STRUCT) {
+        Value tmp; tmp.type = TYPE_STRUCT; tmp.u.st = a->data.structs[idx];
+        value_free(&tmp);
+    }
     switch (a->elem_type) {
     case TYPE_INT:
         memmove(&a->data.ints[idx], &a->data.ints[idx + 1],
@@ -222,6 +258,10 @@ void array_remove(ArrayVal *a, int idx, int line, int col) {
         memmove(&a->data.bytes[idx], &a->data.bytes[idx + 1],
                 (size_t)(a->count - idx - 1) * sizeof(unsigned char));
         break;
+    case TYPE_STRUCT:
+        memmove(&a->data.structs[idx], &a->data.structs[idx + 1],
+                (size_t)(a->count - idx - 1) * sizeof(StructVal *));
+        break;
     default: break;
     }
     a->count--;
@@ -238,6 +278,10 @@ Value array_get(ArrayVal *a, int idx, int line, int col) {
     case TYPE_BOOL:   return val_bool(a->data.bools[idx]);
     case TYPE_STRING: return val_string(a->data.strings[idx]);
     case TYPE_BYTE:   return val_byte(a->data.bytes[idx]);
+    case TYPE_STRUCT: {
+        Value v; v.type = TYPE_STRUCT; v.u.st = a->data.structs[idx];
+        return value_copy(v);
+    }
     default:          return val_void();
     }
 }
@@ -256,6 +300,12 @@ void array_set(ArrayVal *a, int idx, Value v, int line, int col) {
         a->data.strings[idx] = cimple_strdup(v.u.s);
         break;
     case TYPE_BYTE:   a->data.bytes[idx] = (unsigned char)v.u.i; break;
+    case TYPE_STRUCT: {
+        Value tmp; tmp.type = TYPE_STRUCT; tmp.u.st = a->data.structs[idx];
+        value_free(&tmp);
+        a->data.structs[idx] = value_copy(v).u.st;
+        break;
+    }
     default: break;
     }
 }
@@ -284,6 +334,14 @@ void array_set_owned(ArrayVal *a, int idx, Value *v, int line, int col) {
     case TYPE_BYTE:
         a->data.bytes[idx] = (unsigned char)v->u.i;
         break;
+    case TYPE_STRUCT: {
+        Value tmp; tmp.type = TYPE_STRUCT; tmp.u.st = a->data.structs[idx];
+        value_free(&tmp);
+        a->data.structs[idx] = v->u.st;
+        v->u.st = NULL;
+        v->type = TYPE_VOID;
+        break;
+    }
     default:
         break;
     }
@@ -319,11 +377,30 @@ Value value_copy(Value v) {
         case TYPE_BYTE:
             memcpy(out->data.bytes, src->data.bytes, (size_t)src->count * sizeof(unsigned char));
             break;
+        case TYPE_STRUCT:
+            out->struct_name = src->struct_name ? cimple_strdup(src->struct_name) : NULL;
+            for (int i = 0; i < src->count; i++) {
+                Value tmp; tmp.type = TYPE_STRUCT; tmp.u.st = src->data.structs[i];
+                out->data.structs[i] = value_copy(tmp).u.st;
+            }
+            break;
         default:
             out->count = 0;
             break;
         }
         return dst;
+    }
+    if (v.type == TYPE_STRUCT) {
+        StructVal *src = v.u.st;
+        Value out = val_struct(src->struct_name, src->field_count);
+        for (int i = 0; i < src->field_count; i++) {
+            out.u.st->fields[i].name = cimple_strdup(src->fields[i].name);
+            out.u.st->fields[i].type = src->fields[i].type;
+            out.u.st->fields[i].struct_name = src->fields[i].struct_name
+                ? cimple_strdup(src->fields[i].struct_name) : NULL;
+            out.u.st->fields[i].value = value_copy(src->fields[i].value);
+        }
+        return out;
     }
     if (v.type == TYPE_EXEC_RESULT) {
         return val_exec(v.u.exec.status,
@@ -348,10 +425,30 @@ void value_free(Value *v) {
                 for (int i = 0; i < a->count; i++)
                     free(a->data.strings[i]);
             }
+            if (a->elem_type == TYPE_STRUCT) {
+                for (int i = 0; i < a->count; i++) {
+                    Value tmp; tmp.type = TYPE_STRUCT; tmp.u.st = a->data.structs[i];
+                    value_free(&tmp);
+                }
+            }
+            free(a->struct_name);
             free(a->data.ints);
             free(a);
         }
         v->u.arr = NULL;
+    } else if (v->type == TYPE_STRUCT) {
+        StructVal *st = v->u.st;
+        if (st) {
+            free(st->struct_name);
+            for (int i = 0; i < st->field_count; i++) {
+                free(st->fields[i].name);
+                free(st->fields[i].struct_name);
+                value_free(&st->fields[i].value);
+            }
+            free(st->fields);
+            free(st);
+        }
+        v->u.st = NULL;
     } else if (v->type == TYPE_EXEC_RESULT) {
         free(v->u.exec.out);
         free(v->u.exec.err);
@@ -381,6 +478,8 @@ char *value_to_display(Value v) {
     case TYPE_BYTE:
         snprintf(buf, sizeof(buf), "%u", (unsigned)v.u.i);
         return cimple_strdup(buf);
+    case TYPE_STRUCT:
+        return cimple_strdup(v.u.st && v.u.st->struct_name ? v.u.st->struct_name : "<struct>");
     default:
         return cimple_strdup("<void>");
     }

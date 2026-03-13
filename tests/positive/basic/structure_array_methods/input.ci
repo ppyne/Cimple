@@ -1,0 +1,14 @@
+structure Counter {
+    int value = 0;
+    void inc() { self.value = self.value + 1; }
+}
+
+void main() {
+    Counter[] items = [];
+    arrayPush(items, clone Counter);
+    items[0].inc();
+    items[0].inc();
+    Counter copy = arrayGet(items, 0);
+    copy.inc();
+    print(toString(items[0].value) + "," + toString(copy.value) + "\n");
+}

@@ -1,0 +1,9 @@
+structure Base {
+    int x = 1;
+}
+structure Child : Base {
+    int get() {
+        return super.x;
+    }
+}
+void main() {}
