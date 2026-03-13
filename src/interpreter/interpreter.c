@@ -1122,9 +1122,14 @@ static Value call_method(Interp *ip, Value *base, const char *method_name,
     ip->signal = SIGNAL_NONE;
     ip->ret_val = val_void();
     ip->current_method_struct = owner;
-    ip->current_method_base = owner
-        ? (find_struct_decl(ip, owner)->u.struct_decl.base_name)
-        : NULL;
+    if (owner) {
+        AstNode *owner_decl = find_struct_decl(ip, owner);
+        ip->current_method_base = owner_decl
+            ? owner_decl->u.struct_decl.base_name
+            : NULL;
+    } else {
+        ip->current_method_base = NULL;
+    }
 
     NodeList *stmts = &method->u.func_decl.body->u.block.stmts;
     for (int i = 0; i < stmts->count && ip->signal != SIGNAL_RETURN; i++)
