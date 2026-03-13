@@ -135,6 +135,44 @@ static void struct_decl_table_free(StructDeclTable *table) {
     free(table);
 }
 
+static UnionDeclTable *union_decl_table_build(AstNode *program) {
+    NodeList *decls = &program->u.program.decls;
+    int count = 0;
+    for (int i = 0; i < decls->count; i++) {
+        if (decls->items[i]->kind == NODE_UNION_DECL) count++;
+    }
+    int bucket_count = 32;
+    while (bucket_count < count * 2) bucket_count <<= 1;
+    UnionDeclTable *table = ALLOC(UnionDeclTable);
+    table->bucket_count = bucket_count;
+    table->buckets = ALLOC_N(UnionDeclEntry *, (size_t)bucket_count);
+    for (int i = 0; i < decls->count; i++) {
+        AstNode *decl = decls->items[i];
+        if (decl->kind != NODE_UNION_DECL) continue;
+        int bucket = (int)(hash_name(decl->u.union_decl.name) & (unsigned long)(bucket_count - 1));
+        UnionDeclEntry *entry = ALLOC(UnionDeclEntry);
+        entry->name = decl->u.union_decl.name;
+        entry->decl = decl;
+        entry->next = table->buckets[bucket];
+        table->buckets[bucket] = entry;
+    }
+    return table;
+}
+
+static void union_decl_table_free(UnionDeclTable *table) {
+    if (!table) return;
+    for (int i = 0; i < table->bucket_count; i++) {
+        UnionDeclEntry *entry = table->buckets[i];
+        while (entry) {
+            UnionDeclEntry *next = entry->next;
+            free(entry);
+            entry = next;
+        }
+    }
+    free(table->buckets);
+    free(table);
+}
+
 /* -----------------------------------------------------------------------
  * Predefined constants
  * ----------------------------------------------------------------------- */
@@ -162,6 +200,15 @@ static AstNode *find_struct_decl(Interp *ip, const char *name) {
     if (!ip->struct_decls) return NULL;
     int bucket = (int)(hash_name(name) & (unsigned long)(ip->struct_decls->bucket_count - 1));
     for (StructDeclEntry *entry = ip->struct_decls->buckets[bucket]; entry; entry = entry->next) {
+        if (strcmp(entry->name, name) == 0) return entry->decl;
+    }
+    return NULL;
+}
+
+static AstNode *find_union_decl(Interp *ip, const char *name) {
+    if (!ip->union_decls) return NULL;
+    int bucket = (int)(hash_name(name) & (unsigned long)(ip->union_decls->bucket_count - 1));
+    for (UnionDeclEntry *entry = ip->union_decls->buckets[bucket]; entry; entry = entry->next) {
         if (strcmp(entry->name, name) == 0) return entry->decl;
     }
     return NULL;
@@ -241,6 +288,30 @@ static void struct_fill_defaults(Interp *ip, StructVal *out, AstNode *decl, Scop
     }
 }
 
+static int union_member_index(UnionVal *un, const char *name) {
+    if (!un) return -1;
+    for (int i = 0; i < un->member_count; i++) {
+        if (un->member_names[i] && strcmp(un->member_names[i], name) == 0) return i;
+    }
+    return -1;
+}
+
+static Value create_union_instance(Interp *ip, const char *name) {
+    AstNode *decl = find_union_decl(ip, name);
+    if (!decl) return val_void();
+    int count = decl->u.union_decl.members.count;
+    Value out = val_union(name, count);
+    for (int i = 0; i < count; i++) {
+        AstNode *m = decl->u.union_decl.members.items[i];
+        out.u.un->member_names[i] = cimple_strdup(m->u.struct_field.name);
+        out.u.un->member_types[i] = m->u.struct_field.type;
+        out.u.un->member_struct_names[i] = m->u.struct_field.struct_name
+            ? cimple_strdup(m->u.struct_field.struct_name) : NULL;
+        out.u.un->members[i] = value_default(m->u.struct_field.type);
+    }
+    return out;
+}
+
 static Value clone_struct_instance(Interp *ip, const char *name, Scope *scope, int line, int col) {
     AstNode *decl = find_struct_decl(ip, name);
     if (!decl) error_runtime(line, col, "Unknown structure '%s'", name);
@@ -271,19 +342,34 @@ static Value *resolve_value_lvalue(Interp *ip, Scope *scope, AstNode *n, int lin
             error_runtime(line, col,
                           "Array index out of bounds (Index: %d   Array size: %d)",
                           index, base->u.arr->count);
-        if (base->u.arr->elem_type != TYPE_STRUCT)
-            error_runtime(line, col, "Indexed lvalue is not a structure");
         static Value slot;
-        slot.type = TYPE_STRUCT;
-        slot.u.st = base->u.arr->data.structs[index];
+        if (base->u.arr->elem_type == TYPE_STRUCT) {
+            slot.type = TYPE_STRUCT;
+            slot.u.st = base->u.arr->data.structs[index];
+        } else if (base->u.arr->elem_type == TYPE_UNION) {
+            slot.type = TYPE_UNION;
+            slot.u.un = base->u.arr->data.unions[index];
+        } else {
+            error_runtime(line, col, "Indexed lvalue is not a structure or union");
+        }
         return &slot;
     }
     if (n->kind == NODE_MEMBER) {
         Value *base = resolve_value_lvalue(ip, scope, n->u.member.base, line, col);
-        if (base->type != TYPE_STRUCT) error_runtime(line, col, "Member access requires a structure instance");
-        StructFieldVal *field = struct_field_lookup(base->u.st, n->u.member.name);
-        if (!field) error_runtime(line, col, "Unknown field '%s'", n->u.member.name);
-        return &field->value;
+        if (base->type == TYPE_STRUCT) {
+            StructFieldVal *field = struct_field_lookup(base->u.st, n->u.member.name);
+            if (!field) error_runtime(line, col, "Unknown field '%s'", n->u.member.name);
+            return &field->value;
+        }
+        if (base->type == TYPE_UNION) {
+            if (strcmp(n->u.member.name, "kind") == 0)
+                error_runtime(line, col, "Cannot assign to union kind field");
+            int idx = union_member_index(base->u.un, n->u.member.name);
+            if (idx < 0) error_runtime(line, col, "Unknown field '%s'", n->u.member.name);
+            base->u.un->kind = idx;
+            return &base->u.un->members[idx];
+        }
+        error_runtime(line, col, "Member access requires a structure instance");
     }
     error_runtime(line, col, "Invalid lvalue");
     return NULL;
@@ -538,13 +624,47 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
     }
 
     case NODE_MEMBER: {
+        if (n->u.member.base->kind == NODE_IDENT) {
+            AstNode *union_decl = find_union_decl(ip, n->u.member.base->u.ident.name);
+            if (union_decl) {
+                char upper_name[128];
+                size_t k = 0;
+                for (const char *p = n->u.member.name; *p && k + 1 < sizeof(upper_name); p++) {
+                    char c = *p;
+                    upper_name[k++] = (char)((c >= 'a' && c <= 'z') ? (c - 'a' + 'A') : c);
+                }
+                upper_name[k] = '\0';
+                for (int i = 0; i < union_decl->u.union_decl.members.count; i++) {
+                    AstNode *m = union_decl->u.union_decl.members.items[i];
+                    if (strcmp(m->u.struct_field.name, n->u.member.name) == 0 ||
+                        strcmp(m->u.struct_field.name, upper_name) == 0)
+                        return val_int(i);
+                }
+            }
+        }
         Value base = eval_expr(ip, scope, n->u.member.base);
-        if (base.type != TYPE_STRUCT)
+        Value out;
+        if (base.type == TYPE_STRUCT) {
+            StructFieldVal *field = struct_field_lookup(base.u.st, n->u.member.name);
+            if (!field)
+                error_runtime(n->line, n->col, "Unknown field '%s'", n->u.member.name);
+            out = value_copy(field->value);
+        } else if (base.type == TYPE_UNION) {
+            if (strcmp(n->u.member.name, "kind") == 0) {
+                out = val_int(base.u.un->kind);
+            } else {
+                int idx = union_member_index(base.u.un, n->u.member.name);
+                if (idx < 0)
+                    error_runtime(n->line, n->col, "Unknown field '%s'", n->u.member.name);
+                if (base.u.un->kind != idx)
+                    error_runtime(n->line, n->col,
+                                  "Union member '%s' is not active", n->u.member.name);
+                out = value_copy(base.u.un->members[idx]);
+            }
+        } else {
             error_runtime(n->line, n->col, "Member access requires a structure instance");
-        StructFieldVal *field = struct_field_lookup(base.u.st, n->u.member.name);
-        if (!field)
-            error_runtime(n->line, n->col, "Unknown field '%s'", n->u.member.name);
-        Value out = value_copy(field->value);
+            out = val_void();
+        }
         if (n->u.member.base->kind != NODE_SELF && n->u.member.base->kind != NODE_SUPER)
             value_free(&base);
         return out;
@@ -641,7 +761,9 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
                 v.type = t;
             }
         } else {
-            v = value_default(t);
+            v = (t == TYPE_UNION && n->u.var_decl.struct_name)
+                ? create_union_instance(ip, n->u.var_decl.struct_name)
+                : value_default(t);
         }
 
         Symbol *sym = scope_define(scope, name, t,
@@ -725,6 +847,40 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
             if (ip->signal == SIGNAL_CONTINUE) { ip->signal = SIGNAL_NONE; continue; }
             if (ip->signal == SIGNAL_RETURN) break;
         }
+        break;
+    }
+
+    case NODE_SWITCH: {
+        Value cond = eval_expr(ip, scope, n->u.switch_stmt.expr);
+        int matched = 0;
+        AstNode *default_case = NULL;
+        for (int i = 0; i < n->u.switch_stmt.cases.count; i++) {
+            AstNode *c = n->u.switch_stmt.cases.items[i];
+            if (c->kind == NODE_DEFAULT_CASE) {
+                default_case = c;
+                continue;
+            }
+            Value case_val = eval_expr(ip, scope, c->u.case_stmt.value);
+            int same = (cond.type == TYPE_INT || cond.type == TYPE_BYTE)
+                ? (cond.u.i == case_val.u.i)
+                : 0;
+            value_free(&case_val);
+            if (!same) continue;
+            matched = 1;
+            Scope *case_scope = scope_new(scope, 0);
+            for (int j = 0; j < c->u.case_stmt.stmts.count && ip->signal == SIGNAL_NONE; j++)
+                exec_stmt(ip, case_scope, c->u.case_stmt.stmts.items[j]);
+            scope_free(case_scope);
+            break;
+        }
+        if (!matched && default_case) {
+            Scope *case_scope = scope_new(scope, 0);
+            for (int j = 0; j < default_case->u.case_stmt.stmts.count && ip->signal == SIGNAL_NONE; j++)
+                exec_stmt(ip, case_scope, default_case->u.case_stmt.stmts.items[j]);
+            scope_free(case_scope);
+        }
+        if (ip->signal == SIGNAL_BREAK) ip->signal = SIGNAL_NONE;
+        value_free(&cond);
         break;
     }
 
@@ -1020,6 +1176,7 @@ int interp_run(AstNode *program, int argc, char **argv) {
     ip.funcs   = NULL;
     ip.func_decls = func_decl_table_build(program);
     ip.struct_decls = struct_decl_table_build(program);
+    ip.union_decls = union_decl_table_build(program);
     ip.signal  = SIGNAL_NONE;
     ip.ret_val = val_void();
     ip.current_method_struct = NULL;
@@ -1063,6 +1220,7 @@ int interp_run(AstNode *program, int argc, char **argv) {
     value_free(&ip.ret_val);
     func_decl_table_free(ip.func_decls);
     struct_decl_table_free(ip.struct_decls);
+    union_decl_table_free(ip.union_decls);
     scope_free(ip.global);
 
     return exit_code;

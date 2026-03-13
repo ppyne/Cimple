@@ -48,6 +48,7 @@ const char *token_type_name(TokenType t);
  * ----------------------------------------------------------------------- */
 AstNode *parse_program(const char *source);
 int parse_state_has_struct(const ParseState *ps, const char *name);
+int parse_state_has_type_name(const ParseState *ps, const char *name);
 void parse_state_add_struct(ParseState *ps, const char *name);
 void parse_state_free(ParseState *ps);
 

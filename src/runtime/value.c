@@ -60,6 +60,26 @@ Value val_struct(const char *struct_name, int field_count) {
     return r;
 }
 
+Value val_union(const char *union_name, int member_count) {
+    Value r;
+    r.type = TYPE_UNION;
+    r.u.un = ALLOC(UnionVal);
+    r.u.un->union_name = cimple_strdup(union_name);
+    r.u.un->kind = -1;
+    r.u.un->member_count = member_count;
+    r.u.un->members = member_count ? ALLOC_N(Value, member_count) : NULL;
+    r.u.un->member_types = member_count ? ALLOC_N(CimpleType, member_count) : NULL;
+    r.u.un->member_names = member_count ? ALLOC_N(char *, member_count) : NULL;
+    r.u.un->member_struct_names = member_count ? ALLOC_N(char *, member_count) : NULL;
+    for (int i = 0; i < member_count; i++) {
+        r.u.un->members[i] = val_void();
+        r.u.un->member_types[i] = TYPE_UNKNOWN;
+        r.u.un->member_names[i] = NULL;
+        r.u.un->member_struct_names[i] = NULL;
+    }
+    return r;
+}
+
 Value val_exec(int status, char *out, char *err) {
     Value r;
     r.type           = TYPE_EXEC_RESULT;
@@ -80,12 +100,14 @@ Value value_default(CimpleType t) {
     case TYPE_STRING: return val_string("");
     case TYPE_FUNC:   return val_func("");
     case TYPE_BYTE:   return val_byte(0);
+    case TYPE_UNION: { Value v; v.type = TYPE_VOID; v.u.i = 0; return v; }
     case TYPE_INT_ARR:   return val_array(TYPE_INT);
     case TYPE_FLOAT_ARR: return val_array(TYPE_FLOAT);
     case TYPE_BOOL_ARR:  return val_array(TYPE_BOOL);
     case TYPE_STR_ARR:   return val_array(TYPE_STRING);
     case TYPE_BYTE_ARR:  return val_array(TYPE_BYTE);
     case TYPE_STRUCT_ARR: return val_array(TYPE_STRUCT);
+    case TYPE_UNION_ARR: return val_array(TYPE_UNION);
     default: { Value v; v.type = TYPE_VOID; v.u.i = 0; return v; }
     }
 }
@@ -122,6 +144,10 @@ static void arr_ensure(ArrayVal *a, int new_count) {
         a->data.structs = (StructVal **)cimple_realloc(a->data.structs,
                                                    (size_t)new_cap * sizeof(StructVal *));
         break;
+    case TYPE_UNION:
+        a->data.unions = (UnionVal **)cimple_realloc(a->data.unions,
+                                                   (size_t)new_cap * sizeof(UnionVal *));
+        break;
     default: break;
     }
     a->cap = new_cap;
@@ -136,6 +162,7 @@ void array_push(ArrayVal *a, Value v) {
     case TYPE_STRING: a->data.strings[a->count] = cimple_strdup(v.u.s); break;
     case TYPE_BYTE:   a->data.bytes[a->count]   = (unsigned char)v.u.i; break;
     case TYPE_STRUCT: a->data.structs[a->count] = value_copy(v).u.st; break;
+    case TYPE_UNION:  a->data.unions[a->count] = value_copy(v).u.un; break;
     default: break;
     }
     a->count++;
@@ -166,6 +193,11 @@ void array_push_owned(ArrayVal *a, Value *v) {
         v->u.st = NULL;
         v->type = TYPE_VOID;
         break;
+    case TYPE_UNION:
+        a->data.unions[a->count++] = v->u.un;
+        v->u.un = NULL;
+        v->type = TYPE_VOID;
+        break;
     default:
         break;
     }
@@ -187,6 +219,9 @@ Value array_pop(ArrayVal *a, int line, int col) {
     case TYPE_BYTE:   return val_byte(a->data.bytes[a->count]);
     case TYPE_STRUCT: {
         Value v; v.type = TYPE_STRUCT; v.u.st = a->data.structs[a->count]; a->data.structs[a->count] = NULL; return v;
+    }
+    case TYPE_UNION: {
+        Value v; v.type = TYPE_UNION; v.u.un = a->data.unions[a->count]; a->data.unions[a->count] = NULL; return v;
     }
     default: return val_void();
     }
@@ -229,6 +264,11 @@ void array_insert(ArrayVal *a, int idx, Value v, int line, int col) {
                 (size_t)(a->count - idx) * sizeof(StructVal *));
         a->data.structs[idx] = value_copy(v).u.st;
         break;
+    case TYPE_UNION:
+        memmove(&a->data.unions[idx + 1], &a->data.unions[idx],
+                (size_t)(a->count - idx) * sizeof(UnionVal *));
+        a->data.unions[idx] = value_copy(v).u.un;
+        break;
     default: break;
     }
     a->count++;
@@ -243,6 +283,10 @@ void array_remove(ArrayVal *a, int idx, int line, int col) {
         free(a->data.strings[idx]);
     if (a->elem_type == TYPE_STRUCT) {
         Value tmp; tmp.type = TYPE_STRUCT; tmp.u.st = a->data.structs[idx];
+        value_free(&tmp);
+    }
+    if (a->elem_type == TYPE_UNION) {
+        Value tmp; tmp.type = TYPE_UNION; tmp.u.un = a->data.unions[idx];
         value_free(&tmp);
     }
     switch (a->elem_type) {
@@ -270,6 +314,10 @@ void array_remove(ArrayVal *a, int idx, int line, int col) {
         memmove(&a->data.structs[idx], &a->data.structs[idx + 1],
                 (size_t)(a->count - idx - 1) * sizeof(StructVal *));
         break;
+    case TYPE_UNION:
+        memmove(&a->data.unions[idx], &a->data.unions[idx + 1],
+                (size_t)(a->count - idx - 1) * sizeof(UnionVal *));
+        break;
     default: break;
     }
     a->count--;
@@ -288,6 +336,10 @@ Value array_get(ArrayVal *a, int idx, int line, int col) {
     case TYPE_BYTE:   return val_byte(a->data.bytes[idx]);
     case TYPE_STRUCT: {
         Value v; v.type = TYPE_STRUCT; v.u.st = a->data.structs[idx];
+        return value_copy(v);
+    }
+    case TYPE_UNION: {
+        Value v; v.type = TYPE_UNION; v.u.un = a->data.unions[idx];
         return value_copy(v);
     }
     default:          return val_void();
@@ -312,6 +364,12 @@ void array_set(ArrayVal *a, int idx, Value v, int line, int col) {
         Value tmp; tmp.type = TYPE_STRUCT; tmp.u.st = a->data.structs[idx];
         value_free(&tmp);
         a->data.structs[idx] = value_copy(v).u.st;
+        break;
+    }
+    case TYPE_UNION: {
+        Value tmp; tmp.type = TYPE_UNION; tmp.u.un = a->data.unions[idx];
+        value_free(&tmp);
+        a->data.unions[idx] = value_copy(v).u.un;
         break;
     }
     default: break;
@@ -347,6 +405,14 @@ void array_set_owned(ArrayVal *a, int idx, Value *v, int line, int col) {
         value_free(&tmp);
         a->data.structs[idx] = v->u.st;
         v->u.st = NULL;
+        v->type = TYPE_VOID;
+        break;
+    }
+    case TYPE_UNION: {
+        Value tmp; tmp.type = TYPE_UNION; tmp.u.un = a->data.unions[idx];
+        value_free(&tmp);
+        a->data.unions[idx] = v->u.un;
+        v->u.un = NULL;
         v->type = TYPE_VOID;
         break;
     }
@@ -394,6 +460,13 @@ Value value_copy(Value v) {
                 out->data.structs[i] = value_copy(tmp).u.st;
             }
             break;
+        case TYPE_UNION:
+            out->struct_name = src->struct_name ? cimple_strdup(src->struct_name) : NULL;
+            for (int i = 0; i < src->count; i++) {
+                Value tmp; tmp.type = TYPE_UNION; tmp.u.un = src->data.unions[i];
+                out->data.unions[i] = value_copy(tmp).u.un;
+            }
+            break;
         default:
             out->count = 0;
             break;
@@ -409,6 +482,19 @@ Value value_copy(Value v) {
             out.u.st->fields[i].struct_name = src->fields[i].struct_name
                 ? cimple_strdup(src->fields[i].struct_name) : NULL;
             out.u.st->fields[i].value = value_copy(src->fields[i].value);
+        }
+        return out;
+    }
+    if (v.type == TYPE_UNION) {
+        UnionVal *src = v.u.un;
+        Value out = val_union(src->union_name, src->member_count);
+        out.u.un->kind = src->kind;
+        for (int i = 0; i < src->member_count; i++) {
+            out.u.un->member_types[i] = src->member_types[i];
+            out.u.un->member_names[i] = src->member_names[i] ? cimple_strdup(src->member_names[i]) : NULL;
+            out.u.un->member_struct_names[i] = src->member_struct_names[i]
+                ? cimple_strdup(src->member_struct_names[i]) : NULL;
+            out.u.un->members[i] = value_copy(src->members[i]);
         }
         return out;
     }
@@ -441,6 +527,12 @@ void value_free(Value *v) {
                     value_free(&tmp);
                 }
             }
+            if (a->elem_type == TYPE_UNION) {
+                for (int i = 0; i < a->count; i++) {
+                    Value tmp; tmp.type = TYPE_UNION; tmp.u.un = a->data.unions[i];
+                    value_free(&tmp);
+                }
+            }
             free(a->struct_name);
             free(a->data.ints);
             free(a);
@@ -459,6 +551,22 @@ void value_free(Value *v) {
             free(st);
         }
         v->u.st = NULL;
+    } else if (v->type == TYPE_UNION) {
+        UnionVal *un = v->u.un;
+        if (un) {
+            free(un->union_name);
+            for (int i = 0; i < un->member_count; i++) {
+                free(un->member_names[i]);
+                free(un->member_struct_names[i]);
+                value_free(&un->members[i]);
+            }
+            free(un->members);
+            free(un->member_types);
+            free(un->member_names);
+            free(un->member_struct_names);
+            free(un);
+        }
+        v->u.un = NULL;
     } else if (v->type == TYPE_EXEC_RESULT) {
         free(v->u.exec.out);
         free(v->u.exec.err);
@@ -492,6 +600,8 @@ char *value_to_display(Value v) {
         return cimple_strdup(buf);
     case TYPE_STRUCT:
         return cimple_strdup(v.u.st && v.u.st->struct_name ? v.u.st->struct_name : "<struct>");
+    case TYPE_UNION:
+        return cimple_strdup(v.u.un && v.u.un->union_name ? v.u.un->union_name : "<union>");
     default:
         return cimple_strdup("<void>");
     }

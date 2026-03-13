@@ -1,0 +1,34 @@
+union Value {
+    int i;
+    float f;
+    string s;
+}
+
+void main() {
+    Value v;
+    v.i = 42;
+    print(toString(v.kind) + "\n");
+    switch (v.kind) {
+        case Value.i: print(toString(v.i) + "\n"); break;
+        case Value.f: print(toString(v.f) + "\n"); break;
+        case Value.s: print(v.s + "\n"); break;
+        default: print("x\n"); break;
+    }
+
+    v.s = "hello";
+    print(toString(v.kind) + "\n");
+    switch (v.kind) {
+        case Value.i: print(toString(v.i) + "\n"); break;
+        case Value.f: print(toString(v.f) + "\n"); break;
+        case Value.s: print(v.s + "\n"); break;
+        default: print("x\n"); break;
+    }
+
+    Value[] arr = [];
+    arrayPush(arr, v);
+    Value n;
+    n.i = 7;
+    arrayPush(arr, n);
+    print(toString(arr[0].kind) + ":" + arr[0].s + "\n");
+    print(toString(arr[1].kind) + ":" + toString(arr[1].i) + "\n");
+}

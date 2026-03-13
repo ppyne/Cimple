@@ -24,7 +24,9 @@ typedef enum {
     TYPE_EXEC_RESULT = 12,
     TYPE_STRUCT      = 13,
     TYPE_STRUCT_ARR  = 14,
-    TYPE_UNKNOWN     = 15
+    TYPE_UNION       = 15,
+    TYPE_UNION_ARR   = 16,
+    TYPE_UNKNOWN     = 17
 } CimpleType;
 
 typedef struct FuncType {
@@ -35,7 +37,7 @@ typedef struct FuncType {
 
 /* Returns true if t is an array type. */
 static inline int type_is_array(CimpleType t) {
-    return (t >= TYPE_INT_ARR && t <= TYPE_BYTE_ARR) || t == TYPE_STRUCT_ARR;
+    return (t >= TYPE_INT_ARR && t <= TYPE_BYTE_ARR) || t == TYPE_STRUCT_ARR || t == TYPE_UNION_ARR;
 }
 
 /* Returns the element type of an array type. */
@@ -47,6 +49,7 @@ static inline CimpleType type_elem(CimpleType t) {
     case TYPE_STR_ARR:   return TYPE_STRING;
     case TYPE_BYTE_ARR:  return TYPE_BYTE;
     case TYPE_STRUCT_ARR:return TYPE_STRUCT;
+    case TYPE_UNION_ARR: return TYPE_UNION;
     default:             return TYPE_UNKNOWN;
     }
 }
@@ -60,6 +63,7 @@ static inline CimpleType type_make_array(CimpleType t) {
     case TYPE_STRING: return TYPE_STR_ARR;
     case TYPE_BYTE:   return TYPE_BYTE_ARR;
     case TYPE_STRUCT: return TYPE_STRUCT_ARR;
+    case TYPE_UNION:  return TYPE_UNION_ARR;
     default:          return TYPE_UNKNOWN;
     }
 }
@@ -80,6 +84,7 @@ typedef enum {
     NODE_VAR_DECL,       /* variable declaration (scalar or array)      */
     NODE_STRUCT_DECL,    /* structure declaration                       */
     NODE_STRUCT_FIELD,   /* field declaration inside a structure        */
+    NODE_UNION_DECL,     /* union declaration                           */
 
     /* Statements */
     NODE_BLOCK,          /* { stmt* }                                   */
@@ -94,6 +99,9 @@ typedef enum {
     NODE_BREAK,          /* break                                       */
     NODE_CONTINUE,       /* continue                                    */
     NODE_EXPR_STMT,      /* expression used as statement                */
+    NODE_SWITCH,         /* switch(expr) { case ... }                   */
+    NODE_CASE,           /* case value: stmts                           */
+    NODE_DEFAULT_CASE,   /* default: stmts                              */
 
     /* Expressions */
     NODE_INT_LIT,        /* integer literal                             */
@@ -108,6 +116,7 @@ typedef enum {
     NODE_CALL,           /* function call                               */
     NODE_INDEX,          /* expr[expr]                                  */
     NODE_MEMBER,         /* expr.ident / self.ident                     */
+    NODE_KIND_ACCESS,    /* expr.kind on union                          */
     NODE_METHOD_CALL,    /* expr.method(...) / super.method(...)        */
     NODE_CLONE,          /* clone StructName                            */
     NODE_SELF,           /* self                                        */
@@ -202,6 +211,12 @@ struct AstNode {
             AstNode   *init;
         } struct_field;
 
+        /* NODE_UNION_DECL */
+        struct {
+            char    *name;
+            NodeList members;     /* NODE_STRUCT_FIELD reused */
+        } union_decl;
+
         /* NODE_BLOCK */
         struct { NodeList stmts; } block;
 
@@ -257,6 +272,18 @@ struct AstNode {
         /* NODE_EXPR_STMT */
         struct { AstNode *expr; } expr_stmt;
 
+        /* NODE_SWITCH */
+        struct {
+            AstNode *expr;
+            NodeList cases;       /* NODE_CASE / NODE_DEFAULT_CASE */
+        } switch_stmt;
+
+        /* NODE_CASE / NODE_DEFAULT_CASE */
+        struct {
+            AstNode *value;       /* NULL for default */
+            NodeList stmts;
+        } case_stmt;
+
         /* NODE_INT_LIT */
         struct { int64_t value; } int_lit;
 
@@ -311,6 +338,11 @@ struct AstNode {
             AstNode *base;
             char    *name;
         } member;
+
+        /* NODE_KIND_ACCESS */
+        struct {
+            AstNode *base;
+        } kind_access;
 
         /* NODE_METHOD_CALL */
         struct {

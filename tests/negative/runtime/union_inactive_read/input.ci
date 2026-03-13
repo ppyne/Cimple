@@ -1,0 +1,10 @@
+union Value {
+    int i;
+    string s;
+}
+
+void main() {
+    Value v;
+    v.i = 42;
+    print(v.s + "\n");
+}

@@ -15,6 +15,10 @@ int parse_state_has_struct(const ParseState *ps, const char *name) {
     return 0;
 }
 
+int parse_state_has_type_name(const ParseState *ps, const char *name) {
+    return parse_state_has_struct(ps, name);
+}
+
 void parse_state_add_struct(ParseState *ps, const char *name) {
     if (parse_state_has_struct(ps, name)) return;
     ParseStructName *entry = ALLOC(ParseStructName);
@@ -42,7 +46,7 @@ static void precollect_struct_names(ParseState *ps, const char *source) {
         Token tok = lexer_next(&lex);
         if (tok.type == TOK_ERROR)
             break;
-        if (prev_type == TOK_KW_STRUCTURE && tok.type == TOK_IDENT)
+        if ((prev_type == TOK_KW_STRUCTURE || prev_type == TOK_KW_UNION) && tok.type == TOK_IDENT)
             parse_state_add_struct(ps, tok.v.sval);
         prev_type = tok.type;
         if (tok.type == TOK_IDENT || tok.type == TOK_STRING_LIT)
@@ -69,8 +73,8 @@ AstNode *parse_program(const char *source) {
     for (;;) {
         Token tok = lexer_next(&lex);
 
-        if (prev_type != TOK_KW_STRUCTURE &&
-            tok.type == TOK_IDENT && parse_state_has_struct(&ps, tok.v.sval))
+        if (prev_type != TOK_KW_STRUCTURE && prev_type != TOK_KW_UNION &&
+            tok.type == TOK_IDENT && parse_state_has_type_name(&ps, tok.v.sval))
             tok.type = TOK_TYPE_IDENT;
 
         if (tok.type == TOK_ERROR)

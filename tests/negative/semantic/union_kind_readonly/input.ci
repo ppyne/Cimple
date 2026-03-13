@@ -1,0 +1,9 @@
+union Value {
+    int i;
+    string s;
+}
+
+void main() {
+    Value v;
+    v.kind = 1;
+}

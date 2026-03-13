@@ -45,9 +45,11 @@ static int token_starts_statement_or_decl(TokenType t) {
     case TOK_KW_VOID:
     case TOK_KW_EXECRESULT:
     case TOK_KW_STRUCTURE:
+    case TOK_KW_UNION:
     case TOK_KW_SELF:
     case TOK_KW_SUPER:
     case TOK_KW_CLONE:
+    case TOK_SWITCH:
         return 1;
     default:
         return 0;
@@ -249,6 +251,11 @@ decl(D) ::= structure_decl(SD).
     D = SD;
 }
 
+decl(D) ::= union_decl(UD).
+{
+    D = UD;
+}
+
 decl(D) ::= KW_IMPORT STRING_LIT(S) SEMICOLON.
 {
     D = NULL;
@@ -262,6 +269,9 @@ decl(D) ::= KW_IMPORT STRING_LIT(S) SEMICOLON.
 %type structure_header { AstNode * }
 %type structure_member_list { NodeList }
 %type structure_member { AstNode * }
+%type union_decl { AstNode * }
+%type union_member_list { NodeList }
+%type union_member { AstNode * }
 
 structure_header(H) ::= KW_STRUCTURE(T) IDENT(N) LBRACE.
 {
@@ -288,6 +298,37 @@ structure_decl(D) ::= structure_header(H) structure_member_list(M) RBRACE.
 {
     D = H;
     D->u.struct_decl.members = M;
+}
+
+union_decl(D) ::= KW_UNION(T) IDENT(N) LBRACE union_member_list(M) RBRACE.
+{
+    D = ast_new(NODE_UNION_DECL, T.line, T.col);
+    D->u.union_decl.name = cimple_strdup(N.v.sval);
+    D->u.union_decl.members = M;
+    parse_state_add_struct(ps, N.v.sval);
+    free(N.v.sval);
+}
+
+union_member_list(L) ::= .
+{
+    nodelist_init(&L);
+}
+
+union_member_list(L) ::= union_member_list(LL) union_member(M).
+{
+    L = LL;
+    nodelist_push(&L, M);
+}
+
+union_member(M) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
+{
+    M = ast_new(NODE_STRUCT_FIELD, N.line, N.col);
+    M->u.struct_field.name = cimple_strdup(N.v.sval);
+    M->u.struct_field.type = T.type;
+    M->u.struct_field.struct_name = T.struct_name;
+    M->u.struct_field.init = NULL;
+    M->type_name_hint = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    free(N.v.sval);
 }
 
 structure_member_list(L) ::= .
@@ -503,6 +544,8 @@ stmt_list(L) ::= stmt_list(LL) stmt(S).
  * Statements
  * ----------------------------------------------------------------------- */
 %type stmt { AstNode * }
+%type switch_case_list { NodeList }
+%type switch_case { AstNode * }
 
 /* Variable declarations */
 stmt(S) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
@@ -724,6 +767,13 @@ stmt(S) ::= FOR(T) LPAREN for_init(I) expr(C) SEMICOLON for_update(U) RPAREN sim
     S->u.for_stmt.body   = B;
 }
 
+stmt(S) ::= SWITCH(T) LPAREN expr(E) RPAREN LBRACE switch_case_list(CS) RBRACE.
+{
+    S = ast_new(NODE_SWITCH, T.line, T.col);
+    S->u.switch_stmt.expr = E;
+    S->u.switch_stmt.cases = CS;
+}
+
 /* return */
 stmt(S) ::= RETURN(T) SEMICOLON.
 {
@@ -938,6 +988,31 @@ simple_stmt(S) ::= FOR(T) LPAREN for_init(I) expr(C) SEMICOLON for_update(U) RPA
     S->u.for_stmt.body   = B;
 }
 
+switch_case_list(L) ::= .
+{
+    nodelist_init(&L);
+}
+
+switch_case_list(L) ::= switch_case_list(LL) switch_case(C).
+{
+    L = LL;
+    nodelist_push(&L, C);
+}
+
+switch_case(C) ::= CASE(T) expr(V) COLON stmt_list(SL).
+{
+    C = ast_new(NODE_CASE, T.line, T.col);
+    C->u.case_stmt.value = V;
+    C->u.case_stmt.stmts = SL;
+}
+
+switch_case(C) ::= DEFAULT(T) COLON stmt_list(SL).
+{
+    C = ast_new(NODE_DEFAULT_CASE, T.line, T.col);
+    C->u.case_stmt.value = NULL;
+    C->u.case_stmt.stmts = SL;
+}
+
 /* -----------------------------------------------------------------------
  * for-loop init (int i = expr;)
  * ----------------------------------------------------------------------- */
@@ -1093,6 +1168,7 @@ expr(E) ::= STRING_LIT(T).
     free(T.v.sval);
 }
 
+
 expr(E) ::= array_lit(A). { E = A; }
 expr(E) ::= KW_SELF(T).  { E = ast_self(T.line, T.col); }
 expr(E) ::= KW_SUPER(T). { E = ast_super(T.line, T.col); }
@@ -1116,6 +1192,14 @@ expr(E) ::= IDENT(N). [PLUS]
     } else {
         E = ast_ident(N.v.sval, N.line, N.col);
     }
+    free(N.v.sval);
+}
+
+expr(E) ::= TYPE_IDENT(B) DOT IDENT(N).
+{
+    AstNode *base = ast_ident(B.v.sval, B.line, B.col);
+    E = ast_member(base, N.v.sval, N.line, N.col);
+    free(B.v.sval);
     free(N.v.sval);
 }
 

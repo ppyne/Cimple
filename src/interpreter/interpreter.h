@@ -37,6 +37,17 @@ typedef struct {
     int bucket_count;
 } StructDeclTable;
 
+typedef struct UnionDeclEntry {
+    const char *name;
+    AstNode *decl;
+    struct UnionDeclEntry *next;
+} UnionDeclEntry;
+
+typedef struct {
+    UnionDeclEntry **buckets;
+    int bucket_count;
+} UnionDeclTable;
+
 /* -----------------------------------------------------------------------
  * Interpreter context
  * ----------------------------------------------------------------------- */
@@ -46,6 +57,7 @@ typedef struct {
     FuncTable  *funcs;      /* user-defined function table */
     FuncDeclTable *func_decls;
     StructDeclTable *struct_decls;
+    UnionDeclTable *union_decls;
 
     /* Current execution state */
     Signal      signal;

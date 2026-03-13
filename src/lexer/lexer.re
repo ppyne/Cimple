@@ -148,6 +148,7 @@ const char *token_type_name(TokenType t) {
     case TOK_KW_EXECRESULT:return "'ExecResult'";
     case TOK_KW_IMPORT:    return "'import'";
     case TOK_KW_STRUCTURE: return "'structure'";
+    case TOK_KW_UNION:     return "'union'";
     case TOK_KW_CLONE:     return "'clone'";
     case TOK_KW_SELF:      return "'self'";
     case TOK_KW_SUPER:     return "'super'";
@@ -155,6 +156,9 @@ const char *token_type_name(TokenType t) {
     case TOK_ELSE:         return "'else'";
     case TOK_WHILE:        return "'while'";
     case TOK_FOR:          return "'for'";
+    case TOK_SWITCH:       return "'switch'";
+    case TOK_CASE:         return "'case'";
+    case TOK_DEFAULT:      return "'default'";
     case TOK_BREAK:        return "'break'";
     case TOK_CONTINUE:     return "'continue'";
     case TOK_RETURN:       return "'return'";
@@ -349,6 +353,7 @@ yybegin:
         "ExecResult"    { tok.type = TOK_KW_EXECRESULT; goto kw_done; }
         "import"        { tok.type = TOK_KW_IMPORT;     goto kw_done; }
         "structure"     { tok.type = TOK_KW_STRUCTURE;  goto kw_done; }
+        "union"         { tok.type = TOK_KW_UNION;      goto kw_done; }
         "clone"         { tok.type = TOK_KW_CLONE;      goto kw_done; }
         "self"          { tok.type = TOK_KW_SELF;       goto kw_done; }
         "super"         { tok.type = TOK_KW_SUPER;      goto kw_done; }
@@ -356,6 +361,9 @@ yybegin:
         "else"          { tok.type = TOK_ELSE;          goto kw_done; }
         "while"         { tok.type = TOK_WHILE;         goto kw_done; }
         "for"           { tok.type = TOK_FOR;           goto kw_done; }
+        "switch"        { tok.type = TOK_SWITCH;        goto kw_done; }
+        "case"          { tok.type = TOK_CASE;          goto kw_done; }
+        "default"       { tok.type = TOK_DEFAULT;       goto kw_done; }
         "break"         { tok.type = TOK_BREAK;         goto kw_done; }
         "continue"      { tok.type = TOK_CONTINUE;      goto kw_done; }
         "return"        { tok.type = TOK_RETURN;        goto kw_done; }

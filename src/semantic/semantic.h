@@ -5,6 +5,7 @@
 #include "../runtime/scope.h"
 
 typedef struct StructTable StructTable;
+typedef struct UnionTable UnionTable;
 
 /* -----------------------------------------------------------------------
  * Semantic analysis context
@@ -13,6 +14,7 @@ typedef struct {
     AstNode   *program;       /* current program root                */
     FuncTable *funcs;         /* all declared functions              */
     StructTable *structs;     /* all declared structures             */
+    UnionTable *unions;       /* all declared unions                 */
     Scope     *global_scope;  /* global variable scope               */
     Scope     *current;       /* current innermost scope             */
 

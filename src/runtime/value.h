@@ -11,6 +11,7 @@
 typedef struct Value Value;
 typedef struct StructFieldVal StructFieldVal;
 typedef struct StructVal StructVal;
+typedef struct UnionVal UnionVal;
 
 /* Dynamic array (used for arrays at runtime). */
 typedef struct {
@@ -23,6 +24,7 @@ typedef struct {
         char   **strings;
         unsigned char *bytes;
         struct StructVal **structs;
+        struct UnionVal **unions;
     } data;
     int count;
     int cap;
@@ -44,6 +46,7 @@ struct Value {
         char         *s;
         ArrayVal     *arr;
         StructVal    *st;
+        UnionVal     *un;
         ExecResultVal exec;
     } u;
 };
@@ -61,6 +64,16 @@ struct StructVal {
     int             field_count;
 };
 
+struct UnionVal {
+    char      *union_name;
+    int        kind;          /* -1 means no active member */
+    Value     *members;
+    CimpleType *member_types;
+    char     **member_names;
+    char     **member_struct_names;
+    int        member_count;
+};
+
 /* -----------------------------------------------------------------------
  * Value construction
  * ----------------------------------------------------------------------- */
@@ -74,6 +87,7 @@ Value  val_func(const char *name);     /* duplicates function name */
 Value  val_void(void);
 Value  val_array(CimpleType elem_type);
 Value  val_struct(const char *struct_name, int field_count);
+Value  val_union(const char *union_name, int member_count);
 Value  val_exec(int status, char *out, char *err);
 
 /* -----------------------------------------------------------------------

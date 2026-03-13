@@ -23,6 +23,8 @@ const char *type_name(CimpleType t) {
     case TYPE_EXEC_RESULT: return "ExecResult";
     case TYPE_STRUCT:      return "<structure>";
     case TYPE_STRUCT_ARR:  return "<structure[]>";
+    case TYPE_UNION:       return "<union>";
+    case TYPE_UNION_ARR:   return "<union[]>";
     default:               return "<unknown>";
     }
 }
@@ -103,6 +105,10 @@ void ast_free(AstNode *n) {
         free(n->u.struct_field.struct_name);
         ast_free(n->u.struct_field.init);
         break;
+    case NODE_UNION_DECL:
+        free(n->u.union_decl.name);
+        nodelist_free(&n->u.union_decl.members);
+        break;
     case NODE_PROGRAM:
         nodelist_free(&n->u.program.decls);
         break;
@@ -164,6 +170,15 @@ void ast_free(AstNode *n) {
     case NODE_EXPR_STMT:
         ast_free(n->u.expr_stmt.expr);
         break;
+    case NODE_SWITCH:
+        ast_free(n->u.switch_stmt.expr);
+        nodelist_free(&n->u.switch_stmt.cases);
+        break;
+    case NODE_CASE:
+    case NODE_DEFAULT_CASE:
+        ast_free(n->u.case_stmt.value);
+        nodelist_free(&n->u.case_stmt.stmts);
+        break;
     case NODE_STRING_LIT:
         free(n->u.string_lit.value);
         break;
@@ -194,6 +209,9 @@ void ast_free(AstNode *n) {
     case NODE_MEMBER:
         ast_free(n->u.member.base);
         free(n->u.member.name);
+        break;
+    case NODE_KIND_ACCESS:
+        ast_free(n->u.kind_access.base);
         break;
     case NODE_METHOD_CALL:
         ast_free(n->u.method_call.base);

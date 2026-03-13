@@ -63,6 +63,7 @@ void error_syntax(int line, int col, const char *fmt, ...);
 void error_semantic(int line, int col, const char *fmt, ...);
 void error_semantic_hint(int line, int col, const char *hint,
                          const char *fmt, ...);
+void error_warning(int line, int col, const char *fmt, ...);
 
 /* Fatal runtime error — prints to stderr and exits(2). */
 void error_runtime(int line, int col, const char *fmt, ...);

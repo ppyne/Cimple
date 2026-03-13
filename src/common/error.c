@@ -7,6 +7,7 @@
 ErrorCtx g_error_ctx;
 static const SourceMapEntry *g_source_map = NULL;
 static int g_source_map_count = 0;
+static void translate_location(int merged_line, const char **file_out, int *line_out);
 
 static const char *kind_label(ErrorKind k) {
     switch (k) {
@@ -16,6 +17,14 @@ static const char *kind_label(ErrorKind k) {
     case ERR_RUNTIME:  return "[RUNTIME ERROR]";
     default:           return "[ERROR]";
     }
+}
+
+static void warning_print(int line, int col, const char *msg) {
+    const char *display_file;
+    int display_line;
+    translate_location(line, &display_file, &display_line);
+    fprintf(stderr, "[SEMANTIC WARNING]  %s  line %d, column %d\n", display_file, display_line, col);
+    fprintf(stderr, "  %s\n\n", msg);
 }
 
 void error_init(const char *filename) {
@@ -131,6 +140,15 @@ void error_semantic_hint(int line, int col, const char *hint,
     } else {
         e->hint[0] = '\0';
     }
+}
+
+void error_warning(int line, int col, const char *fmt, ...) {
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    warning_print(line, col, buf);
 }
 
 void error_runtime(int line, int col, const char *fmt, ...) {

@@ -36,6 +36,27 @@ struct StructTable {
     StructInfo *head;
 };
 
+typedef struct UnionMemberSig {
+    char *name;
+    CimpleType type;
+    char *struct_name;
+    int index;
+    AstNode *decl;
+    struct UnionMemberSig *next;
+} UnionMemberSig;
+
+typedef struct UnionInfo {
+    char *name;
+    AstNode *decl;
+    UnionMemberSig *members;
+    int member_count;
+    struct UnionInfo *next;
+} UnionInfo;
+
+struct UnionTable {
+    UnionInfo *head;
+};
+
 /* -----------------------------------------------------------------------
  * Built-in function signatures
  * ----------------------------------------------------------------------- */
@@ -234,6 +255,13 @@ static void check_struct_methods(SemCtx *ctx);
 static int struct_declared_before(SemCtx *ctx, const char *name, int line);
 static AstNode *global_decl_lookup(AstNode *program, const char *name);
 static int struct_has_inheritance_cycle(SemCtx *ctx, StructInfo *si);
+static UnionTable *union_table_new(void);
+static void union_table_free(UnionTable *ut);
+static UnionInfo *union_table_lookup(UnionTable *ut, const char *name);
+static UnionInfo *union_table_define(UnionTable *ut, const char *name, AstNode *decl);
+static UnionMemberSig *union_lookup_member(UnionInfo *ui, const char *name);
+static void collect_unions(SemCtx *ctx, AstNode *program);
+static void validate_unions(SemCtx *ctx);
 static int func_types_equal(const FuncType *a, const FuncType *b);
 static FuncType *func_type_from_sig(const FuncSig *sig);
 static FuncType *func_type_from_builtin(const char *name);
@@ -279,7 +307,7 @@ static int types_equal(CimpleType a, CimpleType b) {
 static int types_equal_ex(CimpleType a, const char *a_name,
                           CimpleType b, const char *b_name) {
     if (a != b) return 0;
-    if (a == TYPE_STRUCT || a == TYPE_STRUCT_ARR) {
+    if (a == TYPE_STRUCT || a == TYPE_STRUCT_ARR || a == TYPE_UNION || a == TYPE_UNION_ARR) {
         if (!a_name || !b_name) return 0;
         return strcmp(a_name, b_name) == 0;
     }
@@ -413,6 +441,61 @@ static StructMethodSig *struct_lookup_method(StructTable *st, StructInfo *si, co
         StructInfo *base = struct_table_lookup(st, si->base_name);
         if (base) return struct_lookup_method(st, base, name);
     }
+    return NULL;
+}
+
+static UnionTable *union_table_new(void) {
+    UnionTable *ut = ALLOC(UnionTable);
+    ut->head = NULL;
+    return ut;
+}
+
+static void union_table_free(UnionTable *ut) {
+    if (!ut) return;
+    UnionInfo *ui = ut->head;
+    while (ui) {
+        UnionInfo *next = ui->next;
+        UnionMemberSig *m = ui->members;
+        while (m) {
+            UnionMemberSig *mnext = m->next;
+            free(m->name);
+            free(m->struct_name);
+            free(m);
+            m = mnext;
+        }
+        free(ui->name);
+        free(ui);
+        ui = next;
+    }
+    free(ut);
+}
+
+static UnionInfo *union_table_lookup(UnionTable *ut, const char *name) {
+    for (UnionInfo *it = ut ? ut->head : NULL; it; it = it->next)
+        if (strcmp(it->name, name) == 0) return it;
+    return NULL;
+}
+
+static UnionInfo *union_table_define(UnionTable *ut, const char *name, AstNode *decl) {
+    if (union_table_lookup(ut, name)) return NULL;
+    UnionInfo *ui = ALLOC(UnionInfo);
+    ui->name = cimple_strdup(name);
+    ui->decl = decl;
+    ui->members = NULL;
+    ui->member_count = 0;
+    ui->next = NULL;
+    if (!ut->head) ut->head = ui;
+    else {
+        UnionInfo *tail = ut->head;
+        while (tail->next) tail = tail->next;
+        tail->next = ui;
+    }
+    return ui;
+}
+
+static UnionMemberSig *union_lookup_member(UnionInfo *ui, const char *name) {
+    for (UnionMemberSig *m = ui ? ui->members : NULL; m; m = m->next)
+        if (strcmp(m->name, name) == 0) return m;
     return NULL;
 }
 
@@ -652,6 +735,13 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
 
     case NODE_CLONE: {
         StructInfo *si = struct_table_lookup(ctx->structs, n->u.clone_expr.struct_name);
+        if (union_table_lookup(ctx->unions, n->u.clone_expr.struct_name)) {
+            error_semantic(n->line, n->col,
+                           "Cannot clone union type '%s'",
+                           n->u.clone_expr.struct_name);
+            n->type = TYPE_UNKNOWN;
+            return TYPE_UNKNOWN;
+        }
         if (!si) {
             Symbol *sym = scope_lookup(ctx->current, n->u.clone_expr.struct_name);
             if (sym) {
@@ -1033,6 +1123,29 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
     }
 
     case NODE_MEMBER: {
+        if (n->u.member.base->kind == NODE_IDENT) {
+            UnionInfo *ui = union_table_lookup(ctx->unions, n->u.member.base->u.ident.name);
+            if (ui) {
+                char upper_name[128];
+                size_t k = 0;
+                for (const char *p = n->u.member.name; *p && k + 1 < sizeof(upper_name); p++) {
+                    char c = *p;
+                    upper_name[k++] = (char)((c >= 'a' && c <= 'z') ? (c - 'a' + 'A') : c);
+                }
+                upper_name[k] = '\0';
+                UnionMemberSig *member = union_lookup_member(ui, n->u.member.name);
+                if (!member) member = union_lookup_member(ui, upper_name);
+                if (!member) {
+                    error_semantic(n->line, n->col,
+                                   "Unknown field '%s' on structure '%s'",
+                                   n->u.member.name, ui->name);
+                    n->type = TYPE_UNKNOWN;
+                    return TYPE_UNKNOWN;
+                }
+                n->type = TYPE_INT;
+                return TYPE_INT;
+            }
+        }
         CimpleType base_t = check_expr(ctx, n->u.member.base);
         if (n->u.member.base->kind == NODE_SUPER) {
             error_semantic_hint(n->line, n->col,
@@ -1042,6 +1155,25 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
             return TYPE_UNKNOWN;
         }
         if (base_t != TYPE_STRUCT || !n->u.member.base->type_name_hint) {
+            if (base_t == TYPE_UNION && n->u.member.base->type_name_hint) {
+                UnionInfo *ui = union_table_lookup(ctx->unions, n->u.member.base->type_name_hint);
+                if (strcmp(n->u.member.name, "kind") == 0) {
+                    n->type = TYPE_INT;
+                    return TYPE_INT;
+                }
+                UnionMemberSig *member = union_lookup_member(ui, n->u.member.name);
+                if (!member) {
+                    error_semantic(n->line, n->col,
+                                   "Unknown field '%s' on structure '%s'",
+                                   n->u.member.name, ui ? ui->name : n->u.member.base->type_name_hint);
+                    n->type = TYPE_UNKNOWN;
+                    return TYPE_UNKNOWN;
+                }
+                n->type = member->type;
+                free(n->type_name_hint);
+                n->type_name_hint = member->struct_name ? cimple_strdup(member->struct_name) : NULL;
+                return n->type;
+            }
             error_semantic(n->line, n->col,
                            "Member access requires a structure instance");
             n->type = TYPE_UNKNOWN;
@@ -1137,7 +1269,7 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
             CimpleType elem = type_elem(base_t);
             n->type = elem;
             free(n->type_name_hint);
-            n->type_name_hint = (elem == TYPE_STRUCT && n->u.index.base->type_name_hint)
+            n->type_name_hint = ((elem == TYPE_STRUCT || elem == TYPE_UNION) && n->u.index.base->type_name_hint)
                 ? cimple_strdup(n->u.index.base->type_name_hint) : NULL;
             return elem;
         }
@@ -1202,6 +1334,15 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
     case NODE_VAR_DECL: {
         const char *name = n->u.var_decl.name;
         CimpleType   t   = n->u.var_decl.type;
+        if ((t == TYPE_STRUCT || t == TYPE_STRUCT_ARR) &&
+            n->u.var_decl.struct_name &&
+            union_table_lookup(ctx->unions, n->u.var_decl.struct_name)) {
+            t = n->u.var_decl.type = (t == TYPE_STRUCT ? TYPE_UNION : TYPE_UNION_ARR);
+        }
+        if ((t == TYPE_STRUCT || t == TYPE_STRUCT_ARR) && n->u.var_decl.struct_name &&
+            union_table_lookup(ctx->unions, n->u.var_decl.struct_name)) {
+            t = n->u.var_decl.type = (t == TYPE_STRUCT ? TYPE_UNION : TYPE_UNION_ARR);
+        }
 
         if ((t == TYPE_STRUCT || t == TYPE_STRUCT_ARR) &&
             (!n->u.var_decl.struct_name ||
@@ -1436,6 +1577,17 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
     }
 
     case NODE_MEMBER_ASSIGN: {
+        if (n->u.member_assign.target->kind == NODE_MEMBER) {
+            AstNode *member = n->u.member_assign.target;
+            CimpleType base_t = check_expr(ctx, member->u.member.base);
+            if (base_t == TYPE_UNION) {
+                if (strcmp(member->u.member.name, "kind") == 0) {
+                    error_semantic(member->line, member->col,
+                                   "Cannot assign to union kind field");
+                    break;
+                }
+            }
+        }
         CimpleType lhs_t = check_expr(ctx, n->u.member_assign.target);
         CimpleType rhs_t = check_expr(ctx, n->u.member_assign.value);
         if (rhs_t != TYPE_UNKNOWN &&
@@ -1475,6 +1627,49 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         check_stmt(ctx, n->u.while_stmt.body);
         ctx->in_loop--;
         break;
+
+    case NODE_SWITCH: {
+        check_expr(ctx, n->u.switch_stmt.expr);
+        NodeList *cases = &n->u.switch_stmt.cases;
+        ctx->in_loop++;
+        for (int i = 0; i < cases->count; i++) {
+            AstNode *c = cases->items[i];
+            if (c->kind == NODE_CASE)
+                check_expr(ctx, c->u.case_stmt.value);
+            push_scope(ctx, 0);
+            for (int j = 0; j < c->u.case_stmt.stmts.count; j++)
+                check_stmt(ctx, c->u.case_stmt.stmts.items[j]);
+            pop_scope(ctx);
+        }
+        ctx->in_loop--;
+        if (n->u.switch_stmt.expr->kind == NODE_MEMBER &&
+            strcmp(n->u.switch_stmt.expr->u.member.name, "kind") == 0 &&
+            n->u.switch_stmt.expr->u.member.base->type_name_hint) {
+            UnionInfo *ui = union_table_lookup(ctx->unions,
+                                               n->u.switch_stmt.expr->u.member.base->type_name_hint);
+            if (ui) {
+                int *seen = ui->member_count ? ALLOC_N(int, ui->member_count) : NULL;
+                int seen_count = 0;
+                memset(seen, 0, (size_t)ui->member_count * sizeof(int));
+                for (int i = 0; i < cases->count; i++) {
+                    AstNode *c = cases->items[i];
+                    if (c->kind != NODE_CASE) continue;
+                    if (c->u.case_stmt.value->kind == NODE_MEMBER &&
+                        c->u.case_stmt.value->u.member.base->kind == NODE_IDENT &&
+                        strcmp(c->u.case_stmt.value->u.member.base->u.ident.name, ui->name) == 0) {
+                        UnionMemberSig *m = union_lookup_member(ui, c->u.case_stmt.value->u.member.name);
+                        if (m && !seen[m->index]) { seen[m->index] = 1; seen_count++; }
+                    }
+                }
+                if (seen_count < ui->member_count) {
+                    error_warning(n->line, n->col,
+                                  "Non-exhaustive switch on '%s.kind'", ui->name);
+                }
+                free(seen);
+            }
+        }
+        break;
+    }
 
     case NODE_FOR: {
         push_scope(ctx, 0);
@@ -1580,6 +1775,19 @@ static void collect_structs(SemCtx *ctx, AstNode *program) {
             error_semantic(d->line, d->col,
                            "structure '%s' already declared",
                            d->u.struct_decl.name);
+        }
+    }
+}
+
+static void collect_unions(SemCtx *ctx, AstNode *program) {
+    NodeList *decls = &program->u.program.decls;
+    for (int i = 0; i < decls->count; i++) {
+        AstNode *d = decls->items[i];
+        if (d->kind != NODE_UNION_DECL) continue;
+        if (!union_table_define(ctx->unions, d->u.union_decl.name, d)) {
+            error_semantic(d->line, d->col,
+                           "union '%s' already declared",
+                           d->u.union_decl.name);
         }
     }
 }
@@ -1730,6 +1938,35 @@ static void validate_structs(SemCtx *ctx) {
     }
 }
 
+static void validate_unions(SemCtx *ctx) {
+    for (UnionInfo *ui = ctx->unions->head; ui; ui = ui->next) {
+        NodeList *members = &ui->decl->u.union_decl.members;
+        for (int i = 0; i < members->count; i++) {
+            AstNode *m = members->items[i];
+            UnionMemberSig *sig = ALLOC(UnionMemberSig);
+            sig->name = cimple_strdup(m->u.struct_field.name);
+            sig->type = m->u.struct_field.type;
+            sig->struct_name = m->u.struct_field.struct_name ? cimple_strdup(m->u.struct_field.struct_name) : NULL;
+            sig->index = ui->member_count++;
+            sig->decl = m;
+            sig->next = ui->members;
+            ui->members = sig;
+            if (sig->type == TYPE_STRUCT || sig->type == TYPE_STRUCT_ARR || sig->type == TYPE_UNION || sig->type == TYPE_UNION_ARR || sig->type == TYPE_EXEC_RESULT || sig->type == TYPE_VOID) {
+                error_semantic(m->line, m->col,
+                               "Union member '%s' in '%s' has unsupported type '%s'",
+                               sig->name, ui->name, type_name(sig->type));
+            }
+            for (UnionMemberSig *other = sig->next; other; other = other->next) {
+                if (strcmp(other->name, sig->name) == 0) {
+                    error_semantic(m->line, m->col,
+                                   "Duplicate member '%s' in union '%s'",
+                                   sig->name, ui->name);
+                }
+            }
+        }
+    }
+}
+
 static void collect_functions(SemCtx *ctx, AstNode *program) {
     NodeList *decls = &program->u.program.decls;
     for (int i = 0; i < decls->count; i++) {
@@ -1737,6 +1974,18 @@ static void collect_functions(SemCtx *ctx, AstNode *program) {
         if (d->kind != NODE_FUNC_DECL) continue;
 
         const char *name = d->u.func_decl.name;
+
+        if ((d->u.func_decl.ret_type == TYPE_STRUCT || d->u.func_decl.ret_type == TYPE_STRUCT_ARR) &&
+            d->u.func_decl.ret_struct_name &&
+            union_table_lookup(ctx->unions, d->u.func_decl.ret_struct_name)) {
+            d->u.func_decl.ret_type = (d->u.func_decl.ret_type == TYPE_STRUCT) ? TYPE_UNION : TYPE_UNION_ARR;
+        }
+
+        if ((d->u.func_decl.ret_type == TYPE_STRUCT || d->u.func_decl.ret_type == TYPE_STRUCT_ARR) &&
+            d->u.func_decl.ret_struct_name &&
+            union_table_lookup(ctx->unions, d->u.func_decl.ret_struct_name)) {
+            d->u.func_decl.ret_type = (d->u.func_decl.ret_type == TYPE_STRUCT) ? TYPE_UNION : TYPE_UNION_ARR;
+        }
 
         if ((d->u.func_decl.ret_type == TYPE_STRUCT || d->u.func_decl.ret_type == TYPE_STRUCT_ARR) &&
             (!d->u.func_decl.ret_struct_name ||
@@ -1763,6 +2012,12 @@ static void collect_functions(SemCtx *ctx, AstNode *program) {
             fp[j].struct_name = params->items[j]->u.param.struct_name
                 ? cimple_strdup(params->items[j]->u.param.struct_name) : NULL;
             fp[j].func_type = func_type_copy(params->items[j]->u.param.func_type);
+            if ((fp[j].type == TYPE_STRUCT || fp[j].type == TYPE_STRUCT_ARR) &&
+                fp[j].struct_name &&
+                union_table_lookup(ctx->unions, fp[j].struct_name)) {
+                fp[j].type = params->items[j]->u.param.type =
+                    (fp[j].type == TYPE_STRUCT) ? TYPE_UNION : TYPE_UNION_ARR;
+            }
             if ((fp[j].type == TYPE_STRUCT || fp[j].type == TYPE_STRUCT_ARR) &&
                 (!fp[j].struct_name || !struct_declared_before(ctx, fp[j].struct_name, params->items[j]->line))) {
                 error_semantic(params->items[j]->line, params->items[j]->col,
@@ -1913,6 +2168,7 @@ int semantic_check(AstNode *program) {
     ctx.program      = program;
     ctx.funcs        = func_table_new();
     ctx.structs      = struct_table_new();
+    ctx.unions       = union_table_new();
     ctx.global_scope = scope_new(NULL, 0);
     ctx.current      = ctx.global_scope;
     ctx.current_ret  = TYPE_VOID;
@@ -1923,7 +2179,9 @@ int semantic_check(AstNode *program) {
     ctx.in_method = 0;
 
     collect_structs(&ctx, program);
+    collect_unions(&ctx, program);
     validate_structs(&ctx);
+    validate_unions(&ctx);
     /* Collect all function signatures first */
     collect_functions(&ctx, program);
 
@@ -1953,6 +2211,7 @@ int semantic_check(AstNode *program) {
 
     func_table_free(ctx.funcs);
     struct_table_free(ctx.structs);
+    union_table_free(ctx.unions);
     scope_free(ctx.global_scope);
 
     return had_errors;
