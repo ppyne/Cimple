@@ -3357,7 +3357,20 @@ Cimple expose deux types opaques pour les expressions régulières, sur le modè
 - `RegExp` — expression régulière compilée, produite uniquement par `regexCompile()`.
 - `RegExpMatch` — résultat d'une recherche, produit uniquement par `regexFind()` ou `regexFindAll()`.
 
-Ces types ne peuvent pas être déclarés sans valeur initiale ; ils ne disposent pas de littéral ; ils ne peuvent pas figurer dans un tableau `RegExp[]` ou `RegExpMatch[]` (sauf `RegExpMatch[]` retourné par `regexFindAll`).
+Règles normatives :
+
+- `RegExp` et `RegExpMatch` ne peuvent pas être déclarés **sans valeur initiale** ; ils ne disposent pas de littéral.
+- `RegExp[]` n'existe pas (erreur sémantique).
+- `RegExpMatch[]` est un type valide **uniquement** comme type d'une variable initialisée par `regexFindAll()` ; il ne peut pas être déclaré vide ni construit par un littéral `[]`.
+
+```c
+RegExp re = regexCompile("\w+", "");              // OK
+RegExpMatch m = regexFind(re, "hello", 0);        // OK
+RegExpMatch[] ms = regexFindAll(re, "a b", 0, -1); // OK — seul usage autorisé de RegExpMatch[]
+
+RegExp re2;                                        // ERREUR — pas de valeur initiale
+RegExpMatch[] bad = [];                            // ERREUR — littéral vide interdit
+```
 
 #### 9.14.2 Compilation
 

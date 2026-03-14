@@ -1871,6 +1871,11 @@ sleep(1000);  // wait 1 second
 Cimple provides a built-in regex engine through two opaque types and a set of global
 functions, all prefixed with `regex`.
 
+> **Type rules:**
+> - `RegExp` and `RegExpMatch` must always be initialised at declaration; they have no literals and cannot be declared empty.
+> - `RegExp[]` does not exist (semantic error).
+> - `RegExpMatch[]` is valid **only** as the type of a variable initialised by `regexFindAll()`; it cannot be declared empty or built from a `[]` literal.
+
 #### Compilation
 
 ```c
