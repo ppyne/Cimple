@@ -1,0 +1,8 @@
+void main() {
+    try {
+        readFile("missing.txt");
+    } catch (IoException e) {
+        print(e.message + "\n");
+        print(e.path + "\n");
+    }
+}

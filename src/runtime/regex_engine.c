@@ -888,14 +888,18 @@ void regex_free_value(RegExpVal *re) {
     free(re);
 }
 
-static void check_start_range(const char *input, int start, int line, int col) {
+static int check_start_range(const char *input, int start, int line, int col) {
     int glen = regex_glyph_len(input);
-    if (start < 0 || start > glen)
+    if (start < 0 || start > glen) {
         regex_range_error(line, col, "start out of bounds");
+        return 0;
+    }
+    return 1;
 }
 
 RegExpMatchVal *regex_find_value(const RegExpVal *re, const char *input, int start, int line, int col) {
-    check_start_range(input, start, line, col);
+    if (!check_start_range(input, start, line, col))
+        return regex_match_empty();
     GlyphString gs = glyph_string_make(input);
     RegExpMatchVal *m = NULL;
     for (int pos = start; pos <= gs.count; pos++) {
@@ -919,8 +923,15 @@ int regex_test_value(const RegExpVal *re, const char *input, int start, int line
 RegExpMatchVal **regex_find_all_values(const RegExpVal *re, const char *input,
                                        int start, int max, int *out_count,
                                        int line, int col) {
-    check_start_range(input, start, line, col);
-    if (max < -1) regex_range_error(line, col, "max must be >= -1");
+    if (!check_start_range(input, start, line, col)) {
+        *out_count = 0;
+        return NULL;
+    }
+    if (max < -1) {
+        regex_range_error(line, col, "max must be >= -1");
+        *out_count = 0;
+        return NULL;
+    }
     *out_count = 0;
     if (max == 0) return NULL;
     GlyphString gs = glyph_string_make(input);
@@ -954,8 +965,12 @@ char *regex_replace_value(const RegExpVal *re, const char *input,
                           const char *replacement, int start,
                           int replace_all, int max,
                           int line, int col) {
-    check_start_range(input, start, line, col);
-    if (replace_all && max < -1) regex_range_error(line, col, "max must be >= -1");
+    if (!check_start_range(input, start, line, col))
+        return NULL;
+    if (replace_all && max < -1) {
+        regex_range_error(line, col, "max must be >= -1");
+        return NULL;
+    }
     if (replace_all && max == 0) return cimple_strdup(input ? input : "");
     GlyphString gs = glyph_string_make(input);
     RegexSb sb;
@@ -1009,8 +1024,15 @@ char *regex_replace_value(const RegExpVal *re, const char *input,
 char **regex_split_value(const RegExpVal *re, const char *input,
                          int start, int max_parts, int *out_count,
                          int line, int col) {
-    check_start_range(input, start, line, col);
-    if (max_parts < -1) regex_range_error(line, col, "maxParts must be >= -1");
+    if (!check_start_range(input, start, line, col)) {
+        *out_count = 0;
+        return NULL;
+    }
+    if (max_parts < -1) {
+        regex_range_error(line, col, "maxParts must be >= -1");
+        *out_count = 0;
+        return NULL;
+    }
     *out_count = 0;
     if (max_parts == 0) return NULL;
     GlyphString gs = glyph_string_make(input);

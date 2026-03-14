@@ -195,6 +195,18 @@ void ast_free(AstNode *n) {
         ast_free(n->u.case_stmt.value);
         nodelist_free(&n->u.case_stmt.stmts);
         break;
+    case NODE_THROW:
+        ast_free(n->u.throw_stmt.expr);
+        break;
+    case NODE_TRY_CATCH:
+        ast_free(n->u.try_catch.try_block);
+        nodelist_free(&n->u.try_catch.clauses);
+        break;
+    case NODE_CATCH_CLAUSE:
+        free(n->u.catch_clause.type_name);
+        free(n->u.catch_clause.var_name);
+        ast_free(n->u.catch_clause.block);
+        break;
     case NODE_STRING_LIT:
         free(n->u.string_lit.value);
         break;

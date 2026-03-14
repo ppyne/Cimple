@@ -1,0 +1,5 @@
+structure MyError : RuntimeException {
+    int code = 0;
+}
+
+void main() {}

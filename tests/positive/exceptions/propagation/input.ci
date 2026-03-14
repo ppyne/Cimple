@@ -1,0 +1,23 @@
+structure ParseError : Exception {
+    int code = 0;
+}
+
+void inner() {
+    ParseError e = clone ParseError;
+    e.message = "inner error";
+    e.code = 11;
+    throw e;
+}
+
+void outer() {
+    inner();
+}
+
+void main() {
+    try {
+        outer();
+    } catch (ParseError e) {
+        print(e.message + "\n");
+        print(toString(e.code) + "\n");
+    }
+}

@@ -164,6 +164,9 @@ const char *token_type_name(TokenType t) {
     case TOK_BREAK:        return "'break'";
     case TOK_CONTINUE:     return "'continue'";
     case TOK_RETURN:       return "'return'";
+    case TOK_KW_THROW:     return "'throw'";
+    case TOK_KW_TRY:       return "'try'";
+    case TOK_KW_CATCH:     return "'catch'";
     case TOK_IDENT:        return "identifier";
     case TOK_TYPE_IDENT:   return "type identifier";
     case TOK_PLUS:         return "'+'";
@@ -369,6 +372,9 @@ yybegin:
         "break"         { tok.type = TOK_BREAK;         goto kw_done; }
         "continue"      { tok.type = TOK_CONTINUE;      goto kw_done; }
         "return"        { tok.type = TOK_RETURN;        goto kw_done; }
+        "throw"         { tok.type = TOK_KW_THROW;      goto kw_done; }
+        "try"           { tok.type = TOK_KW_TRY;        goto kw_done; }
+        "catch"         { tok.type = TOK_KW_CATCH;      goto kw_done; }
 
         letter alnum*   {
             tok.type   = TOK_IDENT;

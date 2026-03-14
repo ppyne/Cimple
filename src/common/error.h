@@ -54,6 +54,7 @@ typedef struct {
 void error_init(const char *filename);
 void error_set_source_map(const SourceMapEntry *entries, int count);
 void error_clear_source_map(void);
+void error_translate_location(int merged_line, const char **file_out, int *line_out);
 
 /* Fatal lexical/syntax error — prints to stderr and exits(1). */
 void error_lexical(int line, int col, const char *fmt, ...);

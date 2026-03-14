@@ -36,6 +36,8 @@ static int token_starts_statement_or_decl(TokenType t) {
     case TOK_FOR:
     case TOK_BREAK:
     case TOK_CONTINUE:
+    case TOK_KW_THROW:
+    case TOK_KW_TRY:
     case TOK_IDENT:
     case TOK_KW_INT:
     case TOK_KW_FLOAT:
@@ -572,6 +574,8 @@ stmt_list(L) ::= stmt_list(LL) stmt(S).
 %type stmt { AstNode * }
 %type switch_case_list { NodeList }
 %type switch_case { AstNode * }
+%type catch_clause_list { NodeList }
+%type catch_clause { AstNode * }
 
 /* Variable declarations */
 stmt(S) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
@@ -818,6 +822,19 @@ stmt(S) ::= SWITCH(T) LPAREN expr(E) RPAREN LBRACE switch_case_list(CS) RBRACE.
     S->u.switch_stmt.cases = CS;
 }
 
+stmt(S) ::= KW_THROW(T) expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_THROW, T.line, T.col);
+    S->u.throw_stmt.expr = E;
+}
+
+stmt(S) ::= KW_TRY(T) block(B) catch_clause_list(CS).
+{
+    S = ast_new(NODE_TRY_CATCH, T.line, T.col);
+    S->u.try_catch.try_block = B;
+    S->u.try_catch.clauses = CS;
+}
+
 /* return */
 stmt(S) ::= RETURN(T) SEMICOLON.
 {
@@ -1018,6 +1035,12 @@ simple_stmt(S) ::= CONTINUE(T) SEMICOLON.
     S = ast_new(NODE_CONTINUE, T.line, T.col);
 }
 
+simple_stmt(S) ::= KW_THROW(T) expr(E) SEMICOLON.
+{
+    S = ast_new(NODE_THROW, T.line, T.col);
+    S->u.throw_stmt.expr = E;
+}
+
 simple_stmt(S) ::= IF(T) LPAREN expr(C) RPAREN simple_or_block(TH). [ELSE]
 {
     S = ast_new(NODE_IF, T.line, T.col);
@@ -1073,6 +1096,28 @@ switch_case(C) ::= DEFAULT(T) COLON stmt_list(SL).
     C = ast_new(NODE_DEFAULT_CASE, T.line, T.col);
     C->u.case_stmt.value = NULL;
     C->u.case_stmt.stmts = SL;
+}
+
+catch_clause_list(L) ::= catch_clause(C).
+{
+    nodelist_init(&L);
+    nodelist_push(&L, C);
+}
+
+catch_clause_list(L) ::= catch_clause_list(LL) catch_clause(C).
+{
+    L = LL;
+    nodelist_push(&L, C);
+}
+
+catch_clause(C) ::= KW_CATCH(T) LPAREN TYPE_IDENT(N) IDENT(V) RPAREN block(B).
+{
+    C = ast_new(NODE_CATCH_CLAUSE, T.line, T.col);
+    C->u.catch_clause.type_name = cimple_strdup(N.v.sval);
+    C->u.catch_clause.var_name = cimple_strdup(V.v.sval);
+    C->u.catch_clause.block = B;
+    free(N.v.sval);
+    free(V.v.sval);
 }
 
 /* -----------------------------------------------------------------------

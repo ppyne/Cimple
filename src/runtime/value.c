@@ -255,8 +255,10 @@ void array_push_owned(ArrayVal *a, Value *v) {
 }
 
 Value array_pop(ArrayVal *a, int line, int col) {
-    if (a->count == 0)
+    if (a->count == 0) {
         error_runtime(line, col, "Cannot pop from empty array");
+        return val_void();
+    }
     a->count--;
     switch (a->elem_type) {
     case TYPE_INT:    return val_int(a->data.ints[a->count]);
@@ -286,10 +288,12 @@ Value array_pop(ArrayVal *a, int line, int col) {
 }
 
 void array_insert(ArrayVal *a, int idx, Value v, int line, int col) {
-    if (idx < 0 || idx > a->count)
+    if (idx < 0 || idx > a->count) {
         error_runtime(line, col,
                       "arrayInsert: index out of bounds (Index: %d   Array size: %d)",
                       idx, a->count);
+        return;
+    }
     arr_ensure(a, a->count + 1);
     switch (a->elem_type) {
     case TYPE_INT:
@@ -344,10 +348,12 @@ void array_insert(ArrayVal *a, int idx, Value v, int line, int col) {
 }
 
 void array_remove(ArrayVal *a, int idx, int line, int col) {
-    if (idx < 0 || idx >= a->count)
+    if (idx < 0 || idx >= a->count) {
         error_runtime(line, col,
                       "arrayRemove: index out of bounds (Index: %d   Array size: %d)",
                       idx, a->count);
+        return;
+    }
     if (a->elem_type == TYPE_STRING)
         free(a->data.strings[idx]);
     if (a->elem_type == TYPE_STRUCT) {
@@ -410,10 +416,12 @@ void array_remove(ArrayVal *a, int idx, int line, int col) {
 }
 
 Value array_get(ArrayVal *a, int idx, int line, int col) {
-    if (idx < 0 || idx >= a->count)
+    if (idx < 0 || idx >= a->count) {
         error_runtime(line, col,
                       "Array index out of bounds (Index: %d   Array size: %d)",
                       idx, a->count);
+        return val_void();
+    }
     switch (a->elem_type) {
     case TYPE_INT:    return val_int(a->data.ints[idx]);
     case TYPE_FLOAT:  return val_float(a->data.floats[idx]);
@@ -442,10 +450,12 @@ Value array_get(ArrayVal *a, int idx, int line, int col) {
 }
 
 void array_set(ArrayVal *a, int idx, Value v, int line, int col) {
-    if (idx < 0 || idx >= a->count)
+    if (idx < 0 || idx >= a->count) {
         error_runtime(line, col,
                       "Array index out of bounds (Index: %d   Array size: %d)",
                       idx, a->count);
+        return;
+    }
     switch (a->elem_type) {
     case TYPE_INT:   a->data.ints[idx]  = v.u.i; break;
     case TYPE_FLOAT: a->data.floats[idx] = v.u.f; break;
@@ -486,10 +496,12 @@ void array_set(ArrayVal *a, int idx, Value v, int line, int col) {
 }
 
 void array_set_owned(ArrayVal *a, int idx, Value *v, int line, int col) {
-    if (idx < 0 || idx >= a->count)
+    if (idx < 0 || idx >= a->count) {
         error_runtime(line, col,
                       "Array index out of bounds (Index: %d   Array size: %d)",
                       idx, a->count);
+        return;
+    }
     switch (a->elem_type) {
     case TYPE_INT:
         a->data.ints[idx] = v->u.i;

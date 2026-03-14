@@ -1,4 +1,5 @@
 #include "builtins.h"
+#include "interpreter.h"
 #include "../common/error.h"
 #include "../common/memory.h"
 #include <stdio.h>
@@ -25,6 +26,29 @@ extern char **environ;
 #endif
 
 static int g_temp_path_counter = 0;
+
+typedef struct {
+    const char *type;
+    const char *path;
+} RuntimeErrorOverride;
+
+static RuntimeErrorOverride runtime_error_override_push(const char *type, const char *path) {
+    RuntimeErrorOverride saved = { NULL, NULL };
+    if (g_current_interp) {
+        saved.type = g_current_interp->runtime_error_type;
+        saved.path = g_current_interp->runtime_error_path;
+        g_current_interp->runtime_error_type = type;
+        g_current_interp->runtime_error_path = path;
+    }
+    return saved;
+}
+
+static void runtime_error_override_pop(RuntimeErrorOverride saved) {
+    if (g_current_interp) {
+        g_current_interp->runtime_error_type = saved.type;
+        g_current_interp->runtime_error_path = saved.path;
+    }
+}
 
 /* -----------------------------------------------------------------------
  * Sentinel for "not a builtin"
@@ -419,6 +443,7 @@ static char *utf8_codepoint_at(const char *s, int index, int line, int col) {
         error_runtime(line, col,
                       "glyphAt: index out of bounds (Index: %d   Glyph count: %d)",
                       index, total);
+        return NULL;
     }
     /* advance to the requested code point */
     utf8proc_ssize_t pos = 0;
@@ -446,11 +471,16 @@ static char *utf8_codepoint_at(const char *s, int index, int line, int col) {
  * ----------------------------------------------------------------------- */
 static char *read_file_str(const char *path, int line, int col) {
     struct stat st;
-    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode))
+    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {
         error_runtime(line, col, "Cannot read file: '%s'", path);
+        return NULL;
+    }
     FILE *f = fopen(path, "rb");
-    if (!f) error_runtime(line, col, "Cannot read file: '%s': %s",
-                          path, strerror(errno));
+    if (!f) {
+        error_runtime(line, col, "Cannot read file: '%s': %s",
+                      path, strerror(errno));
+        return NULL;
+    }
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     rewind(f);
@@ -459,6 +489,7 @@ static char *read_file_str(const char *path, int line, int col) {
         fclose(f);
         free(buf);
         error_runtime(line, col, "Cannot read file: '%s'", path);
+        return NULL;
     }
     buf[size] = '\0';
     fclose(f);
@@ -538,13 +569,17 @@ static char *parent_dir_for_write(const char *path) {
 static void copy_file_contents(const char *src, const char *dst,
                                const char *op, int line, int col) {
     FILE *in = fopen(src, "rb");
-    if (!in) error_runtime_hint(line, col, strerror(errno),
-                                "Cannot %s: '%s' -> '%s'", op, src, dst);
+    if (!in) {
+        error_runtime_hint(line, col, strerror(errno),
+                           "Cannot %s: '%s' -> '%s'", op, src, dst);
+        return;
+    }
     FILE *out = fopen(dst, "wb");
     if (!out) {
         fclose(in);
         error_runtime_hint(line, col, strerror(errno),
                            "Cannot %s: '%s' -> '%s'", op, src, dst);
+        return;
     }
     char buf[4096];
     for (;;) {
@@ -554,6 +589,7 @@ static void copy_file_contents(const char *src, const char *dst,
             fclose(out);
             error_runtime_hint(line, col, strerror(errno),
                                "Cannot %s: '%s' -> '%s'", op, src, dst);
+            return;
         }
         if (n < sizeof(buf)) {
             if (ferror(in)) {
@@ -561,6 +597,7 @@ static void copy_file_contents(const char *src, const char *dst,
                 fclose(out);
                 error_runtime_hint(line, col, strerror(errno),
                                    "Cannot %s: '%s' -> '%s'", op, src, dst);
+                return;
             }
             break;
         }
@@ -571,10 +608,14 @@ static void copy_file_contents(const char *src, const char *dst,
 
 static Value read_file_bytes(const char *path, int line, int col) {
     FILE *f = fopen(path, "rb");
-    if (!f) error_runtime(line, col, "Cannot read file: '%s'", path);
+    if (!f) {
+        error_runtime(line, col, "Cannot read file: '%s'", path);
+        return val_void();
+    }
     if (fseek(f, 0, SEEK_END) != 0) {
         fclose(f);
         error_runtime(line, col, "Cannot read file: '%s'", path);
+        return val_void();
     }
     long size = ftell(f);
     rewind(f);
@@ -586,6 +627,7 @@ static Value read_file_bytes(const char *path, int line, int col) {
         fclose(f);
         value_free(&out);
         error_runtime(line, col, "Cannot read file: '%s'", path);
+        return val_void();
     }
     fclose(f);
     return out;
@@ -593,10 +635,14 @@ static Value read_file_bytes(const char *path, int line, int col) {
 
 static void write_file_bytes(const char *path, ArrayVal *arr, const char *mode, int line, int col) {
     FILE *f = fopen(path, mode);
-    if (!f) error_runtime(line, col, "Cannot write file: '%s'", path);
+    if (!f) {
+        error_runtime(line, col, "Cannot write file: '%s'", path);
+        return;
+    }
     if (arr->count > 0 && fwrite(arr->data.bytes, 1, (size_t)arr->count, f) != (size_t)arr->count) {
         fclose(f);
         error_runtime(line, col, "Cannot write file: '%s'", path);
+        return;
     }
     fclose(f);
 }
@@ -677,6 +723,7 @@ static char *transform_case_utf8(const char *s, int make_upper, int capitalize_f
 static char *pad_to_width(const char *s, int width, const char *pad, int pad_left, int line, int col, const char *name) {
     if (width < 0) {
         error_runtime(line, col, "%s: width must be non-negative", name);
+        return NULL;
     }
     if (pad[0] == '\0') return cimple_strdup(s);
     int current = utf8_codepoint_count(s);
@@ -720,11 +767,15 @@ static char *pad_to_width(const char *s, int width, const char *pad, int pad_lef
  * ----------------------------------------------------------------------- */
 #ifndef __EMSCRIPTEN__
 static Value do_exec(Value *args, int nargs, int line, int col) {
-    if (nargs < 1 || !type_is_array(args[0].type))
+    if (nargs < 1 || !type_is_array(args[0].type)) {
         error_runtime(line, col, "exec: first argument must be string[]");
+        return val_void();
+    }
     ArrayVal *cmd_arr = args[0].u.arr;
-    if (cmd_arr->count == 0)
+    if (cmd_arr->count == 0) {
         error_runtime(line, col, "exec: command array must not be empty");
+        return val_void();
+    }
 
     /* Build argv */
     int     argc = cmd_arr->count;
@@ -745,6 +796,8 @@ static Value do_exec(Value *args, int nargs, int line, int col) {
                 error_runtime(line, col,
                               "exec: invalid environment entry: '%s'",
                               entry);
+                free(argv);
+                return val_void();
             }
         }
 #ifdef _WIN32
@@ -811,6 +864,9 @@ static Value do_exec(Value *args, int nargs, int line, int col) {
     ZeroMemory(&pi, sizeof(pi));
     if (!CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
         error_runtime(line, col, "exec: failed to start '%s'", argv[0]);
+        free(cmdline);
+        free(argv);
+        return val_void();
     }
     CloseHandle(out_w); CloseHandle(err_w);
 
@@ -848,10 +904,16 @@ static Value do_exec(Value *args, int nargs, int line, int col) {
     int exec_err_pipe[2];
     if (pipe(out_pipe) != 0 || pipe(err_pipe) != 0)
         error_runtime(line, col, "exec: pipe() failed");
+    if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+        free(argv);
+        return val_void();
+    }
     if (pipe(exec_err_pipe) != 0) {
         close(out_pipe[0]); close(out_pipe[1]);
         close(err_pipe[0]); close(err_pipe[1]);
         error_runtime(line, col, "exec: pipe() failed");
+        free(argv);
+        return val_void();
     }
     (void)fcntl(exec_err_pipe[1], F_SETFD, FD_CLOEXEC);
 
@@ -861,6 +923,8 @@ static Value do_exec(Value *args, int nargs, int line, int col) {
         close(err_pipe[0]); close(err_pipe[1]);
         close(exec_err_pipe[0]); close(exec_err_pipe[1]);
         error_runtime(line, col, "exec: fork() failed");
+        free(argv);
+        return val_void();
     }
 
     if (pid == 0) {
@@ -918,9 +982,15 @@ static Value do_exec(Value *args, int nargs, int line, int col) {
             free(err_str);
             if (exec_errno == ENOENT) {
                 error_runtime(line, col, "exec: command not found: '%s'", argv[0]);
+                if (envp) free(envp);
+                free(argv);
+                return val_void();
             }
             error_runtime(line, col, "exec: failed to start '%s': %s",
                           argv[0], strerror(exec_errno));
+            if (envp) free(envp);
+            free(argv);
+            return val_void();
         }
     }
 #endif
@@ -1183,6 +1253,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     if (id == BI_GLYPH_AT) {
         REQUIRE(2);
         char *s = utf8_codepoint_at(ARG_STR(0), (int)ARG_INT(1), line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
         return val_string_own(s);
     }
 
@@ -1195,6 +1266,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
             error_runtime(line, col,
                           "byteAt: index out of bounds (Index: %d   String length: %d bytes)",
                           idx, slen);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
         return val_int((unsigned char)s[idx]);
     }
 
@@ -1208,6 +1280,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
             error_runtime(line, col,
                           "substr: range out of bounds (start: %d   length: %d   String length: %d bytes)",
                           start, len2, slen);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
         char *out = cimple_strndup(s + start, (size_t)len2);
         return val_string_own(out);
     }
@@ -1244,6 +1317,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         const char *repl= ARG_STR(2);
         if (old[0] == '\0')
             error_runtime(line, col, "replace: old argument cannot be empty");
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
         size_t slen = strlen(s);
         size_t oldlen = strlen(old);
         StringBuilder sb;
@@ -1273,6 +1347,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
             error_runtime(line, col,
                           "format: marker count does not match argument count (Markers '{}': %d   Arguments provided: %d)",
                           ph_count, arr->count);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
         StringBuilder sb;
         sb_init(&sb, strlen(tmpl) + 1);
         const char *p = tmpl;
@@ -1313,6 +1388,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         const char *sep = ARG_STR(1);
         if (sep[0] == '\0')
             error_runtime(line, col, "split: separator cannot be empty");
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
         Value result = val_array(TYPE_STRING);
         if (s[0] == '\0') {
             Value empty_s = val_string("");
@@ -1381,18 +1457,23 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
 
     if (id == BI_PAD_LEFT) {
         REQUIRE(3);
-        return val_string_own(pad_to_width(ARG_STR(0), (int)ARG_INT(1), ARG_STR(2), 1, line, col, "padLeft"));
+        char *out = pad_to_width(ARG_STR(0), (int)ARG_INT(1), ARG_STR(2), 1, line, col, "padLeft");
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        return val_string_own(out);
     }
 
     if (id == BI_PAD_RIGHT) {
         REQUIRE(3);
-        return val_string_own(pad_to_width(ARG_STR(0), (int)ARG_INT(1), ARG_STR(2), 0, line, col, "padRight"));
+        char *out = pad_to_width(ARG_STR(0), (int)ARG_INT(1), ARG_STR(2), 0, line, col, "padRight");
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        return val_string_own(out);
     }
 
     if (id == BI_REPEAT) {
         REQUIRE(2);
         int64_t count = ARG_INT(1);
         if (count < 0) error_runtime(line, col, "repeat: count must be non-negative");
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
         if (count == 0 || ARG_STR(0)[0] == '\0') return val_string("");
         size_t slen = strlen(ARG_STR(0));
         StringBuilder sb;
@@ -1422,6 +1503,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         const char *needle = ARG_STR(1);
         size_t nlen = strlen(needle);
         if (nlen == 0) error_runtime(line, col, "countOccurrences: needle cannot be empty");
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
         int64_t count = 0;
         const char *p = s;
         while ((p = strstr(p, needle)) != NULL) {
@@ -1442,7 +1524,14 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
 
     if (id == BI_REGEX_COMPILE) {
         REQUIRE(2);
-        return val_regexp(regex_compile_value(ARG_STR(0), ARG_STR(1), line, col));
+        RuntimeErrorOverride saved = runtime_error_override_push("RegExpException", NULL);
+        Value out = val_regexp(regex_compile_value(ARG_STR(0), ARG_STR(1), line, col));
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
+        runtime_error_override_pop(saved);
+        return out;
     }
     if (id == BI_REGEX_PATTERN) {
         REQUIRE(1);
@@ -1454,16 +1543,37 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
     if (id == BI_REGEX_TEST) {
         REQUIRE(3);
-        return val_bool(regex_test_value(args[0].u.re, ARG_STR(1), (int)ARG_INT(2), line, col));
+        RuntimeErrorOverride saved = runtime_error_override_push("RegExpException", NULL);
+        Value out = val_bool(regex_test_value(args[0].u.re, ARG_STR(1), (int)ARG_INT(2), line, col));
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
+        runtime_error_override_pop(saved);
+        return out;
     }
     if (id == BI_REGEX_FIND) {
         REQUIRE(3);
-        return val_regexp_match(regex_find_value(args[0].u.re, ARG_STR(1), (int)ARG_INT(2), line, col));
+        RuntimeErrorOverride saved = runtime_error_override_push("RegExpException", NULL);
+        Value out = val_regexp_match(regex_find_value(args[0].u.re, ARG_STR(1), (int)ARG_INT(2), line, col));
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
+        runtime_error_override_pop(saved);
+        return out;
     }
     if (id == BI_REGEX_FIND_ALL) {
         REQUIRE(4);
         int count = 0;
+        RuntimeErrorOverride saved = runtime_error_override_push("RegExpException", NULL);
         RegExpMatchVal **matches = regex_find_all_values(args[0].u.re, ARG_STR(1), (int)ARG_INT(2), (int)ARG_INT(3), &count, line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            free(matches);
+            return val_void();
+        }
+        runtime_error_override_pop(saved);
         Value out = val_array(TYPE_REGEXP_MATCH);
         for (int i = 0; i < count; i++) {
             Value mv = val_regexp_match(matches[i]);
@@ -1474,16 +1584,37 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
     if (id == BI_REGEX_REPLACE) {
         REQUIRE(4);
-        return val_string_own(regex_replace_value(args[0].u.re, ARG_STR(1), ARG_STR(2), (int)ARG_INT(3), 0, 1, line, col));
+        RuntimeErrorOverride saved = runtime_error_override_push("RegExpException", NULL);
+        Value out = val_string_own(regex_replace_value(args[0].u.re, ARG_STR(1), ARG_STR(2), (int)ARG_INT(3), 0, 1, line, col));
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
+        runtime_error_override_pop(saved);
+        return out;
     }
     if (id == BI_REGEX_REPLACE_ALL) {
         REQUIRE(5);
-        return val_string_own(regex_replace_value(args[0].u.re, ARG_STR(1), ARG_STR(2), (int)ARG_INT(3), 1, (int)ARG_INT(4), line, col));
+        RuntimeErrorOverride saved = runtime_error_override_push("RegExpException", NULL);
+        Value out = val_string_own(regex_replace_value(args[0].u.re, ARG_STR(1), ARG_STR(2), (int)ARG_INT(3), 1, (int)ARG_INT(4), line, col));
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
+        runtime_error_override_pop(saved);
+        return out;
     }
     if (id == BI_REGEX_SPLIT) {
         REQUIRE(4);
         int count = 0;
+        RuntimeErrorOverride saved = runtime_error_override_push("RegExpException", NULL);
         char **parts = regex_split_value(args[0].u.re, ARG_STR(1), (int)ARG_INT(2), (int)ARG_INT(3), &count, line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            free(parts);
+            return val_void();
+        }
+        runtime_error_override_pop(saved);
         Value out = val_array(TYPE_STRING);
         for (int i = 0; i < count; i++) {
             Value sv = val_string_own(parts[i]);
@@ -1564,6 +1695,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         REQUIRE(1);
         if (ARG_ARR(0)->count != (int)sizeof(int64_t)) {
             error_runtime(line, col, "bytesToInt: expected INT_SIZE bytes, got %d", ARG_ARR(0)->count);
+            return val_void();
         }
         int64_t value;
         memcpy(&value, ARG_ARR(0)->data.bytes, sizeof(int64_t));
@@ -1573,6 +1705,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         REQUIRE(1);
         if (ARG_ARR(0)->count != (int)sizeof(double)) {
             error_runtime(line, col, "bytesToFloat: expected FLOAT_SIZE bytes, got %d", ARG_ARR(0)->count);
+            return val_void();
         }
         double value;
         memcpy(&value, ARG_ARR(0)->data.bytes, sizeof(double));
@@ -1583,6 +1716,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     if (id == BI_TO_STRING) {
         REQUIRE(1);
         char *s = val_to_string(&args[0], line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
         return val_string_own(s);
     }
 
@@ -1597,6 +1731,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
             return val_int(v);
         }
         error_runtime(line, col, "toInt: unsupported type");
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
         return val_int(0);
     }
 
@@ -1611,6 +1746,7 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
             return val_float(v);
         }
         error_runtime(line, col, "toFloat: unsupported type");
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
         return val_float(0.0);
     }
 
@@ -1740,37 +1876,74 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     /* ---- File I/O ---- */
     if (id == BI_READ_FILE) {
         REQUIRE(1);
+        RuntimeErrorOverride saved = runtime_error_override_push("IoException", ARG_STR(0));
         char *content = read_file_str(ARG_STR(0), line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
+        runtime_error_override_pop(saved);
         return val_string_own(content);
     }
     if (id == BI_WRITE_FILE) {
         REQUIRE(2);
+        RuntimeErrorOverride saved = runtime_error_override_push("IoException", ARG_STR(0));
         FILE *f = fopen(ARG_STR(0), "wb");
         if (!f) error_runtime(line, col, "Cannot write file: '%s'", ARG_STR(0));
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
         fputs(ARG_STR(1), f);
         fclose(f);
+        runtime_error_override_pop(saved);
         return val_void();
     }
     if (id == BI_APPEND_FILE) {
         REQUIRE(2);
+        RuntimeErrorOverride saved = runtime_error_override_push("IoException", ARG_STR(0));
         FILE *f = fopen(ARG_STR(0), "ab");
         if (!f) error_runtime(line, col, "Cannot write file: '%s'", ARG_STR(0));
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
         fputs(ARG_STR(1), f);
         fclose(f);
+        runtime_error_override_pop(saved);
         return val_void();
     }
     if (id == BI_READ_FILE_BYTES) {
         REQUIRE(1);
-        return read_file_bytes(ARG_STR(0), line, col);
+        RuntimeErrorOverride saved = runtime_error_override_push("IoException", ARG_STR(0));
+        Value out = read_file_bytes(ARG_STR(0), line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
+        runtime_error_override_pop(saved);
+        return out;
     }
     if (id == BI_WRITE_FILE_BYTES) {
         REQUIRE(2);
+        RuntimeErrorOverride saved = runtime_error_override_push("IoException", ARG_STR(0));
         write_file_bytes(ARG_STR(0), ARG_ARR(1), "wb", line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
+        runtime_error_override_pop(saved);
         return val_void();
     }
     if (id == BI_APPEND_FILE_BYTES) {
         REQUIRE(2);
+        RuntimeErrorOverride saved = runtime_error_override_push("IoException", ARG_STR(0));
         write_file_bytes(ARG_STR(0), ARG_ARR(1), "ab", line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
+        runtime_error_override_pop(saved);
         return val_void();
     }
     if (id == BI_FILE_EXISTS) {
@@ -1785,35 +1958,61 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
     if (id == BI_REMOVE) {
         REQUIRE(1);
+        RuntimeErrorOverride saved = runtime_error_override_push("IoException", ARG_STR(0));
         struct stat st;
         if (stat(ARG_STR(0), &st) != 0) {
             error_runtime_hint(line, col, "File does not exist.",
                                "Cannot remove file: '%s'", ARG_STR(0));
         }
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
         if (S_ISDIR(st.st_mode)) {
             error_runtime_hint(line, col, "Path is a directory, not a file.",
                                "Cannot remove file: '%s'", ARG_STR(0));
+        }
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
         }
         if (remove(ARG_STR(0)) != 0) {
             error_runtime_hint(line, col, strerror(errno),
                                "Cannot remove file: '%s'", ARG_STR(0));
         }
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
+        runtime_error_override_pop(saved);
         return val_void();
     }
     if (id == BI_CHMOD) {
         REQUIRE(2);
+        RuntimeErrorOverride saved = runtime_error_override_push("IoException", ARG_STR(0));
 #if defined(_WIN32) || defined(__EMSCRIPTEN__)
         error_runtime(line, col, "chmod: not supported on this platform");
+        runtime_error_override_pop(saved);
+        return val_void();
 #else
         struct stat st;
         if (stat(ARG_STR(0), &st) != 0) {
             error_runtime_hint(line, col, "File or directory does not exist.",
                                "Cannot chmod: '%s'", ARG_STR(0));
         }
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
         if (chmod(ARG_STR(0), (mode_t)ARG_INT(1)) != 0) {
             error_runtime_hint(line, col, strerror(errno),
                                "Cannot chmod: '%s'", ARG_STR(0));
         }
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
+        runtime_error_override_pop(saved);
         return val_void();
 #endif
     }
@@ -1823,15 +2022,24 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
     if (id == BI_COPY) {
         REQUIRE(2);
+        RuntimeErrorOverride saved = runtime_error_override_push("IoException", ARG_STR(0));
         const char *src = ARG_STR(0);
         const char *dst = ARG_STR(1);
         struct stat src_st;
         if (stat(src, &src_st) != 0)
             error_runtime_hint(line, col, strerror(errno),
                                "Cannot copy: source file not found: '%s'", src);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
         if (S_ISDIR(src_st.st_mode))
             error_runtime_hint(line, col, "Source is a directory, not a file.",
                                "Cannot copy: '%s'", src);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
         char *dst_parent = parent_dir_for_write(dst);
         struct stat pst;
         int parent_ok = (stat(dst_parent, &pst) == 0 && S_ISDIR(pst.st_mode));
@@ -1839,20 +2047,34 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         if (!parent_ok)
             error_runtime_hint(line, col, strerror(errno),
                                "Cannot copy: destination directory not found: '%s'", dst);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
         copy_file_contents(src, dst, "copy", line, col);
+        runtime_error_override_pop(saved);
         return val_void();
     }
     if (id == BI_MOVE) {
         REQUIRE(2);
+        RuntimeErrorOverride saved = runtime_error_override_push("IoException", ARG_STR(0));
         const char *src = ARG_STR(0);
         const char *dst = ARG_STR(1);
         struct stat src_st;
         if (stat(src, &src_st) != 0)
             error_runtime_hint(line, col, strerror(errno),
                                "Cannot move: source file not found: '%s'", src);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
         if (S_ISDIR(src_st.st_mode))
             error_runtime_hint(line, col, "Source is a directory, not a file.",
                                "Cannot move: '%s'", src);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
         char *dst_parent = parent_dir_for_write(dst);
         struct stat pst;
         int parent_ok = (stat(dst_parent, &pst) == 0 && S_ISDIR(pst.st_mode));
@@ -1860,15 +2082,28 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         if (!parent_ok)
             error_runtime_hint(line, col, strerror(errno),
                                "Cannot move: destination directory not found: '%s'", dst);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
         if (rename(src, dst) != 0) {
             if (errno != EXDEV)
                 error_runtime_hint(line, col, strerror(errno),
                                    "Cannot move: '%s' -> '%s'", src, dst);
+            if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+                runtime_error_override_pop(saved);
+                return val_void();
+            }
             copy_file_contents(src, dst, "move", line, col);
+            if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+                runtime_error_override_pop(saved);
+                return val_void();
+            }
             if (remove(src) != 0)
                 error_runtime_hint(line, col, strerror(errno),
                                    "Cannot move: '%s' -> '%s'", src, dst);
         }
+        runtime_error_override_pop(saved);
         return val_void();
     }
     if (id == BI_IS_READABLE) {
@@ -1926,7 +2161,12 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
     if (id == BI_READ_LINES) {
         REQUIRE(1);
+        RuntimeErrorOverride saved = runtime_error_override_push("IoException", ARG_STR(0));
         char *content = read_file_str(ARG_STR(0), line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
         Value result  = val_array(TYPE_STRING);
         char *p = content;
         char *start = p;
@@ -1955,18 +2195,25 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
             array_push_owned(result.u.arr, &lv);
         }
         free(content);
+        runtime_error_override_pop(saved);
         return result;
     }
     if (id == BI_WRITE_LINES) {
         REQUIRE(2);
+        RuntimeErrorOverride saved = runtime_error_override_push("IoException", ARG_STR(0));
         FILE *f = fopen(ARG_STR(0), "wb");
         if (!f) error_runtime(line, col, "Cannot write file: '%s'", ARG_STR(0));
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            runtime_error_override_pop(saved);
+            return val_void();
+        }
         ArrayVal *arr = ARG_ARR(1);
         for (int i = 0; i < arr->count; i++) {
             fputs(arr->data.strings[i], f);
             fputc('\n', f);
         }
         fclose(f);
+        runtime_error_override_pop(saved);
         return val_void();
     }
 
@@ -2028,12 +2275,8 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     if (id == BI_ASSERT) {
         REQUIRE(1);
         if (!ARG_BOOL(0)) {
-            if (nargs >= 2) {
-                fprintf(stderr, "[ASSERTION FAILED] %s (line %d)\n", ARG_STR(1), line);
-            } else {
-                fprintf(stderr, "[ASSERTION FAILED] at line %d\n", line);
-            }
-            exit(1);
+            interp_throw_builtin(g_current_interp, "RuntimeException",
+                                 nargs >= 2 ? ARG_STR(1) : "Assertion failed", NULL);
         }
         return val_void();
     }

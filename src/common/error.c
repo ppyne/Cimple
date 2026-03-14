@@ -1,4 +1,5 @@
 #include "error.h"
+#include "../interpreter/interpreter.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,6 +44,10 @@ void error_set_source_map(const SourceMapEntry *entries, int count) {
 void error_clear_source_map(void) {
     g_source_map = NULL;
     g_source_map_count = 0;
+}
+
+void error_translate_location(int merged_line, const char **file_out, int *line_out) {
+    translate_location(merged_line, file_out, line_out);
 }
 
 static void translate_location(int merged_line, const char **file_out, int *line_out) {
@@ -157,6 +162,17 @@ void error_runtime(int line, int col, const char *fmt, ...) {
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
+    if (g_current_interp && g_current_interp->signal == SIGNAL_NONE) {
+        g_current_interp->throw_line = line;
+        g_current_interp->throw_col = col;
+        interp_throw_builtin(g_current_interp,
+                             g_current_interp->runtime_error_type
+                                 ? g_current_interp->runtime_error_type
+                                 : "RuntimeException",
+                             buf,
+                             g_current_interp->runtime_error_path);
+        return;
+    }
     error_print(ERR_RUNTIME, line, col, buf, NULL);
     exit(2);
 }
@@ -164,10 +180,28 @@ void error_runtime(int line, int col, const char *fmt, ...) {
 void error_runtime_hint(int line, int col, const char *hint,
                         const char *fmt, ...) {
     char buf[512];
+    char combined[768];
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
+    if (g_current_interp && g_current_interp->signal == SIGNAL_NONE) {
+        g_current_interp->throw_line = line;
+        g_current_interp->throw_col = col;
+        if (hint && hint[0]) {
+            snprintf(combined, sizeof(combined), "%s (%s)", buf, hint);
+        } else {
+            strncpy(combined, buf, sizeof(combined) - 1);
+            combined[sizeof(combined) - 1] = '\0';
+        }
+        interp_throw_builtin(g_current_interp,
+                             g_current_interp->runtime_error_type
+                                 ? g_current_interp->runtime_error_type
+                                 : "RuntimeException",
+                             combined,
+                             g_current_interp->runtime_error_path);
+        return;
+    }
     error_print(ERR_RUNTIME, line, col, buf, hint);
     exit(2);
 }

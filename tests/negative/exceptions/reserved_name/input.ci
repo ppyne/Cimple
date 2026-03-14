@@ -1,0 +1,5 @@
+structure RuntimeException {
+    string message = "x";
+}
+
+void main() {}

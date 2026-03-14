@@ -57,6 +57,17 @@ struct UnionTable {
     UnionInfo *head;
 };
 
+static const struct {
+    const char *name;
+    const char *base;
+} BUILTIN_EXCEPTIONS[] = {
+    { "Exception",        NULL },
+    { "RuntimeException", "Exception" },
+    { "IoException",      "Exception" },
+    { "RegExpException",  "Exception" },
+    { NULL, NULL }
+};
+
 /* -----------------------------------------------------------------------
  * Built-in function signatures
  * ----------------------------------------------------------------------- */
@@ -283,6 +294,9 @@ static int func_types_equal(const FuncType *a, const FuncType *b);
 static FuncType *func_type_from_sig(const FuncSig *sig);
 static FuncType *func_type_from_builtin(const char *name);
 static const FuncType *expr_func_type(SemCtx *ctx, AstNode *n);
+static int is_reserved_exception_name(const char *name);
+static int is_exception_type_name(SemCtx *ctx, const char *name);
+static void struct_add_builtin_field(StructInfo *si, const char *name, CimpleType type);
 
 /* Resolve intrinsic conversion overloads statically. */
 CimpleType builtin_resolve_intrinsic(const char *name, CimpleType arg_type,
@@ -474,6 +488,17 @@ static StructInfo *struct_table_define(StructTable *st, const char *name,
     return si;
 }
 
+static void struct_add_builtin_field(StructInfo *si, const char *name, CimpleType type) {
+    if (!si || !name) return;
+    StructFieldSig *field = ALLOC(StructFieldSig);
+    field->name = cimple_strdup(name);
+    field->type = type;
+    field->struct_name = NULL;
+    field->decl = NULL;
+    field->next = si->fields;
+    si->fields = field;
+}
+
 static StructFieldSig *struct_lookup_field(StructTable *st, StructInfo *si, const char *name) {
     for (StructFieldSig *f = si ? si->fields : NULL; f; f = f->next)
         if (strcmp(f->name, name) == 0) return f;
@@ -551,7 +576,7 @@ static UnionMemberSig *union_lookup_member(UnionInfo *ui, const char *name) {
 
 static int struct_declared_before(SemCtx *ctx, const char *name, int line) {
     StructInfo *si = struct_table_lookup(ctx->structs, name);
-    return si && si->decl && si->decl->line < line;
+    return si && (!si->decl || si->decl->line < line);
 }
 
 static AstNode *global_decl_lookup(AstNode *program, const char *name) {
@@ -661,6 +686,19 @@ static void error_operator_type(int line, int col, const char *op,
     error_semantic_hint(line, col, hint,
                         "Operator '%s' cannot be applied to type '%s'",
                         op, type_name(got));
+}
+
+static int is_reserved_exception_name(const char *name) {
+    if (!name) return 0;
+    for (int i = 0; BUILTIN_EXCEPTIONS[i].name; i++) {
+        if (strcmp(BUILTIN_EXCEPTIONS[i].name, name) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+static int is_exception_type_name(SemCtx *ctx, const char *name) {
+    return name && struct_is_subtype(ctx->structs, name, "Exception");
 }
 
 /* Push/pop scope wrappers */
@@ -1708,6 +1746,61 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         pop_scope(ctx);
         break;
 
+    case NODE_THROW: {
+        CimpleType thrown_t = check_expr(ctx, n->u.throw_stmt.expr);
+        if (thrown_t != TYPE_STRUCT ||
+            !n->u.throw_stmt.expr->type_name_hint ||
+            !is_exception_type_name(ctx, n->u.throw_stmt.expr->type_name_hint)) {
+            error_semantic(n->line, n->col,
+                           "throw requires a value of type Exception or a subtype");
+        }
+        break;
+    }
+
+    case NODE_TRY_CATCH: {
+        check_stmt(ctx, n->u.try_catch.try_block);
+        if (n->u.try_catch.clauses.count == 0) {
+            error_semantic(n->line, n->col,
+                           "try requires at least one catch clause");
+            break;
+        }
+        int has_catchall = 0;
+        for (int i = 0; i < n->u.try_catch.clauses.count; i++) {
+            AstNode *cl = n->u.try_catch.clauses.items[i];
+            const char *tname = cl->u.catch_clause.type_name;
+            if (!is_exception_type_name(ctx, tname)) {
+                error_semantic(cl->line, cl->col,
+                               "catch requires an exception type, got '%s'",
+                               tname ? tname : "<unknown>");
+            }
+            if (has_catchall) {
+                error_semantic(cl->line, cl->col,
+                               "unreachable catch clause after catch (Exception)");
+            }
+            for (int j = 0; j < i; j++) {
+                const char *prev = n->u.try_catch.clauses.items[j]->u.catch_clause.type_name;
+                if (prev && tname && struct_is_subtype(ctx->structs, tname, prev)) {
+                    error_semantic(cl->line, cl->col,
+                                   "unreachable catch clause: '%s' is a subtype of '%s'",
+                                   tname, prev);
+                    break;
+                }
+            }
+            if (tname && strcmp(tname, "Exception") == 0)
+                has_catchall = 1;
+
+            Scope *catch_scope = scope_new(ctx->current, 0);
+            scope_define(catch_scope, cl->u.catch_clause.var_name,
+                         TYPE_STRUCT, tname, NULL, cl->line, cl->col);
+            Scope *saved = ctx->current;
+            ctx->current = catch_scope;
+            check_stmt(ctx, cl->u.catch_clause.block);
+            ctx->current = saved;
+            scope_free(catch_scope);
+        }
+        break;
+    }
+
     case NODE_IF:
         check_expr(ctx, n->u.if_stmt.cond);
         if (n->u.if_stmt.cond->type != TYPE_BOOL &&
@@ -1872,6 +1965,12 @@ static void collect_structs(SemCtx *ctx, AstNode *program) {
     for (int i = 0; i < decls->count; i++) {
         AstNode *d = decls->items[i];
         if (d->kind != NODE_STRUCT_DECL) continue;
+        if (is_reserved_exception_name(d->u.struct_decl.name)) {
+            error_semantic(d->line, d->col,
+                           "'%s' is a reserved name",
+                           d->u.struct_decl.name);
+            continue;
+        }
         if (!struct_table_define(ctx->structs, d->u.struct_decl.name,
                                  d->u.struct_decl.base_name, d)) {
             error_semantic(d->line, d->col,
@@ -1925,6 +2024,7 @@ static int struct_depends_on(StructTable *st, const char *from, const char *targ
 
 static void validate_structs(SemCtx *ctx) {
     for (StructInfo *si = ctx->structs->head; si; si = si->next) {
+        if (!si->decl) continue;
         StructInfo *base_info = si->base_name ? struct_table_lookup(ctx->structs, si->base_name) : NULL;
         int has_cycle = si->base_name && struct_has_inheritance_cycle(ctx, si);
         if (si->base_name && !base_info) {
@@ -1938,6 +2038,14 @@ static void validate_structs(SemCtx *ctx) {
         if (has_cycle) {
             error_semantic(si->decl->line, si->decl->col,
                            "Inheritance cycle detected involving '%s'", si->name);
+        }
+        if (si->base_name &&
+            (strcmp(si->base_name, "RuntimeException") == 0 ||
+             strcmp(si->base_name, "IoException") == 0 ||
+             strcmp(si->base_name, "RegExpException") == 0)) {
+            error_semantic(si->decl->line, si->decl->col,
+                           "Cannot inherit from built-in exception '%s'",
+                           si->base_name);
         }
 
         StructInfo *base = base_info;
@@ -1989,6 +2097,12 @@ static void validate_structs(SemCtx *ctx) {
                                        field->name, si->name);
                     }
                 }
+                AstNode *global = global_decl_lookup(ctx->program, field->name);
+                if (global) {
+                    error_semantic(m->line, m->col,
+                                   "Field '%s' in structure '%s' conflicts with global symbol '%s'",
+                                   field->name, si->name, field->name);
+                }
                 if (base) {
                     StructFieldSig *base_field = struct_lookup_field(ctx->structs, base, field->name);
                     if (base_field &&
@@ -2025,6 +2139,12 @@ static void validate_structs(SemCtx *ctx) {
                                        "Duplicate method '%s' in structure '%s'",
                                        method->name, si->name);
                     }
+                }
+                AstNode *global = global_decl_lookup(ctx->program, method->name);
+                if (global) {
+                    error_semantic(m->line, m->col,
+                                   "Method '%s' in structure '%s' conflicts with global symbol '%s'",
+                                   method->name, si->name, method->name);
                 }
                 if (base) {
                     StructMethodSig *base_method = struct_lookup_method(ctx->structs, base, method->name);
@@ -2148,6 +2268,7 @@ static void collect_functions(SemCtx *ctx, AstNode *program) {
 
 static void check_struct_methods(SemCtx *ctx) {
     for (StructInfo *si = ctx->structs->head; si; si = si->next) {
+        if (!si->decl) continue;
         for (StructMethodSig *method = si->methods; method; method = method->next) {
             AstNode *f = method->decl;
             push_scope(ctx, 1);
@@ -2285,6 +2406,22 @@ int semantic_check(AstNode *program) {
     ctx.current_struct_name = NULL;
     ctx.current_base_name = NULL;
     ctx.in_method = 0;
+
+    for (int i = 0; BUILTIN_EXCEPTIONS[i].name; i++)
+    {
+        StructInfo *si = struct_table_define(ctx.structs, BUILTIN_EXCEPTIONS[i].name,
+                                             BUILTIN_EXCEPTIONS[i].base, NULL);
+        if (si && strcmp(BUILTIN_EXCEPTIONS[i].name, "Exception") == 0)
+            struct_add_builtin_field(si, "message", TYPE_STRING);
+        if (si && strcmp(BUILTIN_EXCEPTIONS[i].name, "RuntimeException") == 0)
+            struct_add_builtin_field(si, "message", TYPE_STRING);
+        if (si && strcmp(BUILTIN_EXCEPTIONS[i].name, "IoException") == 0) {
+            struct_add_builtin_field(si, "path", TYPE_STRING);
+            struct_add_builtin_field(si, "message", TYPE_STRING);
+        }
+        if (si && strcmp(BUILTIN_EXCEPTIONS[i].name, "RegExpException") == 0)
+            struct_add_builtin_field(si, "message", TYPE_STRING);
+    }
 
     collect_structs(&ctx, program);
     collect_unions(&ctx, program);

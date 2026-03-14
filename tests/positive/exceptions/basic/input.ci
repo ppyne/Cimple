@@ -1,0 +1,8 @@
+void main() {
+    try {
+        assert(false, "boom");
+    } catch (RuntimeException e) {
+        print(e.message + "\n");
+    }
+    print("done\n");
+}

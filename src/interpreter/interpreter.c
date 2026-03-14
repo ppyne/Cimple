@@ -32,6 +32,22 @@ static Value call_method(Interp *ip, Value *base, const char *method_name,
 static Value *resolve_value_lvalue(Interp *ip, Scope *scope, AstNode *n, int line, int col);
 static Value *resolve_struct_lvalue(Interp *ip, Scope *scope, AstNode *n, int line, int col);
 
+Interp *g_current_interp = NULL;
+
+static int interp_has_throw(Interp *ip) {
+    return ip && ip->signal == SIGNAL_THROW;
+}
+
+static void interp_clear_throw(Interp *ip) {
+    if (!ip) return;
+    value_free(&ip->throw_val);
+    ip->throw_val = val_void();
+    free(ip->throw_type_name);
+    ip->throw_type_name = NULL;
+    ip->throw_line = 0;
+    ip->throw_col = 0;
+}
+
 static int is_mutating_array_builtin(const char *name) {
     return strcmp(name, "arrayPush") == 0 ||
            strcmp(name, "arrayPop") == 0 ||
@@ -214,6 +230,53 @@ static AstNode *find_union_decl(Interp *ip, const char *name) {
     return NULL;
 }
 
+int interp_struct_is_subtype(Interp *ip, const char *actual, const char *expected) {
+    if (!actual || !expected) return 0;
+    if (strcmp(actual, expected) == 0) return 1;
+    if (strcmp(expected, "Exception") == 0 &&
+        (strcmp(actual, "RuntimeException") == 0 ||
+         strcmp(actual, "IoException") == 0 ||
+         strcmp(actual, "RegExpException") == 0))
+        return 1;
+    if ((strcmp(actual, "RuntimeException") == 0 ||
+         strcmp(actual, "IoException") == 0 ||
+         strcmp(actual, "RegExpException") == 0) &&
+        strcmp(expected, "Exception") != 0)
+        return 0;
+    for (AstNode *decl = find_struct_decl(ip, actual);
+         decl && decl->u.struct_decl.base_name;
+         decl = find_struct_decl(ip, decl->u.struct_decl.base_name)) {
+        if (strcmp(decl->u.struct_decl.base_name, expected) == 0) return 1;
+    }
+    return 0;
+}
+
+void interp_throw(Interp *ip, const char *type_name, Value val) {
+    if (!ip || ip->signal != SIGNAL_NONE) {
+        value_free(&val);
+        return;
+    }
+    ip->signal = SIGNAL_THROW;
+    ip->throw_val = val;
+    ip->throw_type_name = cimple_strdup(type_name ? type_name : "Exception");
+}
+
+void interp_throw_builtin(Interp *ip, const char *type_name,
+                          const char *message, const char *path) {
+    if (!ip) return;
+    int field_count = strcmp(type_name, "IoException") == 0 ? 2 : 1;
+    Value ex = val_struct(type_name, field_count);
+    ex.u.st->fields[0].name = cimple_strdup("message");
+    ex.u.st->fields[0].type = TYPE_STRING;
+    ex.u.st->fields[0].value = val_string(message ? message : "");
+    if (field_count == 2) {
+        ex.u.st->fields[1].name = cimple_strdup("path");
+        ex.u.st->fields[1].type = TYPE_STRING;
+        ex.u.st->fields[1].value = val_string(path ? path : "");
+    }
+    interp_throw(ip, type_name, ex);
+}
+
 static StructFieldVal *struct_field_lookup(StructVal *st, const char *name) {
     if (!st) return NULL;
     for (int i = 0; i < st->field_count; i++) {
@@ -221,6 +284,50 @@ static StructFieldVal *struct_field_lookup(StructVal *st, const char *name) {
         if (strcmp(st->fields[i].name, name) == 0) return &st->fields[i];
     }
     return NULL;
+}
+
+static int builtin_exception_field_count(const char *name) {
+    if (!name) return 0;
+    if (strcmp(name, "IoException") == 0) return 2;
+    if (strcmp(name, "Exception") == 0 ||
+        strcmp(name, "RuntimeException") == 0 ||
+        strcmp(name, "RegExpException") == 0) return 1;
+    return 0;
+}
+
+static int builtin_exception_has_field(const char *type_name, const char *field_name) {
+    if (!type_name || !field_name) return 0;
+    if ((strcmp(type_name, "Exception") == 0 ||
+         strcmp(type_name, "RuntimeException") == 0 ||
+         strcmp(type_name, "RegExpException") == 0) &&
+        strcmp(field_name, "message") == 0)
+        return 1;
+    if (strcmp(type_name, "IoException") == 0 &&
+        (strcmp(field_name, "message") == 0 || strcmp(field_name, "path") == 0))
+        return 1;
+    return 0;
+}
+
+static void fill_builtin_exception_defaults(StructVal *out, const char *type_name) {
+    if (!out || !type_name) return;
+    int idx = 0;
+    while (idx < out->field_count && out->fields[idx].name) idx++;
+    if (strcmp(type_name, "Exception") == 0 ||
+        strcmp(type_name, "RuntimeException") == 0 ||
+        strcmp(type_name, "RegExpException") == 0) {
+        out->fields[idx].name = cimple_strdup("message");
+        out->fields[idx].type = TYPE_STRING;
+        out->fields[idx].value = val_string("");
+        return;
+    }
+    if (strcmp(type_name, "IoException") == 0) {
+        out->fields[idx].name = cimple_strdup("message");
+        out->fields[idx].type = TYPE_STRING;
+        out->fields[idx].value = val_string("");
+        out->fields[idx + 1].name = cimple_strdup("path");
+        out->fields[idx + 1].type = TYPE_STRING;
+        out->fields[idx + 1].value = val_string("");
+    }
 }
 
 static int struct_decl_has_field(Interp *ip, AstNode *decl, const char *name) {
@@ -231,6 +338,8 @@ static int struct_decl_has_field(Interp *ip, AstNode *decl, const char *name) {
             strcmp(m->u.struct_field.name, name) == 0) return 1;
     }
     if (decl->u.struct_decl.base_name) {
+        if (builtin_exception_has_field(decl->u.struct_decl.base_name, name))
+            return 1;
         AstNode *base = find_struct_decl(ip, decl->u.struct_decl.base_name);
         return struct_decl_has_field(ip, base, name);
     }
@@ -242,6 +351,7 @@ static int struct_count_fields(Interp *ip, AstNode *decl) {
     if (decl->u.struct_decl.base_name) {
         AstNode *base = find_struct_decl(ip, decl->u.struct_decl.base_name);
         if (base) count += struct_count_fields(ip, base);
+        else count += builtin_exception_field_count(decl->u.struct_decl.base_name);
     }
     for (int i = 0; i < decl->u.struct_decl.members.count; i++) {
         AstNode *m = decl->u.struct_decl.members.items[i];
@@ -261,6 +371,7 @@ static void struct_fill_defaults(Interp *ip, StructVal *out, AstNode *decl, Scop
     if (decl->u.struct_decl.base_name) {
         AstNode *base = find_struct_decl(ip, decl->u.struct_decl.base_name);
         if (base) struct_fill_defaults(ip, out, base, scope);
+        else fill_builtin_exception_defaults(out, decl->u.struct_decl.base_name);
     }
     for (int i = 0; i < decl->u.struct_decl.members.count; i++) {
         AstNode *m = decl->u.struct_decl.members.items[i];
@@ -314,34 +425,56 @@ static Value create_union_instance(Interp *ip, const char *name) {
 
 static Value clone_struct_instance(Interp *ip, const char *name, Scope *scope, int line, int col) {
     AstNode *decl = find_struct_decl(ip, name);
-    if (!decl) error_runtime(line, col, "Unknown structure '%s'", name);
+    if (!decl) {
+        error_runtime(line, col, "Unknown structure '%s'", name);
+        return val_void();
+    }
     Value out = val_struct(name, struct_count_fields(ip, decl));
     struct_fill_defaults(ip, out.u.st, decl, scope ? scope : ip->global);
+    if (interp_has_throw(ip)) {
+        value_free(&out);
+        return val_void();
+    }
     return out;
 }
 
 static Value *resolve_value_lvalue(Interp *ip, Scope *scope, AstNode *n, int line, int col) {
     if (n->kind == NODE_IDENT) {
         Symbol *sym = scope_lookup(scope, n->u.ident.name);
-        if (!sym) error_runtime(line, col, "undefined variable '%s'", n->u.ident.name);
+        if (!sym) {
+            error_runtime(line, col, "undefined variable '%s'", n->u.ident.name);
+            return NULL;
+        }
         return &sym->val;
     }
     if (n->kind == NODE_SELF || n->kind == NODE_SUPER) {
         Symbol *sym = scope_lookup(scope, "self");
-        if (!sym) error_runtime(line, col, "'self' is not available here");
+        if (!sym) {
+            error_runtime(line, col, "'self' is not available here");
+            return NULL;
+        }
         return &sym->val;
     }
     if (n->kind == NODE_INDEX) {
         Value *base = resolve_value_lvalue(ip, scope, n->u.index.base, line, col);
-        if (!base || !type_is_array(base->type))
+        if (!base) return NULL;
+        if (!type_is_array(base->type)) {
             error_runtime(line, col, "Operator '[]' cannot be applied to this value at runtime");
+            return NULL;
+        }
         Value idx = eval_expr(ip, scope, n->u.index.index);
+        if (interp_has_throw(ip)) {
+            value_free(&idx);
+            return NULL;
+        }
         int index = (int)idx.u.i;
         value_free(&idx);
-        if (index < 0 || index >= base->u.arr->count)
+        if (index < 0 || index >= base->u.arr->count) {
             error_runtime(line, col,
                           "Array index out of bounds (Index: %d   Array size: %d)",
                           index, base->u.arr->count);
+            return NULL;
+        }
         static Value slot;
         if (base->u.arr->elem_type == TYPE_STRUCT) {
             slot.type = TYPE_STRUCT;
@@ -351,25 +484,36 @@ static Value *resolve_value_lvalue(Interp *ip, Scope *scope, AstNode *n, int lin
             slot.u.un = base->u.arr->data.unions[index];
         } else {
             error_runtime(line, col, "Indexed lvalue is not a structure or union");
+            return NULL;
         }
         return &slot;
     }
     if (n->kind == NODE_MEMBER) {
         Value *base = resolve_value_lvalue(ip, scope, n->u.member.base, line, col);
+        if (!base) return NULL;
         if (base->type == TYPE_STRUCT) {
             StructFieldVal *field = struct_field_lookup(base->u.st, n->u.member.name);
-            if (!field) error_runtime(line, col, "Unknown field '%s'", n->u.member.name);
+            if (!field) {
+                error_runtime(line, col, "Unknown field '%s'", n->u.member.name);
+                return NULL;
+            }
             return &field->value;
         }
         if (base->type == TYPE_UNION) {
-            if (strcmp(n->u.member.name, "kind") == 0)
+            if (strcmp(n->u.member.name, "kind") == 0) {
                 error_runtime(line, col, "Cannot assign to union kind field");
+                return NULL;
+            }
             int idx = union_member_index(base->u.un, n->u.member.name);
-            if (idx < 0) error_runtime(line, col, "Unknown field '%s'", n->u.member.name);
+            if (idx < 0) {
+                error_runtime(line, col, "Unknown field '%s'", n->u.member.name);
+                return NULL;
+            }
             base->u.un->kind = idx;
             return &base->u.un->members[idx];
         }
         error_runtime(line, col, "Member access requires a structure instance");
+        return NULL;
     }
     error_runtime(line, col, "Invalid lvalue");
     return NULL;
@@ -377,8 +521,10 @@ static Value *resolve_value_lvalue(Interp *ip, Scope *scope, AstNode *n, int lin
 
 static Value *resolve_struct_lvalue(Interp *ip, Scope *scope, AstNode *n, int line, int col) {
     Value *out = resolve_value_lvalue(ip, scope, n, line, col);
+    if (!out) return NULL;
     if (out->type != TYPE_STRUCT)
         error_runtime(line, col, "Member access requires a structure instance");
+    if (interp_has_throw(ip)) return NULL;
     return out;
 }
 
@@ -434,8 +580,11 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
 
     case NODE_IDENT: {
         Symbol *sym = scope_lookup(scope, n->u.ident.name);
-        if (!sym) error_runtime(n->line, n->col,
-                                "undefined variable '%s'", n->u.ident.name);
+        if (!sym) {
+            error_runtime(n->line, n->col,
+                          "undefined variable '%s'", n->u.ident.name);
+            return val_void();
+        }
         return value_copy(sym->val);
     }
 
@@ -444,13 +593,19 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
 
     case NODE_SELF: {
         Symbol *sym = scope_lookup(scope, "self");
-        if (!sym) error_runtime(n->line, n->col, "'self' is not available here");
+        if (!sym) {
+            error_runtime(n->line, n->col, "'self' is not available here");
+            return val_void();
+        }
         return sym->val;
     }
 
     case NODE_SUPER: {
         Symbol *sym = scope_lookup(scope, "self");
-        if (!sym) error_runtime(n->line, n->col, "'super' is not available here");
+        if (!sym) {
+            error_runtime(n->line, n->col, "'super' is not available here");
+            return val_void();
+        }
         return sym->val;
     }
 
@@ -463,6 +618,7 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         /* Determine element type from declaration context if unknown */
         if (elem_t == TYPE_UNKNOWN && elems->count > 0) {
             Value first = eval_expr(ip, scope, elems->items[0]);
+            if (interp_has_throw(ip)) return val_void();
             elem_t = first.type;
             value_free(&first);
         }
@@ -470,6 +626,11 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         Value arr = val_array(elem_t);
         for (int i = 0; i < elems->count; i++) {
             Value v = eval_expr(ip, scope, elems->items[i]);
+            if (interp_has_throw(ip)) {
+                value_free(&v);
+                value_free(&arr);
+                return val_void();
+            }
             array_push_owned(arr.u.arr, &v);
         }
         return arr;
@@ -479,23 +640,39 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         /* Short-circuit for &&, || */
         if (n->u.binop.op == OP_AND) {
             Value l = eval_expr(ip, scope, n->u.binop.left);
+            if (interp_has_throw(ip)) return val_void();
             if (!l.u.b) return val_bool(0);
             Value r = eval_expr(ip, scope, n->u.binop.right);
+            if (interp_has_throw(ip)) {
+                value_free(&r);
+                return val_void();
+            }
             int res = r.u.b;
             value_free(&r);
             return val_bool(res);
         }
         if (n->u.binop.op == OP_OR) {
             Value l = eval_expr(ip, scope, n->u.binop.left);
+            if (interp_has_throw(ip)) return val_void();
             if (l.u.b) return val_bool(1);
             Value r = eval_expr(ip, scope, n->u.binop.right);
+            if (interp_has_throw(ip)) {
+                value_free(&r);
+                return val_void();
+            }
             int res = r.u.b;
             value_free(&r);
             return val_bool(res);
         }
 
         Value l = eval_expr(ip, scope, n->u.binop.left);
+        if (interp_has_throw(ip)) return val_void();
         Value r = eval_expr(ip, scope, n->u.binop.right);
+        if (interp_has_throw(ip)) {
+            value_free(&l);
+            value_free(&r);
+            return val_void();
+        }
         Value result;
 
         switch (n->u.binop.op) {
@@ -521,6 +698,7 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
             if (is_int_like_value(l.type) && is_int_like_value(r.type)) {
                 if (r.u.i == 0)
                     error_runtime(n->line, n->col, "Integer division by zero");
+                if (interp_has_throw(ip)) { value_free(&l); value_free(&r); return val_void(); }
                 result = val_int(l.u.i / r.u.i);
             } else {
                 result = val_float(l.u.f / r.u.f);
@@ -529,6 +707,7 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         case OP_MOD:
             if (r.u.i == 0)
                 error_runtime(n->line, n->col, "Integer modulo by zero");
+            if (interp_has_throw(ip)) { value_free(&l); value_free(&r); return val_void(); }
             result = val_int(l.u.i % r.u.i);
             break;
 
@@ -578,6 +757,7 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
 
     case NODE_TERNARY: {
         Value cond = eval_expr(ip, scope, n->u.ternary.cond);
+        if (interp_has_throw(ip)) return val_void();
         int c = cond.u.b;
         value_free(&cond);
         return eval_expr(ip, scope, c ? n->u.ternary.then_expr : n->u.ternary.else_expr);
@@ -585,6 +765,7 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
 
     case NODE_UNOP: {
         Value v = eval_expr(ip, scope, n->u.unop.operand);
+        if (interp_has_throw(ip)) return val_void();
         Value result;
         switch (n->u.unop.op) {
         case OP_NOT:  result = val_bool(!v.u.b); break;
@@ -600,7 +781,9 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
 
     case NODE_INDEX: {
         Value base  = eval_expr(ip, scope, n->u.index.base);
+        if (interp_has_throw(ip)) return val_void();
         Value index = eval_expr(ip, scope, n->u.index.index);
+        if (interp_has_throw(ip)) { value_free(&base); value_free(&index); return val_void(); }
         int   idx   = (int)index.u.i;
         Value result;
 
@@ -610,6 +793,7 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
                 error_runtime(n->line, n->col,
                               "String index out of bounds (Index: %d   String length: %d bytes)",
                               idx, blen);
+            if (interp_has_throw(ip)) { value_free(&base); return val_void(); }
             char buf[2] = { base.u.s[idx], '\0' };
             result = val_string(buf);
         } else if (type_is_array(base.type)) {
@@ -643,27 +827,36 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
             }
         }
         Value base = eval_expr(ip, scope, n->u.member.base);
+        if (interp_has_throw(ip)) return val_void();
         Value out;
         if (base.type == TYPE_STRUCT) {
             StructFieldVal *field = struct_field_lookup(base.u.st, n->u.member.name);
-            if (!field)
+            if (!field) {
                 error_runtime(n->line, n->col, "Unknown field '%s'", n->u.member.name);
+                value_free(&base);
+                return val_void();
+            }
             out = value_copy(field->value);
         } else if (base.type == TYPE_UNION) {
             if (strcmp(n->u.member.name, "kind") == 0) {
                 out = val_int(base.u.un->kind);
             } else {
                 int idx = union_member_index(base.u.un, n->u.member.name);
-                if (idx < 0)
+                if (idx < 0) {
                     error_runtime(n->line, n->col, "Unknown field '%s'", n->u.member.name);
+                    value_free(&base);
+                    return val_void();
+                }
                 if (base.u.un->kind != idx)
                     error_runtime(n->line, n->col,
                                   "Union member '%s' is not active", n->u.member.name);
+                if (interp_has_throw(ip)) { value_free(&base); return val_void(); }
                 out = value_copy(base.u.un->members[idx]);
             }
         } else {
             error_runtime(n->line, n->col, "Member access requires a structure instance");
-            out = val_void();
+            value_free(&base);
+            return val_void();
         }
         if (n->u.member.base->kind != NODE_SELF && n->u.member.base->kind != NODE_SUPER)
             value_free(&base);
@@ -676,7 +869,15 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         if (nargs > 32) nargs = 32;
         for (int i = 0; i < nargs; i++)
             arg_vals[i] = eval_expr(ip, scope, n->u.method_call.args.items[i]);
+        if (interp_has_throw(ip)) {
+            for (int i = 0; i < nargs; i++) value_free(&arg_vals[i]);
+            return val_void();
+        }
         Value *base = resolve_struct_lvalue(ip, scope, n->u.method_call.base, n->line, n->col);
+        if (!base) {
+            for (int i = 0; i < nargs; i++) value_free(&arg_vals[i]);
+            return val_void();
+        }
         Value out = call_method(ip, base, n->u.method_call.name,
                                 n->u.method_call.is_super,
                                 arg_vals, nargs, n->line, n->col);
@@ -720,11 +921,17 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
                 if (!sym) {
                     error_runtime(n->line, n->col,
                                   "undefined variable '%s'", args->items[i]->u.ident.name);
+                    for (int j = 0; j < i; j++) if (!borrowed[j]) value_free(&arg_vals[j]);
+                    return val_void();
                 }
                 arg_vals[i] = sym->val;
                 borrowed[i] = 1;
             } else {
                 arg_vals[i] = eval_expr(ip, scope, args->items[i]);
+                if (interp_has_throw(ip)) {
+                    for (int j = 0; j <= i; j++) if (!borrowed[j]) value_free(&arg_vals[j]);
+                    return val_void();
+                }
             }
         }
         Value result = call_func(ip, dispatch_name, arg_vals, nargs, n->line, n->col);
@@ -753,6 +960,10 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
         Value v;
         if (n->u.var_decl.init) {
             v = eval_expr(ip, scope, n->u.var_decl.init);
+            if (interp_has_throw(ip)) {
+                value_free(&v);
+                break;
+            }
             /* Propagate element type for empty arrays */
             if (n->u.var_decl.init->kind == NODE_ARRAY_LIT &&
                 n->u.var_decl.init->u.array_lit.elems.count == 0 &&
@@ -786,9 +997,16 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
 
     case NODE_ASSIGN: {
         Symbol *sym = scope_lookup(scope, n->u.assign.name);
-        if (!sym) error_runtime(n->line, n->col,
-                                "undefined variable '%s'", n->u.assign.name);
+        if (!sym) {
+            error_runtime(n->line, n->col,
+                          "undefined variable '%s'", n->u.assign.name);
+            break;
+        }
         Value v = eval_expr(ip, scope, n->u.assign.value);
+        if (interp_has_throw(ip)) {
+            value_free(&v);
+            break;
+        }
         if (sym->type == TYPE_BYTE && v.type == TYPE_INT) v.type = TYPE_BYTE;
         value_free(&sym->val);
         sym->val = v;
@@ -797,10 +1015,18 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
 
     case NODE_INDEX_ASSIGN: {
         Symbol *sym = scope_lookup(scope, n->u.index_assign.name);
-        if (!sym) error_runtime(n->line, n->col,
-                                "undefined variable '%s'", n->u.index_assign.name);
+        if (!sym) {
+            error_runtime(n->line, n->col,
+                          "undefined variable '%s'", n->u.index_assign.name);
+            break;
+        }
         Value idx_v = eval_expr(ip, scope, n->u.index_assign.index);
         Value val   = eval_expr(ip, scope, n->u.index_assign.value);
+        if (interp_has_throw(ip)) {
+            value_free(&idx_v);
+            value_free(&val);
+            break;
+        }
         int   idx   = (int)idx_v.u.i;
         array_set_owned(sym->val.u.arr, idx, &val, n->line, n->col);
         value_free(&idx_v);
@@ -810,16 +1036,31 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
 
     case NODE_INDEX2_ASSIGN: {
         Symbol *sym = scope_lookup(scope, n->u.index2_assign.name);
-        if (!sym) error_runtime(n->line, n->col,
-                                "undefined variable '%s'", n->u.index2_assign.name);
+        if (!sym) {
+            error_runtime(n->line, n->col,
+                          "undefined variable '%s'", n->u.index2_assign.name);
+            break;
+        }
         Value i1v = eval_expr(ip, scope, n->u.index2_assign.index1);
         Value i2v = eval_expr(ip, scope, n->u.index2_assign.index2);
         Value val = eval_expr(ip, scope, n->u.index2_assign.value);
+        if (interp_has_throw(ip)) {
+            value_free(&i1v);
+            value_free(&i2v);
+            value_free(&val);
+            break;
+        }
         int i1 = (int)i1v.u.i;
         int i2 = (int)i2v.u.i;
         if (i1 < 0 || i1 >= sym->val.u.arr->count)
             error_runtime(n->line, n->col, "row index %d out of bounds (size %d)",
                           i1, sym->val.u.arr->count);
+        if (interp_has_throw(ip)) {
+            value_free(&i1v);
+            value_free(&i2v);
+            value_free(&val);
+            break;
+        }
         ArrayVal *inner = sym->val.u.arr->data.arrays[i1];
         array_set_owned(inner, i2, &val, n->line, n->col);
         value_free(&i1v);
@@ -832,8 +1073,14 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
         AstNode *target = n->u.member_assign.target;
         if (target->kind != NODE_MEMBER)
             error_runtime(n->line, n->col, "Invalid member assignment");
+        if (interp_has_throw(ip)) break;
         Value *field_value = resolve_value_lvalue(ip, scope, target, n->line, n->col);
+        if (!field_value) break;
         Value v = eval_expr(ip, scope, n->u.member_assign.value);
+        if (interp_has_throw(ip)) {
+            value_free(&v);
+            break;
+        }
         value_free(field_value);
         *field_value = v;
         break;
@@ -850,6 +1097,10 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
 
     case NODE_IF: {
         Value cond = eval_expr(ip, scope, n->u.if_stmt.cond);
+        if (interp_has_throw(ip)) {
+            value_free(&cond);
+            break;
+        }
         if (cond.u.b) {
             exec_stmt(ip, scope, n->u.if_stmt.then_branch);
         } else if (n->u.if_stmt.else_branch) {
@@ -861,11 +1112,15 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
     case NODE_WHILE: {
         for (;;) {
             Value cond = eval_expr(ip, scope, n->u.while_stmt.cond);
+            if (interp_has_throw(ip)) {
+                value_free(&cond);
+                break;
+            }
             if (!cond.u.b) break;
             exec_stmt(ip, scope, n->u.while_stmt.body);
             if (ip->signal == SIGNAL_BREAK) { ip->signal = SIGNAL_NONE; break; }
             if (ip->signal == SIGNAL_CONTINUE) { ip->signal = SIGNAL_NONE; continue; }
-            if (ip->signal == SIGNAL_RETURN) break;
+            if (ip->signal == SIGNAL_RETURN || ip->signal == SIGNAL_THROW) break;
         }
         break;
     }
@@ -881,6 +1136,10 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
                 continue;
             }
             Value case_val = eval_expr(ip, scope, c->u.case_stmt.value);
+            if (interp_has_throw(ip)) {
+                value_free(&case_val);
+                break;
+            }
             int same = (cond.type == TYPE_INT || cond.type == TYPE_BYTE)
                 ? (cond.u.i == case_val.u.i)
                 : 0;
@@ -912,6 +1171,11 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
             AstNode *init = n->u.for_stmt.init;
             if (init->kind == NODE_FOR_INIT) {
                 Value init_v = eval_expr(ip, for_scope, init->u.for_init.init_expr);
+                if (interp_has_throw(ip)) {
+                    value_free(&init_v);
+                    scope_free(for_scope);
+                    break;
+                }
                 Symbol *sym  = scope_define(for_scope, init->u.for_init.name,
                                             TYPE_INT, NULL, NULL,
                                             init->line, init->col);
@@ -925,6 +1189,10 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
         for (;;) {
             if (n->u.for_stmt.cond) {
                 Value cond = eval_expr(ip, for_scope, n->u.for_stmt.cond);
+                if (interp_has_throw(ip)) {
+                    value_free(&cond);
+                    break;
+                }
                 int ok = cond.u.b;
                 value_free(&cond);
                 if (!ok) break;
@@ -932,7 +1200,7 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
             exec_stmt(ip, for_scope, n->u.for_stmt.body);
             if (ip->signal == SIGNAL_BREAK)    { ip->signal = SIGNAL_NONE; break; }
             if (ip->signal == SIGNAL_CONTINUE) { ip->signal = SIGNAL_NONE; }
-            if (ip->signal == SIGNAL_RETURN)   break;
+            if (ip->signal == SIGNAL_RETURN || ip->signal == SIGNAL_THROW)   break;
 
             /* Update */
             if (n->u.for_stmt.update)
@@ -946,11 +1214,76 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
         if (n->u.ret.value) {
             value_free(&ip->ret_val);
             ip->ret_val = eval_expr(ip, scope, n->u.ret.value);
+            if (interp_has_throw(ip)) {
+                value_free(&ip->ret_val);
+                ip->ret_val = val_void();
+                break;
+            }
         } else {
             ip->ret_val = val_void();
         }
         ip->signal = SIGNAL_RETURN;
         break;
+
+    case NODE_THROW: {
+        Value ex = eval_expr(ip, scope, n->u.throw_stmt.expr);
+        if (interp_has_throw(ip)) {
+            value_free(&ex);
+            break;
+        }
+        const char *type_name = "Exception";
+        if (ex.type == TYPE_STRUCT && ex.u.st && ex.u.st->struct_name)
+            type_name = ex.u.st->struct_name;
+        else if (n->u.throw_stmt.expr->type_name_hint)
+            type_name = n->u.throw_stmt.expr->type_name_hint;
+        interp_throw(ip, type_name, ex);
+        ip->throw_line = n->line;
+        ip->throw_col = n->col;
+        break;
+    }
+
+    case NODE_TRY_CATCH: {
+        exec_stmt(ip, scope, n->u.try_catch.try_block);
+        if (ip->signal != SIGNAL_THROW)
+            break;
+
+        Value thrown = ip->throw_val;
+        char *thrown_type = ip->throw_type_name;
+        ip->throw_val = val_void();
+        ip->throw_type_name = NULL;
+        ip->signal = SIGNAL_NONE;
+
+        int handled = 0;
+        for (int i = 0; i < n->u.try_catch.clauses.count; i++) {
+            AstNode *cl = n->u.try_catch.clauses.items[i];
+            if (!interp_struct_is_subtype(ip, thrown_type, cl->u.catch_clause.type_name))
+                continue;
+            Scope *catch_scope = scope_new(scope, 0);
+            Symbol *sym = scope_define(catch_scope, cl->u.catch_clause.var_name,
+                                       TYPE_STRUCT, thrown_type, NULL,
+                                       cl->line, cl->col);
+            if (sym) {
+                value_free(&sym->val);
+                sym->val = thrown;
+            } else {
+                value_free(&thrown);
+            }
+            exec_stmt(ip, catch_scope, cl->u.catch_clause.block);
+            /* scope_free calls value_free on each symbol — do NOT clear sym->val
+               beforehand or the thrown value leaks without being freed. */
+            scope_free(catch_scope);
+            handled = 1;
+            break;
+        }
+        if (!handled) {
+            ip->signal = SIGNAL_THROW;
+            ip->throw_val = thrown;
+            ip->throw_type_name = thrown_type;
+        } else {
+            free(thrown_type);
+        }
+        break;
+    }
 
     case NODE_BREAK:
         ip->signal = SIGNAL_BREAK;
@@ -962,26 +1295,39 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
 
     case NODE_INCR: {
         Symbol *sym = scope_lookup(scope, n->u.incr_decr.name);
-        if (!sym) error_runtime(n->line, n->col,
-                                "undefined variable '%s'", n->u.incr_decr.name);
+        if (!sym) {
+            error_runtime(n->line, n->col,
+                          "undefined variable '%s'", n->u.incr_decr.name);
+            break;
+        }
         sym->val.u.i++;
         break;
     }
 
     case NODE_DECR: {
         Symbol *sym = scope_lookup(scope, n->u.incr_decr.name);
-        if (!sym) error_runtime(n->line, n->col,
-                                "undefined variable '%s'", n->u.incr_decr.name);
+        if (!sym) {
+            error_runtime(n->line, n->col,
+                          "undefined variable '%s'", n->u.incr_decr.name);
+            break;
+        }
         sym->val.u.i--;
         break;
     }
 
     case NODE_COMPOUND_ASSIGN: {
         Symbol *sym = scope_lookup(scope, n->u.compound_assign.name);
-        if (!sym) error_runtime(n->line, n->col,
-                                "undefined variable '%s'",
-                                n->u.compound_assign.name);
+        if (!sym) {
+            error_runtime(n->line, n->col,
+                          "undefined variable '%s'",
+                          n->u.compound_assign.name);
+            break;
+        }
         Value rhs = eval_expr(ip, scope, n->u.compound_assign.value);
+        if (interp_has_throw(ip)) {
+            value_free(&rhs);
+            break;
+        }
         int is_int = (sym->val.type == TYPE_INT);
         switch (n->u.compound_assign.op) {
         case OP_ADD:
@@ -1000,6 +1346,7 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
             if (is_int) {
                 if (rhs.u.i == 0)
                     error_runtime(n->line, n->col, "Division by zero");
+                if (interp_has_throw(ip)) break;
                 sym->val.u.i /= rhs.u.i;
             } else sym->val.u.f /= rhs.u.f;
             break;
@@ -1007,6 +1354,7 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
             if (is_int) {
                 if (rhs.u.i == 0)
                     error_runtime(n->line, n->col, "Modulo by zero");
+                if (interp_has_throw(ip)) break;
                 sym->val.u.i %= rhs.u.i;
             } else sym->val.u.f = fmod(sym->val.u.f, rhs.u.f);
             break;
@@ -1024,6 +1372,10 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
             break;
         }
         Value v = eval_expr(ip, scope, expr);
+        if (interp_has_throw(ip)) {
+            value_free(&v);
+            break;
+        }
         value_free(&v);
         break;
     }
@@ -1083,18 +1435,27 @@ static Value call_user_func(Interp *ip, AstNode *f, Value *args, int nargs,
     /* Save signal state */
     Signal  saved_sig = ip->signal;
     Value   saved_ret = ip->ret_val;
+    Value   saved_throw = ip->throw_val;
+    char   *saved_throw_type = ip->throw_type_name;
     ip->signal  = SIGNAL_NONE;
     ip->ret_val = val_void();
+    ip->throw_val = val_void();
+    ip->throw_type_name = NULL;
 
     /* Execute body */
     AstNode *body = f->u.func_decl.body;
     NodeList *stmts = &body->u.block.stmts;
-    for (int i = 0; i < stmts->count && ip->signal != SIGNAL_RETURN; i++)
+    for (int i = 0; i < stmts->count && ip->signal == SIGNAL_NONE; i++)
         exec_stmt(ip, fn_scope, stmts->items[i]);
 
     Value ret = ip->ret_val;
+    Signal result_sig = ip->signal;
+    Value thrown = ip->throw_val;
+    char *thrown_type = ip->throw_type_name;
     ip->signal  = saved_sig;
     ip->ret_val = saved_ret;
+    ip->throw_val = saved_throw;
+    ip->throw_type_name = saved_throw_type;
 
     for (int i = 0; i < params->count && i < nargs; i++) {
         if (borrowed_params[i] && bound_params[i]) {
@@ -1103,6 +1464,12 @@ static Value call_user_func(Interp *ip, AstNode *f, Value *args, int nargs,
     }
 
     scope_free(fn_scope);
+    if (result_sig == SIGNAL_THROW) {
+        value_free(&ret);
+        interp_throw(ip, thrown_type ? thrown_type : "Exception", thrown);
+        free(thrown_type);
+        return val_void();
+    }
     if (f->u.func_decl.ret_type == TYPE_STRUCT) {
         Value copy = value_copy(ret);
         value_free(&ret);
@@ -1143,10 +1510,14 @@ static Value call_method(Interp *ip, Value *base, const char *method_name,
 
     Signal saved_sig = ip->signal;
     Value saved_ret = ip->ret_val;
+    Value saved_throw = ip->throw_val;
+    char *saved_throw_type = ip->throw_type_name;
     const char *saved_method_struct = ip->current_method_struct;
     const char *saved_method_base = ip->current_method_base;
     ip->signal = SIGNAL_NONE;
     ip->ret_val = val_void();
+    ip->throw_val = val_void();
+    ip->throw_type_name = NULL;
     ip->current_method_struct = owner;
     if (owner) {
         AstNode *owner_decl = find_struct_decl(ip, owner);
@@ -1158,16 +1529,27 @@ static Value call_method(Interp *ip, Value *base, const char *method_name,
     }
 
     NodeList *stmts = &method->u.func_decl.body->u.block.stmts;
-    for (int i = 0; i < stmts->count && ip->signal != SIGNAL_RETURN; i++)
+    for (int i = 0; i < stmts->count && ip->signal == SIGNAL_NONE; i++)
         exec_stmt(ip, fn_scope, stmts->items[i]);
 
     Value ret = ip->ret_val;
+    Signal result_sig = ip->signal;
+    Value thrown = ip->throw_val;
+    char *thrown_type = ip->throw_type_name;
     ip->signal = saved_sig;
     ip->ret_val = saved_ret;
+    ip->throw_val = saved_throw;
+    ip->throw_type_name = saved_throw_type;
     ip->current_method_struct = saved_method_struct;
     ip->current_method_base = saved_method_base;
     self_sym->val = val_void();
     scope_free(fn_scope);
+    if (result_sig == SIGNAL_THROW) {
+        value_free(&ret);
+        interp_throw(ip, thrown_type ? thrown_type : "Exception", thrown);
+        free(thrown_type);
+        return val_void();
+    }
     if (method->u.func_decl.ret_type == TYPE_STRUCT) {
         Value copy = value_copy(ret);
         value_free(&ret);
@@ -1210,8 +1592,15 @@ int interp_run(AstNode *program, int argc, char **argv) {
     ip.union_decls = union_decl_table_build(program);
     ip.signal  = SIGNAL_NONE;
     ip.ret_val = val_void();
+    ip.throw_val = val_void();
+    ip.throw_type_name = NULL;
+    ip.throw_line = 0;
+    ip.throw_col = 0;
     ip.current_method_struct = NULL;
     ip.current_method_base = NULL;
+    ip.runtime_error_type = NULL;
+    ip.runtime_error_path = NULL;
+    g_current_interp = &ip;
 
     /* Initialise global variables */
     NodeList *decls = &program->u.program.decls;
@@ -1242,17 +1631,36 @@ int interp_run(AstNode *program, int argc, char **argv) {
     Value ret = call_user_func(&ip, main_fn, args, nargs, 0, 0);
 
     int exit_code = 0;
-    if (main_fn->u.func_decl.ret_type == TYPE_INT) {
+    if (ip.signal == SIGNAL_THROW) {
+        const char *tname = ip.throw_type_name ? ip.throw_type_name : "Exception";
+        const char *msg = "";
+        if (ip.throw_line > 0) {
+            const char *file = NULL;
+            int mapped_line = 0;
+            error_translate_location(ip.throw_line, &file, &mapped_line);
+            fprintf(stderr, "%s  line %d, column %d\n",
+                    file ? file : "<unknown>", mapped_line, ip.throw_col);
+        }
+        if (ip.throw_val.type == TYPE_STRUCT && ip.throw_val.u.st) {
+            StructFieldVal *field = struct_field_lookup(ip.throw_val.u.st, "message");
+            if (field && field->value.type == TYPE_STRING && field->value.u.s)
+                msg = field->value.u.s;
+        }
+        fprintf(stderr, "Runtime error: %s: %s\n", tname, msg);
+        exit_code = 2;
+    } else if (main_fn->u.func_decl.ret_type == TYPE_INT) {
         exit_code = (int)ret.u.i;
     }
 
     value_free(&ret);
     if (nargs >= 1) value_free(&args[0]);
     value_free(&ip.ret_val);
+    interp_clear_throw(&ip);
     func_decl_table_free(ip.func_decls);
     struct_decl_table_free(ip.struct_decls);
     union_decl_table_free(ip.union_decls);
     scope_free(ip.global);
+    g_current_interp = NULL;
 
     return exit_code;
 }

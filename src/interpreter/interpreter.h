@@ -12,7 +12,8 @@ typedef enum {
     SIGNAL_NONE     = 0,
     SIGNAL_RETURN   = 1,
     SIGNAL_BREAK    = 2,
-    SIGNAL_CONTINUE = 3
+    SIGNAL_CONTINUE = 3,
+    SIGNAL_THROW    = 4
 } Signal;
 
 typedef struct FuncDeclEntry {
@@ -62,9 +63,22 @@ typedef struct {
     /* Current execution state */
     Signal      signal;
     Value       ret_val;    /* value set by SIGNAL_RETURN */
+    Value       throw_val;
+    char       *throw_type_name;
+    int         throw_line;
+    int         throw_col;
     const char *current_method_struct;
     const char *current_method_base;
+    const char *runtime_error_type;
+    const char *runtime_error_path;
 } Interp;
+
+extern Interp *g_current_interp;
+
+void interp_throw(Interp *ip, const char *type_name, Value val);
+void interp_throw_builtin(Interp *ip, const char *type_name,
+                          const char *message, const char *path);
+int interp_struct_is_subtype(Interp *ip, const char *actual, const char *expected);
 
 /* -----------------------------------------------------------------------
  * API

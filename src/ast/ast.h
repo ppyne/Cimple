@@ -137,6 +137,9 @@ typedef enum {
     NODE_SWITCH,         /* switch(expr) { case ... }                   */
     NODE_CASE,           /* case value: stmts                           */
     NODE_DEFAULT_CASE,   /* default: stmts                              */
+    NODE_THROW,          /* throw expr                                  */
+    NODE_TRY_CATCH,      /* try { } catch (...) { }                     */
+    NODE_CATCH_CLAUSE,   /* catch (Type name) { ... }                   */
 
     /* Expressions */
     NODE_INT_LIT,        /* integer literal                             */
@@ -326,6 +329,24 @@ struct AstNode {
             AstNode *value;       /* NULL for default */
             NodeList stmts;
         } case_stmt;
+
+        /* NODE_THROW */
+        struct {
+            AstNode *expr;
+        } throw_stmt;
+
+        /* NODE_TRY_CATCH */
+        struct {
+            AstNode *try_block;
+            NodeList clauses;     /* NODE_CATCH_CLAUSE */
+        } try_catch;
+
+        /* NODE_CATCH_CLAUSE */
+        struct {
+            char    *type_name;
+            char    *var_name;
+            AstNode *block;
+        } catch_clause;
 
         /* NODE_INT_LIT */
         struct { int64_t value; } int_lit;
