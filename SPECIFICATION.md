@@ -319,6 +319,8 @@ Les variantes **2D** correspondantes sont également disponibles (`int[][]`, `fl
 
 Un type tableau est toujours associé à un type d'élément fixe. Il est interdit de mélanger les types d'éléments au sein d'un même tableau. `void[]` n'existe pas.
 
+Les **maps** `V[K]` sont des collections clé→valeur à accès par clé — voir §6.13.
+
 ### 6.3 Type opaque natif : `ExecResult`
 
 `ExecResult` est un type natif opaque fourni exclusivement par le runtime. Il représente le résultat d'une exécution de commande externe.
@@ -1071,6 +1073,152 @@ structure NetworkError : Exception {
 
 ---
 
+### 6.13 Maps (`V[K]`)
+
+#### 6.13.1 Définition
+
+Une **map** est une collection ordonnée de paires (clé → valeur) à clés uniques. L'accès se fait par clé, non par indice séquentiel.
+
+La syntaxe du type est **`V[K]`** : le type de valeur `V` suivi du type de clé `K` entre crochets.
+
+```c
+int[string]    compteur;      // int indexé par string
+string[int]    noms;          // string indexé par int
+bool[string]   presence;      // bool indexé par string
+Point[string]  positions;     // struct indexé par string
+```
+
+La notation `V[]` (crochets vides) reste le **tableau** existant et n'est pas une map — les crochets sans type désignent un accès séquentiel dense.
+
+#### 6.13.2 Types de clés autorisés
+
+| Clé | Note |
+|-----|------|
+| `string` | le plus courant |
+| `int`    | map avec clés entières creuses (différent de `V[]`) |
+| `bool`   | deux entrées au maximum |
+
+Les types de clés **interdits** sont :
+- `float` — l'égalité flottante est non fiable et interdit les clés flottantes ;
+- tout type structure, union, tableau ou map.
+
+#### 6.13.3 Types de valeurs autorisés
+
+Tout type valide non-`void` est accepté comme `V` :
+`int`, `float`, `bool`, `string`, `byte`, `NomDeStructure`, `NomDeUnion`, `int[]`, `string[]`, etc.
+
+Les valeurs de type map (`V[K][K2]`) sont autorisées uniquement via la syntaxe 2D décrite en §6.13.8.
+`void[K]` n'existe pas.
+
+#### 6.13.4 Déclaration
+
+```c
+// Déclaration sans initialisation (map vide)
+int[string] compteur;
+
+// Déclaration avec littéral (voir §6.13.5)
+int[string] scores = ["alice": 10, "bob": 7];
+
+// Déclaration vide avec littéral vide
+int[string] vide = [];
+```
+
+Lors d'une déclaration sans initialisation, la map est vide (aucune entrée).
+
+#### 6.13.5 Littéraux de map
+
+Un littéral de map est une liste de paires `clé: valeur` entre crochets :
+
+```c
+int[string] m = ["alice": 10, "bob": 7, "carol": 3];
+bool[int]   flags = [0: true, 1: false, 2: true];
+```
+
+**Règles :**
+- Le type de chaque clé doit être compatible avec `K` de la variable cible.
+- Le type de chaque valeur doit être compatible avec `V`.
+- Un littéral vide `[]` est valide comme initialiseur d'une map ; le type déclaré lève l'ambiguïté avec un littéral de tableau vide.
+- Les doublons de clés dans un littéral sont une **erreur sémantique**.
+- Un littéral `["a": 1]` utilisé là où un tableau est attendu est une **erreur sémantique**.
+
+#### 6.13.6 Accès en lecture
+
+```c
+int n = compteur["alice"];
+```
+
+Si la clé est **absente**, la valeur retournée est la **valeur zéro** du type `V` :
+
+| Type `V`      | Valeur zéro |
+|---------------|-------------|
+| `int`         | `0`         |
+| `float`       | `0.0`       |
+| `bool`        | `false`     |
+| `string`      | `""`        |
+| `byte`        | `0`         |
+| struct        | instance clonée avec tous les champs à leur valeur par défaut (équivalent de `clone NomDeStructure`) |
+
+La valeur zéro est retournée comme valeur temporaire ; elle n'est **pas insérée** dans la map. Pour insérer explicitement, utiliser l'affectation (§6.13.7).
+
+#### 6.13.7 Accès en écriture
+
+```c
+compteur["alice"] = 42;
+compteur["alice"]++;          // crée l'entrée à 0 puis incrémente si absente
+compteur["alice"] += 5;
+positions["bob"].x = 1.0;    // crée l'entrée pour "bob" si absente, puis modifie le champ
+```
+
+L'affectation sur une clé absente **crée automatiquement** l'entrée avec la valeur fournie. Pour les champs de structure, l'accès en écriture via `m[k].champ = v` crée l'entrée si elle est absente.
+
+#### 6.13.8 Maps bidimensionnelles (`V[K1][K2]`)
+
+La syntaxe `V[K1][K2]` déclare une map dont les valeurs sont elles-mêmes des maps :
+
+```c
+int[string][string] scores;      // scores[joueur][niveau]
+scores["alice"]["niveau1"] = 42;
+scores["alice"]["niveau2"] = 87;
+int n = scores["alice"]["niveau1"];   // 42
+int m = scores["bob"]["niveau1"];     // 0 — clé absente, valeur zéro
+```
+
+**Règles :**
+- Lors d'une écriture `m[k1][k2] = v`, la map intermédiaire `m[k1]` est créée automatiquement si `k1` est absent.
+- Lors d'une lecture `m[k1][k2]` avec `k1` absent, une map vide temporaire est utilisée pour l'accès `[k2]`, qui retourne la valeur zéro de `V`. Aucune entrée n'est insérée.
+- `K1` et `K2` peuvent être des types de clés différents.
+- Les maps tridimensionnelles et plus ne sont **pas** supportées.
+- `V[K][]` (tableau de maps) est **interdit**.
+
+#### 6.13.9 Fonctions de la bibliothèque standard
+
+Voir §9.15 pour la référence complète. Récapitulatif :
+
+| Fonction | Signature | Description |
+|----------|-----------|-------------|
+| `mapHas`    | `bool mapHas(V[K] m, K key)` | Vrai si `key` est présente |
+| `mapRemove` | `void mapRemove(V[K] m, K key)` | Supprime l'entrée ; sans effet si absente |
+| `mapKeys`   | `K[] mapKeys(V[K] m)` | Toutes les clés (ordre non garanti) |
+| `mapValues` | `V[] mapValues(V[K] m)` | Toutes les valeurs (même ordre que `mapKeys`) |
+| `mapSize`   | `int mapSize(V[K] m)` | Nombre d'entrées |
+| `mapClear`  | `void mapClear(V[K] m)` | Vide la map |
+| `count`     | `int count(V[K] m)` | Alias de `mapSize` |
+
+#### 6.13.10 Règles normatives
+
+Les décisions suivantes sont **normatives** :
+
+- `V[]` est un tableau ; `V[int]` est une map avec clés entières — ces deux types sont **distincts** et **incompatibles**.
+- La clé `float` est **toujours interdite**, y compris dans les maps 2D.
+- Un accès en lecture sur une clé absente ne lève **jamais** d'exception runtime : il retourne la valeur zéro.
+- `mapRemove` sur une clé absente est idempotent (pas d'erreur).
+- L'ordre de parcours retourné par `mapKeys` / `mapValues` est **non garanti** (dépend de l'implémentation).
+- `V[K][]` (tableau de maps) est **interdit** — erreur sémantique.
+- Les maps 3D et plus sont **interdites** — erreur sémantique.
+- Les noms `mapHas`, `mapRemove`, `mapKeys`, `mapValues`, `mapSize`, `mapClear` sont **réservés** et ne peuvent pas être définis par l'utilisateur.
+
+---
+
 ## 7. Variables
 
 ### 7.1 Déclaration de variables scalaires
@@ -1518,6 +1666,15 @@ void  assert(bool condition, string message);
 int   randInt(int min, int max);
 float randFloat();
 void  sleep(int ms);
+
+// Maps V[K] — voir §9.15
+bool   mapHas(V[K] map, K key);
+void   mapRemove(V[K] map, K key);
+K[]    mapKeys(V[K] map);
+V[]    mapValues(V[K] map);
+int    mapSize(V[K] map);
+void   mapClear(V[K] map);
+int    count(V[K] map);         // alias de mapSize
 ```
 
 La notation `T` dans les signatures des fonctions tableau indique un paramètre de type générique restreint aux quatre types tableau autorisés (`int`, `float`, `bool`, `string`). Ce polymorphisme est exclusivement réservé aux fonctions intrinsèques du runtime sur les tableaux ; il ne s'étend pas au code utilisateur et ne constitue pas une surcharge au sens de Cimple.
@@ -3558,6 +3715,101 @@ RegExp sep = regexCompile(",\s*", "");
 string[] parts = regexSplit(sep, "a, b,  c", 0, -1);
 // parts = ["a", "b", "c"]
 ```
+
+---
+
+### 9.15 Fonctions de manipulation des maps
+
+Ces fonctions sont des **intrinsèques du runtime**, polymorphes sur tous les types `V[K]`.
+
+#### `mapHas`
+
+```c
+bool mapHas(V[K] map, K key)
+```
+
+Retourne `true` si `key` est présente dans `map`, `false` sinon.
+
+```c
+int[string] m = ["alice": 10];
+bool ok = mapHas(m, "alice");   // true
+bool no = mapHas(m, "bob");     // false
+```
+
+#### `mapRemove`
+
+```c
+void mapRemove(V[K] map, K key)
+```
+
+Supprime l'entrée associée à `key`. Si `key` est absente, l'appel est sans effet (idempotent, pas d'erreur runtime).
+
+```c
+int[string] m = ["alice": 10, "bob": 7];
+mapRemove(m, "alice");
+// m contient maintenant seulement "bob": 7
+mapRemove(m, "carol");   // sans effet
+```
+
+#### `mapKeys`
+
+```c
+K[] mapKeys(V[K] map)
+```
+
+Retourne un tableau contenant toutes les clés présentes dans `map`. L'ordre des clés est **non garanti** et peut varier entre les exécutions.
+
+```c
+int[string] m = ["alice": 10, "bob": 7];
+string[] keys = mapKeys(m);   // ["alice", "bob"] ou ["bob", "alice"]
+```
+
+#### `mapValues`
+
+```c
+V[] mapValues(V[K] map)
+```
+
+Retourne un tableau contenant toutes les valeurs présentes dans `map`. L'ordre correspond à celui de `mapKeys` appelé sur la même map au même moment.
+
+```c
+int[string] m = ["alice": 10, "bob": 7];
+int[] vals = mapValues(m);    // dans le même ordre que mapKeys(m)
+```
+
+#### `mapSize`
+
+```c
+int mapSize(V[K] map)
+```
+
+Retourne le nombre d'entrées dans `map`. `count(map)` est un alias exact de `mapSize(map)`.
+
+```c
+int[string] m = ["alice": 10, "bob": 7];
+int n = mapSize(m);   // 2
+int n2 = count(m);    // 2 — alias
+```
+
+#### `mapClear`
+
+```c
+void mapClear(V[K] map)
+```
+
+Supprime toutes les entrées de `map`. Après l'appel, `mapSize(map)` retourne `0`.
+
+```c
+int[string] m = ["alice": 10, "bob": 7];
+mapClear(m);
+// m est maintenant vide
+```
+
+#### Erreurs sémantiques communes
+
+- Passer un type tableau `V[]` à une fonction attendant `V[K]` est une **erreur sémantique**.
+- Le type de `key` doit correspondre exactement à `K` de la map.
+- Utiliser `mapHas`, `mapRemove`, etc. sur une variable non-map est une **erreur sémantique**.
 
 ---
 

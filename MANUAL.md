@@ -204,6 +204,27 @@ All standard array functions (`arrayPush`, `arrayPop`, `arrayInsert`, `arrayRemo
 `count`) work on the outer array. The element type of the outer array is the corresponding
 1D type (e.g. `int[]` for `int[][]`).
 
+### 3.2b Map types (`V[K]`)
+
+A **map** is a collection of key→value pairs with unique keys. Access is by key, not by sequential index.
+
+The type syntax is **`V[K]`**: the value type followed by the key type in square brackets.
+
+```c
+int[string]   scores;        // string keys, int values
+string[int]   labels;        // int keys, string values
+bool[string]  seen;          // string keys, bool values
+Point[string] positions;     // string keys, struct values
+```
+
+`V[]` (empty brackets) remains an **array** — a map always has an explicit key type between the brackets.
+
+**Allowed key types:** `string`, `int`, `bool`. Float and struct keys are forbidden.
+
+**Value types:** any non-`void` type is valid, including arrays and structs.
+
+---
+
 ### 3.3 Opaque type: `ExecResult`
 
 `ExecResult` is the type returned by `exec()`. It is a first-class value that can be stored
@@ -2135,6 +2156,149 @@ Runtime error: ParseError: unexpected token
 ```
 
 and exits with code `2`.
+
+---
+
+### 8.17 Maps (`V[K]`)
+
+#### 8.17.1 Declaration and initialisation
+
+```c
+// Empty map (no entries)
+int[string] scores;
+
+// Map literal
+int[string] ages = ["alice": 30, "bob": 25, "carol": 28];
+
+// Empty literal (type inferred from declaration)
+bool[string] flags = [];
+```
+
+#### 8.17.2 Reading and writing entries
+
+```c
+int[string] counter;
+
+// Write — creates the entry if absent
+counter["word"] = 1;
+
+// Read — returns zero value (0) if key absent
+int n = counter["word"];     // 1
+int m = counter["other"];    // 0  (key absent → zero value)
+
+// Compound assignment — auto-creates at zero then increments
+counter["hello"]++;
+counter["hello"] += 5;
+```
+
+**Zero values on missing key:**
+
+| Value type | Zero value |
+|-----------|-----------|
+| `int`     | `0`        |
+| `float`   | `0.0`      |
+| `bool`    | `false`    |
+| `string`  | `""`       |
+| struct    | fresh `clone` of that struct |
+
+The missing key is **not inserted** by a read; only an explicit write or compound assignment inserts it.
+
+#### 8.17.3 Map functions
+
+```c
+int[string] m = ["alice": 10, "bob": 7];
+
+// Membership test
+bool ok = mapHas(m, "alice");    // true
+bool no = mapHas(m, "carol");    // false
+
+// Remove an entry (no error if absent)
+mapRemove(m, "alice");
+
+// All keys and values (order not guaranteed)
+string[] keys = mapKeys(m);
+int[]    vals = mapValues(m);
+
+// Size
+int n = mapSize(m);    // equivalent: count(m)
+
+// Clear
+mapClear(m);
+```
+
+#### 8.17.4 Iterating over a map
+
+```c
+int[string] freq;
+// ... populate freq ...
+
+string[] keys = mapKeys(freq);
+for (int i = 0; i < count(keys); i++) {
+    print(keys[i] + " → " + toString(freq[keys[i]]) + "\n");
+}
+```
+
+#### 8.17.5 Struct values
+
+```c
+structure Player {
+    string name = "";
+    int    score = 0;
+}
+
+Player[string] players;
+
+// Write via field access — auto-creates the entry if absent
+players["alice"].score = 42;
+players["alice"].name  = "Alice";
+
+// Read
+int s = players["alice"].score;   // 42
+```
+
+#### 8.17.6 Two-dimensional maps
+
+```c
+int[string][string] grid;
+
+grid["row1"]["col1"] = 1;
+grid["row1"]["col2"] = 2;
+grid["row2"]["col1"] = 3;
+
+int v = grid["row1"]["col2"];      // 2
+int z = grid["row3"]["col1"];      // 0 — both keys absent, zero value
+```
+
+Writing `grid[k1][k2] = v` auto-creates the intermediate map for `k1` if absent.
+
+#### 8.17.7 Word-count example
+
+```c
+void main() {
+    string text = "the cat sat on the mat the cat";
+    string[] words = stringSplit(text, " ");
+
+    int[string] freq;
+    for (int i = 0; i < count(words); i++) {
+        freq[words[i]]++;
+    }
+
+    string[] keys = mapKeys(freq);
+    for (int i = 0; i < count(keys); i++) {
+        print(keys[i] + ": " + toString(freq[keys[i]]) + "\n");
+    }
+}
+```
+
+#### 8.17.8 Common errors
+
+| Error | Cause |
+|-------|-------|
+| `float key type is not allowed` | `int[float]` — float keys are forbidden |
+| `array of maps is not allowed` | `int[string][]` — arrays of maps are forbidden |
+| `map literal used where array expected` | type mismatch between `["a": 1]` and `int[]` |
+| `duplicate key in map literal` | same key appears twice in `[...]` |
+| `3D maps are not supported` | `int[string][string][string]` |
 
 ---
 
