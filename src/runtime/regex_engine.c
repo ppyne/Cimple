@@ -199,6 +199,8 @@ static RegexNode *node_new(RegexNodeKind kind) {
     return n;
 }
 
+/* node_empty is kept for future use (empty alternation branch) */
+static RegexNode *node_empty(void) __attribute__((unused));
 static RegexNode *node_empty(void) { return node_new(RX_EMPTY); }
 
 static RegexNode *node_literal(char *glyph) {
@@ -831,11 +833,19 @@ static char *expand_replacement(const RegExpMatchVal *m, const char *replacement
             out[len] = '\0';
             continue;
         }
-        if (len + 3 > cap) { cap *= 2; out = (char *)cimple_realloc(out, cap); }
+        /* $X where X is not a digit and not '$': emit literal '$'.
+         * Also handles trailing '$' (replacement[i+1] == '\0') — only advance
+         * past the '$', not past the null terminator (which would be UB). */
+        if (len + 2 > cap) { cap *= 2; out = (char *)cimple_realloc(out, cap); }
         out[len++] = '$';
-        out[len++] = replacement[i + 1];
         out[len] = '\0';
-        i += 2;
+        i++;
+        /* Emit the following character as-is unless it is the string terminator */
+        if (replacement[i]) {
+            if (len + 2 > cap) { cap *= 2; out = (char *)cimple_realloc(out, cap); }
+            out[len++] = replacement[i++];
+            out[len] = '\0';
+        }
     }
     return out;
 }
