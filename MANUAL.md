@@ -2006,6 +2006,138 @@ void main() {
 
 ---
 
+### 8.16 Exceptions
+
+Cimple provides structured exception handling with `throw`, `try`, and `catch`.
+Exceptions are ordinary structures that inherit from the built-in `Exception` type.
+
+#### Built-in exception types
+
+Four types are available without import:
+
+```c
+structure Exception {
+    string message;
+}
+
+structure RuntimeException : Exception { }   // index out of bounds, division by zero, …
+structure IoException      : Exception { string path; }   // file operations
+structure RegExpException  : Exception { }   // regex syntax / range errors
+```
+
+#### Defining your own exceptions
+
+Inherit from `Exception` (or another user-defined exception type):
+
+```c
+structure ParseError : Exception {
+    int    line;
+    string token;
+}
+
+structure NetworkError : Exception {
+    string url;
+    int    statusCode;
+}
+```
+
+> `Exception`, `RuntimeException`, `IoException`, and `RegExpException` are reserved
+> names. You cannot redefine them or inherit from the three built-in subtypes.
+
+#### Throwing an exception
+
+`throw` takes any expression whose type inherits from `Exception`:
+
+```c
+throw RuntimeException { message: "negative value not allowed" };
+
+// or build the value first
+ParseError err;
+err.message = "unexpected token";
+err.line    = 42;
+err.token   = "}";
+throw err;
+```
+
+#### Catching exceptions
+
+```c
+try {
+    int[] a = [10, 20, 30];
+    int v = a[99];               // throws RuntimeException
+} catch (RuntimeException e) {
+    print("Runtime error: " + e.message + "\n");
+} catch (Exception e) {
+    print("Other error: " + e.message + "\n");
+}
+```
+
+**Rules:**
+
+- Clauses are tested **in order**; the first whose type matches (or is a base of) the
+  thrown type is executed.
+- A `catch (Exception e)` catches everything — place it last.
+- Putting a more general catch before a specific one is a **semantic error**
+  (the specific clause would be unreachable).
+- Variables declared inside `try` are not visible inside `catch` blocks.
+- There is no `finally` in V1.
+
+#### User-defined exception with multiple catch clauses
+
+```c
+structure DbError : Exception {
+    string query;
+}
+
+function runQuery(string q) : void {
+    if (q == "") {
+        throw DbError { message: "empty query", query: q };
+    }
+    // …
+}
+
+function main() : void {
+    try {
+        runQuery("");
+    } catch (DbError e) {
+        print("DB error on query \"" + e.query + "\": " + e.message + "\n");
+    } catch (RuntimeException e) {
+        print("Runtime: " + e.message + "\n");
+    } catch (Exception e) {
+        print("Unexpected: " + e.message + "\n");
+    }
+}
+```
+
+#### Catching I/O and regex errors
+
+```c
+try {
+    string content = readFile("/etc/shadow");
+} catch (IoException e) {
+    print("Cannot read " + e.path + ": " + e.message + "\n");
+}
+
+try {
+    RegExp re = regexCompile("[invalid", "");
+} catch (RegExpException e) {
+    print("Bad pattern: " + e.message + "\n");
+}
+```
+
+#### Uncaught exceptions
+
+If an exception propagates all the way to the top without being caught, Cimple prints
+to `stderr`:
+
+```
+Runtime error: ParseError: unexpected token
+```
+
+and exits with code `2`.
+
+---
+
 ## 9. Imports
 
 Use top-level imports to split a program across multiple files:

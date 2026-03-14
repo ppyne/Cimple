@@ -1012,6 +1012,65 @@ for (int i = 0; i < count(matrix); i++) {
 
 ---
 
+### 6.12 Exceptions
+
+#### 6.12.1 Hiérarchie built-in
+
+Cimple définit une hiérarchie d'exceptions built-in fondée sur l'héritage de structures.
+Ces types sont disponibles sans `import` dans tout programme Cimple.
+
+```c
+structure Exception {
+    string message;
+}
+
+structure RuntimeException : Exception {
+    // message hérité
+    // levée par : index hors bornes, division/modulo par zéro,
+    //             cast invalide, assert() échoué, conversion impossible
+}
+
+structure IoException : Exception {
+    string path;
+    // message hérité
+    // levée par : toutes les opérations sur les fichiers (readFile, writeFile, etc.)
+}
+
+structure RegExpException : Exception {
+    // message hérité
+    // levée par : motif invalide (RegExpSyntax), plages hors bornes (RegExpRange, RegExpLimit)
+}
+```
+
+#### 6.12.2 Exceptions utilisateur
+
+L'utilisateur peut définir ses propres types d'exceptions en héritant de `Exception` ou
+de tout type lui-même sous-type de `Exception` :
+
+```c
+structure ParseError : Exception {
+    int line;
+    string token;
+}
+
+structure NetworkError : Exception {
+    string url;
+    int statusCode;
+}
+```
+
+**Règles :**
+
+- `Exception`, `RuntimeException`, `IoException`, `RegExpException` sont des noms réservés ;
+  les redéclarer est une erreur sémantique.
+- Seule une structure héritant (directement ou indirectement) de `Exception` peut figurer
+  dans un `throw` ou dans une clause `catch`.
+- Les exceptions built-in **ne peuvent pas être héritées** par l'utilisateur
+  (`structure Foo : RuntimeException` est une erreur sémantique).
+  Seul `Exception` est une base publique.
+
+---
+
 ## 7. Variables
 
 ### 7.1 Déclaration de variables scalaires
@@ -3518,7 +3577,9 @@ Un **statement** est une instruction exécutable unique. Il peut s'agir notammen
 - une boucle `for` ;
 - `break` ;
 - `continue` ;
-- `return`.
+- `return` ;
+- `throw` (§10.11) ;
+- `try / catch` (§10.12).
 
 Règles générales :
 
@@ -3651,6 +3712,91 @@ Règles :
 ```c
 return 0;
 return;
+```
+
+### 10.11 Levée d'exception (`throw`)
+
+```c
+throw expr;
+```
+
+- `expr` doit être une valeur de structure héritant (directement ou indirectement)
+  de `Exception`.
+- L'évaluation s'interrompt immédiatement ; l'exception remonte la pile d'appel
+  jusqu'à la première clause `catch` compatible.
+- `throw` peut apparaître n'importe où un statement est attendu, y compris dans
+  le corps d'une méthode, d'une boucle ou d'une branche `if`.
+
+```c
+throw RuntimeException { message: "valeur négative interdite" };
+
+ParseError err;
+err.message = "token inattendu";
+err.line    = 42;
+err.token   = "}";
+throw err;
+```
+
+### 10.12 Bloc `try / catch`
+
+```
+try {
+    // instructions pouvant lever une exception
+} catch (TypeException1 nom1) {
+    // traitement si l'exception est TypeException1 ou un sous-type
+} catch (TypeException2 nom2) {
+    // traitement si l'exception est TypeException2 ou un sous-type
+} catch (Exception nom) {
+    // clause catch-all — attrape tout ce qui hérite de Exception
+}
+```
+
+**Règles syntaxiques :**
+
+- Au moins une clause `catch` est obligatoire.
+- Chaque clause `catch` déclare un paramètre `(Type nom)` ; `nom` est visible
+  uniquement dans le bloc de cette clause.
+- Il n'existe pas de clause `finally` en V1.
+
+**Règles sémantiques :**
+
+- Le type dans chaque `catch` doit être `Exception` ou un type héritant de `Exception`.
+- Les clauses sont évaluées **dans l'ordre** ; la première dont le type est compatible
+  avec le type dynamique de l'exception levée est choisie.
+- Une clause `catch (Exception e)` attrapant tout ce qui précède une clause plus
+  spécifique rend cette dernière **inaccessible** → erreur sémantique.
+- Deux clauses `catch` pour le même type → erreur sémantique.
+- Les variables déclarées dans le bloc `try` ne sont **pas** visibles dans les blocs `catch`.
+
+**Comportement de `break`, `continue`, `return` à l'intérieur de `try` :**
+
+- `break` et `continue` fonctionnent normalement ; ils interrompent la boucle englobante
+  et n'interagissent pas avec le mécanisme `try/catch`.
+- `return` dans un bloc `try` retourne de la fonction englobante normalement.
+
+**Exception non rattrapée :**
+
+Si l'exception remonte jusqu'à `main()` sans être rattrapée, le programme :
+
+1. Imprime sur `stderr` : `Runtime error: <TypeName>: <message>`
+2. Termine avec le code de sortie `2`.
+
+```c
+try {
+    int[] a = [1, 2, 3];
+    int v = a[10];
+} catch (RuntimeException e) {
+    print("Erreur d'exécution : " + e.message + "\n");
+} catch (Exception e) {
+    print("Erreur inattendue : " + e.message + "\n");
+}
+
+// Exception utilisateur
+try {
+    throw ParseError { message: "token inconnu", line: 7, token: "@@" };
+} catch (ParseError e) {
+    print("Ligne " + toString(e.line) + " : " + e.token + "\n");
+}
 ```
 
 ---
@@ -4038,6 +4184,9 @@ Mots-clés réservés :
 - `clone`
 - `self`
 - `super`
+- `throw`
+- `try`
+- `catch`
 
 `ExecResult` est un mot-clé réservé désignant le type opaque de résultat d'exécution (voir section 6.3). Il ne peut pas être utilisé comme nom de variable, de fonction ou de paramètre.
 
@@ -4516,6 +4665,36 @@ L'analyse sémantique doit vérifier, pour chaque directive `import` rencontrée
 
 **Messages d'erreur multi-fichiers :** pour toute erreur détectée dans un fichier importé, le champ `<file>` du message doit indiquer le chemin du fichier importé (chemin relatif au fichier racine), et non le nom du fichier racine. Cela s'applique aux erreurs lexicales, syntaxiques, sémantiques et runtime.
 
+### 19.13 Vérifications spécifiques sur les exceptions
+
+#### 19.13.1 Déclarations
+
+- Les noms `Exception`, `RuntimeException`, `IoException`, `RegExpException` sont réservés :
+  toute déclaration `structure` portant l'un de ces noms est une **erreur sémantique**.
+- Hériter d'un type built-in autre que `Exception` est une **erreur sémantique** :
+  `structure Foo : RuntimeException` → erreur.
+- Une structure héritant de `Exception` (directement ou transitirement) est dite
+  **type exception**.
+
+#### 19.13.2 Instruction `throw`
+
+- L'opérande de `throw` doit être de type structure et ce type doit être un **type exception** ;
+  tout autre type est une **erreur sémantique**.
+- `throw` peut apparaître dans n'importe quel contexte de statement, y compris
+  dans le corps d'une fonction `void`.
+
+#### 19.13.3 Instruction `try / catch`
+
+- Chaque type `T` dans `catch (T nom)` doit être un **type exception** ; sinon **erreur sémantique**.
+- Les clauses `catch` sont analysées dans l'ordre :
+  - si une clause `catch (T1 e1)` est suivie d'une clause `catch (T2 e2)` où `T2` est un
+    sous-type de `T1` (ou `T1 == T2`), la seconde clause est **inaccessible** → **erreur sémantique**.
+  - une clause `catch (Exception e)` rend inaccessible toute clause `catch` suivante → **erreur sémantique**.
+- Le paramètre `nom` de chaque clause `catch` est une variable locale au bloc `catch` ;
+  elle n'est pas visible dans les autres clauses ni dans le bloc `try`.
+- Les variables déclarées dans le bloc `try` ne sont pas visibles dans les blocs `catch`.
+- La présence d'au moins une clause `catch` est obligatoire (erreur syntaxique sinon).
+
 ---
 
 ## 20. Sémantique d'exécution
@@ -4555,6 +4734,56 @@ Règles générales :
 - les calculs sur `float` suivent IEEE et peuvent produire `NaN`, `+Infinity` et `-Infinity` ;
 - l'utilisateur peut tester ces cas via `isNaN`, `isInfinite`, `isFinite`, `isPositiveInfinity`, `isNegativeInfinity` ;
 - pour `int`, les fonctions `safeDivInt` et `safeModInt` fournissent un contrôle explicite des divisions ou modulos par zéro.
+
+### 20.5 Sémantique des exceptions
+
+#### 20.5.1 Levée (`throw`)
+
+Lorsque `throw expr` est exécuté :
+
+1. `expr` est évaluée ; la valeur résultante (un `StructVal`) constitue **l'objet exception**.
+2. L'exécution du bloc courant est immédiatement interrompue.
+3. L'objet exception remonte la pile de frames jusqu'à trouver un `try/catch` dont
+   une clause est compatible (voir §20.5.2).
+4. Si aucune clause ne correspond dans toute la pile, l'exception est **non rattrapée**
+   (voir §20.5.3).
+
+Les valeurs allouées dans les frames intermédiaires sont libérées au fur et à mesure
+du dépilage (pas de fuite mémoire).
+
+#### 20.5.2 Sélection de la clause `catch`
+
+Une clause `catch (T nom)` est compatible avec une exception de type dynamique `D` si et
+seulement si `D == T` ou `D` hérite (directement ou transitiirement) de `T`.
+
+Les clauses sont testées dans l'ordre de déclaration ; la première compatible est choisie.
+
+À l'entrée dans le bloc `catch` :
+
+- `nom` est lié à une **copie** de l'objet exception (sémantique valeur, identique aux
+  paramètres de fonctions pour les structs) ;
+- la portée du bloc `catch` est une nouvelle portée fille de la portée englobant le `try`.
+
+#### 20.5.3 Exception non rattrapée
+
+Si l'exception atteint le niveau le plus haut sans être rattrapée :
+
+- Imprime sur `stderr` : `Runtime error: <TypeName>: <message>`
+  où `<TypeName>` est le nom de la structure et `<message>` est la valeur du champ `message`.
+- Termine le programme avec le **code de sortie 2**.
+
+#### 20.5.4 Table de correspondance — erreurs runtime → types d'exceptions
+
+| Situation | Type levé | Champs significatifs |
+|-----------|-----------|----------------------|
+| Index tableau hors bornes | `RuntimeException` | `message` |
+| Division entière par zéro | `RuntimeException` | `message` |
+| Modulo entier par zéro | `RuntimeException` | `message` |
+| `assert(false)` | `RuntimeException` | `message = "Assertion failed"` |
+| Cast de chaîne invalide (`toInt`, `toFloat`) | `RuntimeException` | `message` |
+| Opération regex — syntaxe motif invalide | `RegExpException` | `message` |
+| Opération regex — plage invalide (`start`, `max`) | `RegExpException` | `message` |
+| Toute opération fichier (`readFile`, `writeFile`, etc.) | `IoException` | `message`, `path` |
 
 ---
 
