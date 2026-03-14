@@ -3348,6 +3348,147 @@ sleep(1000);   // attend 1 s
 
 ---
 
+### 9.14 Expressions régulières (`RegExp`)
+
+#### 9.14.1 Types opaques
+
+Cimple expose deux types opaques pour les expressions régulières, sur le modèle de `ExecResult` :
+
+- `RegExp` — expression régulière compilée, produite uniquement par `regexCompile()`.
+- `RegExpMatch` — résultat d'une recherche, produit uniquement par `regexFind()` ou `regexFindAll()`.
+
+Ces types ne peuvent pas être déclarés sans valeur initiale ; ils ne disposent pas de littéral ; ils ne peuvent pas figurer dans un tableau `RegExp[]` ou `RegExpMatch[]` (sauf `RegExpMatch[]` retourné par `regexFindAll`).
+
+#### 9.14.2 Compilation
+
+```c
+RegExp regexCompile(string pattern, string flags)
+```
+
+- Compile `pattern` avec `flags`.
+- `flags` est une chaîne contenant zéro ou plusieurs des caractères suivants (ordre indifférent, doublons ignorés) :
+  - `"i"` — insensible à la casse (ASCII A-Z ↔ a-z en V1)
+  - `"m"` — multiline (`^` et `$` agissent par ligne)
+  - `"s"` — dotall (`.` inclut `\n`)
+- Tout autre flag est une **erreur runtime** `RegExpSyntax`.
+- Toute erreur de syntaxe dans le motif est une **erreur runtime** `RegExpSyntax` avec message clair.
+
+```c
+string regexPattern(RegExp re)   // motif original
+string regexFlags(RegExp re)     // flags canoniques, ex. "ims"
+```
+
+#### 9.14.3 Recherche
+
+```c
+bool          regexTest(RegExp re, string input, int start)
+RegExpMatch   regexFind(RegExp re, string input, int start)
+RegExpMatch[] regexFindAll(RegExp re, string input, int start, int max)
+```
+
+- `start` est un indice en **glyphes** dans `[0 .. glyphLen(input)]` ; hors borne → erreur runtime `RegExpRange`.
+- `max` dans `regexFindAll` suit la règle unifiée : `-1` = illimité, `0` = retourne `[]`, `> 0` = limite ; `< -1` → erreur `RegExpRange`.
+- Règle anti-boucle (`findAll`) : si un match a longueur nulle (`end == start`), la recherche suivante reprend à `end + 1` glyphe.
+
+#### 9.14.4 Remplacement
+
+```c
+string regexReplace(RegExp re, string input, string replacement, int start)
+string regexReplaceAll(RegExp re, string input, string replacement, int start, int max)
+```
+
+- `regexReplace` remplace la **première** occurrence à partir de `start` ; si aucun match, retourne `input` inchangée.
+- `regexReplaceAll` remplace toutes les occurrences (non chevauchantes) ; `max` suit la règle unifiée ; `max == 0` → retourne `input`.
+- Syntaxe de `replacement` :
+  - `$0` : match complet
+  - `$1` .. `$99` : groupes capturants (groupe inexistant → `""`)
+  - `$$` → `$` littéral
+  - `$X` où `X` n'est pas un chiffre → `$X` littéral
+
+#### 9.14.5 Découpe
+
+```c
+string[] regexSplit(RegExp re, string input, int start, int maxParts)
+```
+
+- `maxParts` suit la règle unifiée : `-1` = illimité, `0` = `[]`, `1` = `[subString(input, start)]`, `> 1` = au plus `maxParts` éléments.
+- Règle anti-boucle match vide : identique à `findAll`.
+
+#### 9.14.6 Interrogation d'un `RegExpMatch`
+
+```c
+bool     regexOk(RegExpMatch m)
+int      regexStart(RegExpMatch m)    // indice en glyphes (0 si ok=false)
+int      regexEnd(RegExpMatch m)      // indice en glyphes (0 si ok=false)
+string[] regexGroups(RegExpMatch m)   // [0]=match complet, [1..n]=groupes capturants
+```
+
+- `regexGroups(m)[0]` est toujours le match complet si `ok=true`.
+- Un groupe capturant optionnel non matché produit `""`.
+
+#### 9.14.7 Syntaxe du motif (V1)
+
+| Catégorie | Syntaxe |
+|---|---|
+| Littéral | tout glyphe hors métacaractère |
+| N'importe quel glyphe | `.` (sauf `\n` si flag `s` absent) |
+| Ancre | `^` `$` (par ligne si flag `m`) |
+| Classe | `[abc]` `[a-z]` `[^...]` |
+| Groupe capturant | `(…)` |
+| Groupe non capturant | `(?:…)` |
+| Alternance | `A\|B\|C` |
+| Quantificateurs greedy | `*` `+` `?` `{m}` `{m,}` `{m,n}` |
+| Quantificateurs non-greedy | `*?` `+?` `??` `{m}?` `{m,}?` `{m,n}?` |
+| Raccourcis de classes | `\d` `\D` `\w` `\W` `\s` `\S` |
+
+Contraintes :
+- `m` et `n` dans `{m,n}` sont des entiers décimaux, `0 ≤ m ≤ n` ; valeurs hors plage → `RegExpLimit`.
+- Constructions **interdites** : backreferences `\1`, lookahead/lookbehind `(?=…)` `(?!…)` `(?<=…)` `(?<!…)`.
+- Moteur **O(n)** garanti (Thompson NFA / DFA hybride) — pas d'explosion exponentielle.
+
+#### 9.14.8 Erreurs runtime
+
+| Catégorie | Déclencheur |
+|---|---|
+| `RegExpSyntax` | motif invalide, flag inconnu |
+| `RegExpLimit` | quantificateur trop grand, profondeur de compilation dépassée |
+| `RegExpRange` | `start < 0`, `start > glyphLen(input)`, `max < -1`, `maxParts < -1` |
+
+#### 9.14.9 Exemples
+
+```c
+// Test simple — les raccourcis \d, \s s'écrivent sans double-backslash
+RegExp digits = regexCompile("\d+", "");
+bool found = regexTest(digits, "prix: 42", 0);    // true
+
+// Groupes capturants
+RegExp date = regexCompile("(\d{2})/(\d{2})/(\d{4})", "");
+RegExpMatch m = regexFind(date, "Date: 31/12/2026", 0);
+if (regexOk(m)) {
+    string[] g = regexGroups(m);
+    print(g[3] + "-" + g[2] + "-" + g[1] + "\n");  // 2026-12-31
+}
+
+// FindAll
+RegExp word = regexCompile("\w+", "");
+RegExpMatch[] all = regexFindAll(word, "un deux trois", 0, -1);
+for (int i = 0; i < count(all); i++) {
+    print(regexGroups(all[i])[0] + "\n");  // un / deux / trois
+}
+
+// Remplacement avec références
+RegExp swap = regexCompile("(\w+)-(\w+)", "");
+string result = regexReplaceAll(swap, "alpha-beta gamma-delta", "$2:$1", 0, -1);
+print(result + "\n");  // beta:alpha delta:gamma
+
+// Découpe
+RegExp sep = regexCompile(",\s*", "");
+string[] parts = regexSplit(sep, "a, b,  c", 0, -1);
+// parts = ["a", "b", "c"]
+```
+
+---
+
 ## 10. Instructions prises en charge
 
 ### 10.1 Notion de statement
@@ -3581,7 +3722,7 @@ Les séquences d'échappement suivantes sont supportées :
 Règles normatives :
 
 - `\uXXXX` requiert exactement 4 chiffres hexadécimaux (`0`–`9`, `a`–`f`, `A`–`F`) ; tout autre nombre de chiffres est une erreur lexicale ;
-- le caractère `\` seul, non suivi d'une séquence reconnue, est une **erreur lexicale** avec message clair ;
+- tout `\X` où `X` n'est **pas** l'un des caractères ci-dessus (et n'est pas `u`) est **préservé littéralement** comme deux octets `\` + `X` ; cela permet d'écrire les raccourcis regex (`\s`, `\d`, `\w`, `\D`, `\W`, `\S`, `\b`, `\B`) directement dans les chaînes sans doubler le backslash ;
 - un retour à la ligne littéral dans une chaîne (sans `\n`) est une **erreur lexicale** ;
 - les chaînes sont encodées et manipulées en **UTF-8** par le runtime ;
 - les points de code `\uXXXX` sont encodés en UTF-8 dans la représentation interne ;
@@ -3936,7 +4077,8 @@ Le lexer doit reconnaître et produire les tokens suivants :
 
 - délimiteurs : `"`
 - séquences d'échappement reconnues : `\"`, `\\`, `\n`, `\t`, `\r`, `\b`, `\f`, `\uXXXX`
-- erreur lexicale : `\` non suivi d'une séquence reconnue, retour à la ligne littéral dans une chaîne, `\uXXXX` avec un nombre de chiffres hexadécimaux différent de 4
+- erreur lexicale : retour à la ligne littéral dans une chaîne, `\uXXXX` avec un nombre de chiffres hexadécimaux différent de 4
+- `\X` inconnu (hors `\"`, `\\`, `\n`, `\t`, `\r`, `\b`, `\f`, `\uXXXX`) : **préservé littéralement** comme `\` + `X` (utile pour les motifs regex)
 
 **Opérateurs**
 
@@ -4459,7 +4601,7 @@ Catalogue des erreurs lexicales et messages associés :
 | Caractère non reconnu | `Unexpected character: '<c>'` | `Only printable ASCII and valid UTF-8 characters are allowed.` |
 | Chaîne non fermée | `Unterminated string literal` | `Opening quote at line <N>, column <N> has no matching closing quote.` |
 | Retour à la ligne dans une chaîne | `Newline inside string literal` | `Use '\n' to represent a newline inside a string.` |
-| Séquence d'échappement inconnue | `Unknown escape sequence: '\<c>'` | `Valid sequences: \n \t \r \\ \" \b \f \uXXXX` |
+| `\uXXXX` avec ≠ 4 chiffres hex | `Malformed Unicode escape` | `\uXXXX requires exactly 4 hex digits` |
 | `\uXXXX` malformé | `Malformed Unicode escape: '\u<seq>'` | `Expected exactly 4 hexadecimal digits after \u.` |
 | `0x` sans chiffres | `Invalid hexadecimal literal: '0x'` | `Expected at least one hexadecimal digit after '0x'.` |
 | `0b` sans chiffres | `Invalid binary literal: '0b'` | `Expected at least one binary digit (0 or 1) after '0b'.` |
@@ -4942,7 +5084,7 @@ Notes normatives sur la grammaire :
 - `array_type` est valide comme type de paramètre de fonction ; les tableaux sont passés par référence ;
 - `OCT_LITERAL` : le littéral `0` seul est un décimal valant zéro, non un octal ;
 - `FLOAT_LITERAL` : la partie fractionnaire après le point peut être absente (`1.` est valide) ; l'exposant seul sans point est valide (`1e3`) ; un entier nu sans point ni exposant est toujours `INT_LITERAL` ;
-- `escape_seq` dans `STRING_LITERAL` : `\uXXXX` requiert exactement 4 chiffres hexadécimaux ; tout `\` non suivi d'une séquence reconnue est une erreur lexicale ;
+- `escape_seq` dans `STRING_LITERAL` : `\uXXXX` requiert exactement 4 chiffres hexadécimaux ; tout `\X` inconnu est préservé littéralement (`\` + `X`) ;
 - `ExecResult` est un type valide dans `type` ; il peut être utilisé dans `var_decl` et comme type de paramètre ou de retour de fonction ; `ExecResult[]` est interdit ; une variable `ExecResult` doit être initialisée avec un appel à `exec` ; toute déclaration `ExecResult x;` sans initialisation est une erreur sémantique ;
 - `PREDEFINED_CONST` est reconnu lexicalement comme un `IDENT` ordinaire ; c'est l'analyse sémantique qui identifie `INT_MAX`, `INT_MIN`, `INT_SIZE`, `FLOAT_SIZE`, `FLOAT_DIG`, `FLOAT_EPSILON`, `FLOAT_MIN`, `FLOAT_MAX`, `M_PI`, `M_E`, `M_TAU`, `M_SQRT2`, `M_LN2`, `M_LN10` comme des constantes prédéfinies et leur attribue leur type et valeur ; toute déclaration ou affectation sur ces identifiants est une erreur sémantique.
 
@@ -6247,7 +6389,7 @@ Chaque test négatif vérifie : code de sortie `1` ou `2` selon le niveau, et pr
 |---|---|
 | Caractère `@` inconnu | `[LEXICAL ERROR]` + `Unexpected character: '@'` |
 | Chaîne non fermée | `[LEXICAL ERROR]` + `Unterminated string literal` |
-| Séquence `\q` | `[LEXICAL ERROR]` + `Unknown escape sequence: '\q'` |
+| Séquence `\q` | chaîne contenant littéralement `\q` (deux octets : backslash + q) |
 | `\uXXGG` malformé | `[LEXICAL ERROR]` + `Malformed Unicode escape` |
 | `0x` sans chiffres | `[LEXICAL ERROR]` + `Invalid hexadecimal literal` |
 | `0b` sans chiffres | `[LEXICAL ERROR]` + `Invalid binary literal` |

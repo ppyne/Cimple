@@ -522,12 +522,21 @@ Strings are enclosed in double quotes. Supported escape sequences:
 | `\b` | backspace |
 | `\f` | form feed |
 | `\uXXXX` | Unicode code point (exactly 4 hex digits) |
+| `\X` (other) | preserved literally as `\` + `X` |
+
+The last row means regex shortcuts such as `\s`, `\d`, `\w`, `\S`, `\D`, `\W`, `\b`, `\B`
+can be written directly in string literals **without doubling the backslash**:
 
 ```c
 string greeting = "Hello!\n";
 string path     = "C:\\Users\\Alice";
 string heart    = "\u2665";
 string accented = "\u00E9l\u00E8ve";   // "élève"
+
+// Regex patterns — no double-backslash needed
+RegExp words = regexCompile("\w+", "");
+RegExp blank = regexCompile("\s+", "");
+RegExp date  = regexCompile("(\d{2})/(\d{2})/(\d{4})", "");
 ```
 
 A raw newline inside a string literal is a lexical error; use `\n` instead.
@@ -1854,6 +1863,141 @@ sleep(1000);  // wait 1 second
 ```
 
 > `sleep()` is not available on WebAssembly targets (runtime error).
+
+---
+
+### 8.15 Regular expressions (`RegExp`)
+
+Cimple provides a built-in regex engine through two opaque types and a set of global
+functions, all prefixed with `regex`.
+
+#### Compilation
+
+```c
+RegExp re = regexCompile(string pattern, string flags)
+```
+
+`flags` is a string of zero or more characters (order irrelevant, duplicates ignored):
+
+| Flag | Meaning |
+|------|---------|
+| `"i"` | case-insensitive (ASCII A–Z ↔ a–z in V1) |
+| `"m"` | multiline — `^` and `$` match per line |
+| `"s"` | dotall — `.` matches `\n` too |
+
+A syntax error in the pattern raises a runtime error `RegExpSyntax`.
+
+```c
+RegExp ws   = regexCompile("\s+", "");
+RegExp word = regexCompile("\w+", "i");
+RegExp date = regexCompile("(\d{2})/(\d{2})/(\d{4})", "");
+```
+
+> **No double-backslash needed.** Cimple preserves unknown escape sequences (`\s`, `\d`,
+> `\w`, etc.) literally, so regex shortcuts work directly in string literals.
+
+#### Test and search
+
+```c
+bool          regexTest(RegExp re, string input, int start)
+RegExpMatch   regexFind(RegExp re, string input, int start)
+RegExpMatch[] regexFindAll(RegExp re, string input, int start, int max)
+```
+
+`start` is a **glyph index** (0-based). `max = -1` means unlimited; `max = 0` returns `[]`.
+
+```c
+RegExp digits = regexCompile("\d+", "");
+bool ok = regexTest(digits, "price: 42", 0);    // true
+
+RegExpMatch m = regexFind(digits, "price: 42", 0);
+if (regexOk(m)) {
+    print(regexGroups(m)[0] + "\n");   // "42"
+}
+```
+
+#### Inspecting a match
+
+```c
+bool     regexOk(RegExpMatch m)
+int      regexStart(RegExpMatch m)    // glyph index of first character
+int      regexEnd(RegExpMatch m)      // glyph index past last character
+string[] regexGroups(RegExpMatch m)   // [0]=full match, [1..n]=capturing groups
+```
+
+`regexGroups(m)[0]` is always the full match when `ok=true`. An optional group that did
+not participate in the match produces `""`.
+
+#### Replace
+
+```c
+string regexReplace(RegExp re, string input, string replacement, int start)
+string regexReplaceAll(RegExp re, string input, string replacement, int start, int max)
+```
+
+In `replacement`: `$0` = full match, `$1`–`$99` = capturing groups, `$$` = literal `$`.
+
+```c
+RegExp swap = regexCompile("(\w+)-(\w+)", "");
+string s = regexReplaceAll(swap, "alpha-beta gamma-delta", "$2:$1", 0, -1);
+print(s + "\n");   // "beta:alpha delta:gamma"
+```
+
+#### Split
+
+```c
+string[] regexSplit(RegExp re, string input, int start, int maxParts)
+```
+
+`maxParts = -1` means unlimited; `maxParts = 0` returns `[]`.
+
+```c
+RegExp sep = regexCompile(",\s*", "");
+string[] parts = regexSplit(sep, "a, b,  c", 0, -1);
+// parts = ["a", "b", "c"]
+```
+
+#### Metadata
+
+```c
+string regexPattern(RegExp re)   // original pattern string
+string regexFlags(RegExp re)     // canonical flags, e.g. "ims"
+```
+
+#### Pattern syntax reference (V1)
+
+| Category | Syntax |
+|----------|--------|
+| Any glyph | `.` (excludes `\n` unless flag `s`) |
+| Anchors | `^` `$` (per line with flag `m`) |
+| Character class | `[abc]` `[a-z]` `[^...]` |
+| Capturing group | `(…)` |
+| Non-capturing group | `(?:…)` |
+| Alternation | `A\|B\|C` |
+| Greedy quantifiers | `*` `+` `?` `{m}` `{m,}` `{m,n}` |
+| Non-greedy | `*?` `+?` `??` `{m}?` `{m,}?` `{m,n}?` |
+| Digit shortcut | `\d` `\D` |
+| Word shortcut | `\w` `\W` |
+| Whitespace shortcut | `\s` `\S` |
+
+Backreferences in patterns (`\1`), lookahead/lookbehind (`(?=…)` etc.) are **not supported**.
+
+#### Full example — date extraction
+
+```c
+void main() {
+    RegExp re = regexCompile("(\d{4})-(\d{2})-(\d{2})", "");
+    string text = "Starts: 2026-12-31, ends: 2027-01-15";
+
+    RegExpMatch[] ms = regexFindAll(re, text, 0, -1);
+    for (int i = 0; i < count(ms); i++) {
+        string[] g = regexGroups(ms[i]);
+        print("year=" + g[1] + " month=" + g[2] + " day=" + g[3] + "\n");
+    }
+    // year=2026 month=12 day=31
+    // year=2027 month=01 day=15
+}
+```
 
 ---
 

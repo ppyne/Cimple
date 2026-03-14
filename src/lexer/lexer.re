@@ -91,9 +91,11 @@ static char *decode_string(Lexer *l, const char *start, const char *end) {
             break;
         }
         default:
-            free(buf);
-            error_lexical(l->line, l->tok_col,
-                          "Unknown escape sequence: '\\%c'", *p);
+            /* Unknown \X (e.g. \s \d \w \W \S \D) — preserve literally as \X
+             * so that regex patterns can be written without double-backslash. */
+            *out++ = '\\';
+            *out++ = *p++;
+            break;
         }
     }
     *out = '\0';
