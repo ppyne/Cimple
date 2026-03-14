@@ -18,6 +18,10 @@ typedef struct {
     CimpleType type;
     char      *struct_name;
     FuncType  *func_type;
+    CimpleType key_type;
+    CimpleType inner_key_type;
+    CimpleType val_type;
+    char      *val_struct_name;
 } ParsedType;
 
 static ParsedType parsed_type_make(CimpleType type, const char *struct_name) {
@@ -25,6 +29,26 @@ static ParsedType parsed_type_make(CimpleType type, const char *struct_name) {
     pt.type = type;
     pt.struct_name = struct_name ? cimple_strdup(struct_name) : NULL;
     pt.func_type = NULL;
+    pt.key_type = TYPE_UNKNOWN;
+    pt.inner_key_type = TYPE_UNKNOWN;
+    pt.val_type = TYPE_UNKNOWN;
+    pt.val_struct_name = NULL;
+    return pt;
+}
+
+typedef struct {
+    NodeList keys;
+    NodeList values;
+} ParsedMapLiteral;
+
+static ParsedType parsed_map_type_make(CimpleType key_type, CimpleType val_type,
+                                       const char *val_struct_name,
+                                       CimpleType inner_key_type) {
+    ParsedType pt = parsed_type_make(TYPE_MAP, NULL);
+    pt.key_type = key_type;
+    pt.inner_key_type = inner_key_type;
+    pt.val_type = val_type;
+    pt.val_struct_name = val_struct_name ? cimple_strdup(val_struct_name) : NULL;
     return pt;
 }
 
@@ -178,6 +202,10 @@ decl(D) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
     D->u.var_decl.init        = NULL;
     D->u.var_decl.is_global   = 1;
     D->type_name_hint         = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    D->map_key_type           = T.key_type;
+    D->map_inner_key_type     = T.inner_key_type;
+    D->map_val_type           = T.val_type;
+    D->map_val_struct_name    = T.val_struct_name ? cimple_strdup(T.val_struct_name) : NULL;
     free(N.v.sval);
 }
 
@@ -191,6 +219,10 @@ decl(D) ::= nonvoid_type(T) IDENT(N) ASSIGN expr(E) SEMICOLON.
     D->u.var_decl.init        = E;
     D->u.var_decl.is_global   = 1;
     D->type_name_hint         = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    D->map_key_type           = T.key_type;
+    D->map_inner_key_type     = T.inner_key_type;
+    D->map_val_type           = T.val_type;
+    D->map_val_struct_name    = T.val_struct_name ? cimple_strdup(T.val_struct_name) : NULL;
     free(N.v.sval);
 }
 
@@ -206,6 +238,7 @@ decl(D) ::= nonvoid_type(T) IDENT(N) LPAREN callback_param_types(F) RPAREN ASSIG
     D->u.var_decl.is_global = 1;
     D->type = TYPE_FUNC;
     free(T.struct_name);
+    free(T.val_struct_name);
     free(N.v.sval);
     free(I.v.sval);
 }
@@ -234,6 +267,10 @@ decl(D) ::= nonvoid_type(T) IDENT(N) LPAREN param_list(PL) RPAREN block(B).
     D->u.func_decl.params          = PL;
     D->u.func_decl.body            = B;
     D->type_name_hint              = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    D->map_key_type                = T.key_type;
+    D->map_inner_key_type          = T.inner_key_type;
+    D->map_val_type                = T.val_type;
+    D->map_val_struct_name         = T.val_struct_name ? cimple_strdup(T.val_struct_name) : NULL;
     free(N.v.sval);
 }
 
@@ -330,6 +367,10 @@ union_member(M) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
     M->u.struct_field.struct_name = T.struct_name;
     M->u.struct_field.init = NULL;
     M->type_name_hint = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    M->map_key_type = T.key_type;
+    M->map_inner_key_type = T.inner_key_type;
+    M->map_val_type = T.val_type;
+    M->map_val_struct_name = T.val_struct_name ? cimple_strdup(T.val_struct_name) : NULL;
     free(N.v.sval);
 }
 
@@ -363,6 +404,10 @@ structure_member(M) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
     M->u.struct_field.struct_name = T.struct_name;
     M->u.struct_field.init = NULL;
     M->type_name_hint = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    M->map_key_type = T.key_type;
+    M->map_inner_key_type = T.inner_key_type;
+    M->map_val_type = T.val_type;
+    M->map_val_struct_name = T.val_struct_name ? cimple_strdup(T.val_struct_name) : NULL;
     free(N.v.sval);
 }
 
@@ -374,6 +419,10 @@ structure_member(M) ::= nonvoid_type(T) IDENT(N) ASSIGN expr(E) SEMICOLON.
     M->u.struct_field.struct_name = T.struct_name;
     M->u.struct_field.init = E;
     M->type_name_hint = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    M->map_key_type = T.key_type;
+    M->map_inner_key_type = T.inner_key_type;
+    M->map_val_type = T.val_type;
+    M->map_val_struct_name = T.val_struct_name ? cimple_strdup(T.val_struct_name) : NULL;
     free(N.v.sval);
 }
 
@@ -386,6 +435,10 @@ structure_member(M) ::= nonvoid_type(T) IDENT(N) LPAREN param_list(PL) RPAREN bl
     M->u.func_decl.params = PL;
     M->u.func_decl.body = B;
     M->type_name_hint = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    M->map_key_type = T.key_type;
+    M->map_inner_key_type = T.inner_key_type;
+    M->map_val_type = T.val_type;
+    M->map_val_struct_name = T.val_struct_name ? cimple_strdup(T.val_struct_name) : NULL;
     free(N.v.sval);
 }
 
@@ -408,6 +461,9 @@ structure_member(M) ::= KW_VOID IDENT(N) LPAREN param_list(PL) RPAREN block(B).
 %type struct_type  { ParsedType }
 %type struct_array_type  { ParsedType }
 %type struct_array2_type { ParsedType }
+%type map_key_type { CimpleType }
+%type map_type { ParsedType }
+%type map2d_type { ParsedType }
 %type nonvoid_type { ParsedType }
 %type callback_param_types { FuncType * }
 %type param_tail   { AstNode * }
@@ -417,6 +473,12 @@ scalar_type(T) ::= KW_FLOAT.  { T = parsed_type_make(TYPE_FLOAT, NULL); }
 scalar_type(T) ::= KW_BOOL.   { T = parsed_type_make(TYPE_BOOL, NULL); }
 scalar_type(T) ::= KW_STRING. { T = parsed_type_make(TYPE_STRING, NULL); }
 scalar_type(T) ::= KW_BYTE.   { T = parsed_type_make(TYPE_BYTE, NULL); }
+
+map_key_type(K) ::= KW_STRING. { K = TYPE_STRING; }
+map_key_type(K) ::= KW_INT.    { K = TYPE_INT; }
+map_key_type(K) ::= KW_BOOL.   { K = TYPE_BOOL; }
+map_key_type(K) ::= KW_FLOAT.  { K = TYPE_FLOAT; }
+map_key_type(K) ::= TYPE_IDENT(N). { K = TYPE_STRUCT; free(N.v.sval); }
 
 array_type(T) ::= KW_INT    LBRACKET RBRACKET. { T = parsed_type_make(TYPE_INT_ARR, NULL); }
 array_type(T) ::= KW_FLOAT  LBRACKET RBRACKET. { T = parsed_type_make(TYPE_FLOAT_ARR, NULL); }
@@ -449,11 +511,46 @@ struct_array2_type(T) ::= TYPE_IDENT(N) LBRACKET RBRACKET LBRACKET RBRACKET.
     free(N.v.sval);
 }
 
+map_type(T) ::= KW_INT LBRACKET map_key_type(K) RBRACKET.
+{ T = parsed_map_type_make(K, TYPE_INT, NULL, TYPE_UNKNOWN); }
+map_type(T) ::= KW_FLOAT LBRACKET map_key_type(K) RBRACKET.
+{ T = parsed_map_type_make(K, TYPE_FLOAT, NULL, TYPE_UNKNOWN); }
+map_type(T) ::= KW_BOOL LBRACKET map_key_type(K) RBRACKET.
+{ T = parsed_map_type_make(K, TYPE_BOOL, NULL, TYPE_UNKNOWN); }
+map_type(T) ::= KW_STRING LBRACKET map_key_type(K) RBRACKET.
+{ T = parsed_map_type_make(K, TYPE_STRING, NULL, TYPE_UNKNOWN); }
+map_type(T) ::= KW_BYTE LBRACKET map_key_type(K) RBRACKET.
+{ T = parsed_map_type_make(K, TYPE_BYTE, NULL, TYPE_UNKNOWN); }
+map_type(T) ::= TYPE_IDENT(N) LBRACKET map_key_type(K) RBRACKET.
+{
+    T = parsed_map_type_make(K, TYPE_STRUCT, N.v.sval, TYPE_UNKNOWN);
+    free(N.v.sval);
+}
+
+map2d_type(T) ::= KW_INT LBRACKET map_key_type(K1) RBRACKET LBRACKET map_key_type(K2) RBRACKET.
+{ T = parsed_map_type_make(K1, TYPE_MAP, NULL, K2); T.val_type = TYPE_INT; }
+map2d_type(T) ::= KW_FLOAT LBRACKET map_key_type(K1) RBRACKET LBRACKET map_key_type(K2) RBRACKET.
+{ T = parsed_map_type_make(K1, TYPE_MAP, NULL, K2); T.val_type = TYPE_FLOAT; }
+map2d_type(T) ::= KW_BOOL LBRACKET map_key_type(K1) RBRACKET LBRACKET map_key_type(K2) RBRACKET.
+{ T = parsed_map_type_make(K1, TYPE_MAP, NULL, K2); T.val_type = TYPE_BOOL; }
+map2d_type(T) ::= KW_STRING LBRACKET map_key_type(K1) RBRACKET LBRACKET map_key_type(K2) RBRACKET.
+{ T = parsed_map_type_make(K1, TYPE_MAP, NULL, K2); T.val_type = TYPE_STRING; }
+map2d_type(T) ::= KW_BYTE LBRACKET map_key_type(K1) RBRACKET LBRACKET map_key_type(K2) RBRACKET.
+{ T = parsed_map_type_make(K1, TYPE_MAP, NULL, K2); T.val_type = TYPE_BYTE; }
+map2d_type(T) ::= TYPE_IDENT(N) LBRACKET map_key_type(K1) RBRACKET LBRACKET map_key_type(K2) RBRACKET.
+{
+    T = parsed_map_type_make(K1, TYPE_MAP, N.v.sval, K2);
+    T.val_type = TYPE_STRUCT;
+    free(N.v.sval);
+}
+
 nonvoid_type(T) ::= scalar_type(S).        { T = S; }
 nonvoid_type(T) ::= array_type(A).         { T = A; }
 nonvoid_type(T) ::= struct_type(S).        { T = S; }
 nonvoid_type(T) ::= struct_array_type(A).  { T = A; }
 nonvoid_type(T) ::= struct_array2_type(A). { T = A; }
+nonvoid_type(T) ::= map_type(M).           { T = M; }
+nonvoid_type(T) ::= map2d_type(M).         { T = M; }
 nonvoid_type(T) ::= KW_EXECRESULT.         { T = parsed_type_make(TYPE_EXEC_RESULT, NULL); }
 
 callback_param_types(F) ::= nonvoid_type(T).
@@ -462,6 +559,7 @@ callback_param_types(F) ::= nonvoid_type(T).
     if (F->param_count < 8)
         F->params[F->param_count++] = T.type;
     free(T.struct_name);
+    free(T.val_struct_name);
 }
 
 callback_param_types(F) ::= callback_param_types(FF) COMMA nonvoid_type(T).
@@ -471,6 +569,7 @@ callback_param_types(F) ::= callback_param_types(FF) COMMA nonvoid_type(T).
         F->params[F->param_count++] = T.type;
     }
     free(T.struct_name);
+    free(T.val_struct_name);
 }
 
 /* -----------------------------------------------------------------------
@@ -505,6 +604,7 @@ param(P) ::= nonvoid_type(T) IDENT(N) param_tail(TAIL).
         P->u.param.name = cimple_strdup(N.v.sval);
         P->u.param.func_type->ret = T.type;
         free(T.struct_name);
+        free(T.val_struct_name);
     } else {
         P = ast_new(NODE_PARAM, N.line, N.col);
         P->u.param.name = cimple_strdup(N.v.sval);
@@ -513,6 +613,10 @@ param(P) ::= nonvoid_type(T) IDENT(N) param_tail(TAIL).
         P->u.param.func_type = T.func_type;
         P->type = T.type;
         P->type_name_hint = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+        P->map_key_type = T.key_type;
+        P->map_inner_key_type = T.inner_key_type;
+        P->map_val_type = T.val_type;
+        P->map_val_struct_name = T.val_struct_name ? cimple_strdup(T.val_struct_name) : NULL;
     }
     free(N.v.sval);
 }
@@ -588,6 +692,10 @@ stmt(S) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
     S->u.var_decl.init        = NULL;
     S->u.var_decl.is_global   = 0;
     S->type_name_hint         = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    S->map_key_type           = T.key_type;
+    S->map_inner_key_type     = T.inner_key_type;
+    S->map_val_type           = T.val_type;
+    S->map_val_struct_name    = T.val_struct_name ? cimple_strdup(T.val_struct_name) : NULL;
     free(N.v.sval);
 }
 
@@ -601,6 +709,10 @@ stmt(S) ::= nonvoid_type(T) IDENT(N) ASSIGN expr(E) SEMICOLON.
     S->u.var_decl.init        = E;
     S->u.var_decl.is_global   = 0;
     S->type_name_hint         = T.struct_name ? cimple_strdup(T.struct_name) : NULL;
+    S->map_key_type           = T.key_type;
+    S->map_inner_key_type     = T.inner_key_type;
+    S->map_val_type           = T.val_type;
+    S->map_val_struct_name    = T.val_struct_name ? cimple_strdup(T.val_struct_name) : NULL;
     free(N.v.sval);
 }
 
@@ -616,6 +728,7 @@ stmt(S) ::= nonvoid_type(T) IDENT(N) LPAREN callback_param_types(F) RPAREN ASSIG
     S->u.var_decl.is_global = 0;
     S->type = TYPE_FUNC;
     free(T.struct_name);
+    free(T.val_struct_name);
     free(N.v.sval);
     free(I.v.sval);
 }
@@ -1216,6 +1329,8 @@ for_update(U) ::= .
  * ----------------------------------------------------------------------- */
 %type array_lit  { AstNode * }
 %type elem_list  { NodeList  }
+%type map_lit    { AstNode * }
+%type map_entry_list { ParsedMapLiteral }
 
 array_lit(A) ::= LBRACKET(T) RBRACKET.
 {
@@ -1241,6 +1356,32 @@ elem_list(L) ::= elem_list(LL) COMMA expr(E).
 {
     L = LL;
     nodelist_push(&L, E);
+}
+
+map_lit(A) ::= LBRACKET(T) expr(K) COLON expr(V) map_entry_list(L) RBRACKET.
+{
+    A = ast_new(NODE_MAP_LIT, T.line, T.col);
+    A->u.map_lit.keys = L.keys;
+    A->u.map_lit.values = L.values;
+    A->u.map_lit.key_type = TYPE_UNKNOWN;
+    A->u.map_lit.val_type = TYPE_UNKNOWN;
+    A->u.map_lit.inner_key_type = TYPE_UNKNOWN;
+    A->u.map_lit.val_struct_name = NULL;
+    nodelist_push(&A->u.map_lit.keys, K);
+    nodelist_push(&A->u.map_lit.values, V);
+}
+
+map_entry_list(L) ::= .
+{
+    nodelist_init(&L.keys);
+    nodelist_init(&L.values);
+}
+
+map_entry_list(L) ::= map_entry_list(LL) COMMA expr(K) COLON expr(V).
+{
+    L = LL;
+    nodelist_push(&L.keys, K);
+    nodelist_push(&L.values, V);
 }
 
 /* -----------------------------------------------------------------------
@@ -1277,6 +1418,7 @@ expr(E) ::= STRING_LIT(T).
 
 
 expr(E) ::= array_lit(A). { E = A; }
+expr(E) ::= map_lit(A).   { E = A; }
 expr(E) ::= KW_SELF(T).  { E = ast_self(T.line, T.col); }
 expr(E) ::= KW_SUPER(T). { E = ast_super(T.line, T.col); }
 expr(E) ::= KW_CLONE(T) TYPE_IDENT(N).

@@ -1,0 +1,10 @@
+structure Person { string name = ""; int age = 0; }
+void main() {
+    Person[string] people = [];
+    Person alice = clone Person;
+    alice.name = "Alice";
+    alice.age = 30;
+    people["a"] = alice;
+    print(people["a"].name + "\n");
+    print(toString(people["a"].age) + "\n");
+}

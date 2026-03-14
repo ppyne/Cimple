@@ -33,6 +33,7 @@ void scope_free(Scope *s) {
             free(sym->name);
             free(sym->struct_name);
             func_type_free(sym->func_type);
+            free(sym->map_val_struct_name);
             value_free(&sym->val);
             free(sym);
             sym = next;
@@ -63,6 +64,8 @@ Symbol *scope_lookup(Scope *s, const char *name) {
 
 Symbol *scope_define(Scope *s, const char *name, CimpleType type,
                      const char *struct_name, const FuncType *func_type,
+                     CimpleType map_key_type, CimpleType map_inner_key_type,
+                     CimpleType map_val_type, const char *map_val_struct_name,
                      int line, int col) {
     if (scope_lookup_local(s, name))
         return NULL; /* already defined */
@@ -71,6 +74,10 @@ Symbol *scope_define(Scope *s, const char *name, CimpleType type,
     sym->type     = type;
     sym->struct_name = struct_name ? cimple_strdup(struct_name) : NULL;
     sym->func_type = func_type_copy(func_type);
+    sym->map_key_type = map_key_type;
+    sym->map_inner_key_type = map_inner_key_type;
+    sym->map_val_type = map_val_type;
+    sym->map_val_struct_name = map_val_struct_name ? cimple_strdup(map_val_struct_name) : NULL;
     sym->val      = value_default(type);
     sym->is_const = 0;
     sym->line     = line;
@@ -101,12 +108,15 @@ void func_table_free(FuncTable *ft) {
             FuncSig *next = sig->next;
             free(sig->name);
             free(sig->ret_struct_name);
+            free(sig->ret_map_val_struct_name);
             for (int j = 0; j < sig->param_count; j++)
                 free(sig->params[j].name);
             for (int j = 0; j < sig->param_count; j++)
                 free(sig->params[j].struct_name);
             for (int j = 0; j < sig->param_count; j++)
                 func_type_free(sig->params[j].func_type);
+            for (int j = 0; j < sig->param_count; j++)
+                free(sig->params[j].map_val_struct_name);
             free(sig->params);
             free(sig);
             sig = next;
@@ -130,6 +140,10 @@ FuncSig *func_table_lookup(FuncTable *ft, const char *name) {
 int func_table_define(FuncTable *ft, const char *name,
                       CimpleType ret_type,
                       const char *ret_struct_name,
+                      CimpleType ret_map_key_type,
+                      CimpleType ret_map_inner_key_type,
+                      CimpleType ret_map_val_type,
+                      const char *ret_map_val_struct_name,
                       FuncParam *params, int param_count,
                       int line, int col) {
     if (func_table_lookup(ft, name))
@@ -138,6 +152,10 @@ int func_table_define(FuncTable *ft, const char *name,
     sig->name      = cimple_strdup(name);
     sig->ret_type  = ret_type;
     sig->ret_struct_name = ret_struct_name ? cimple_strdup(ret_struct_name) : NULL;
+    sig->ret_map_key_type = ret_map_key_type;
+    sig->ret_map_inner_key_type = ret_map_inner_key_type;
+    sig->ret_map_val_type = ret_map_val_type;
+    sig->ret_map_val_struct_name = ret_map_val_struct_name ? cimple_strdup(ret_map_val_struct_name) : NULL;
     sig->param_count = param_count;
     sig->params    = ALLOC_N(FuncParam, param_count);
     for (int i = 0; i < param_count; i++) {
@@ -146,6 +164,11 @@ int func_table_define(FuncTable *ft, const char *name,
         sig->params[i].struct_name = params[i].struct_name
             ? cimple_strdup(params[i].struct_name) : NULL;
         sig->params[i].func_type = func_type_copy(params[i].func_type);
+        sig->params[i].map_key_type = params[i].map_key_type;
+        sig->params[i].map_inner_key_type = params[i].map_inner_key_type;
+        sig->params[i].map_val_type = params[i].map_val_type;
+        sig->params[i].map_val_struct_name = params[i].map_val_struct_name
+            ? cimple_strdup(params[i].map_val_struct_name) : NULL;
     }
     sig->line      = line;
     sig->col       = col;

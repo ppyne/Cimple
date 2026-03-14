@@ -1,0 +1,12 @@
+void main() {
+    int[string] m = ["a": 1, "b": 2, "c": 3];
+    print(toString(mapHas(m, "a")) + "\n");
+    print(toString(mapHas(m, "z")) + "\n");
+    print(toString(mapSize(m)) + "\n");
+    mapRemove(m, "b");
+    print(toString(mapSize(m)) + "\n");
+    mapRemove(m, "z");
+    print(toString(count(m)) + "\n");
+    mapClear(m);
+    print(toString(mapSize(m)) + "\n");
+}

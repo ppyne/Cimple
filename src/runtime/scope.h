@@ -12,6 +12,10 @@ typedef struct Symbol {
     CimpleType  type;
     char       *struct_name;
     FuncType   *func_type;
+    CimpleType  map_key_type;
+    CimpleType  map_inner_key_type;
+    CimpleType  map_val_type;
+    char       *map_val_struct_name;
     Value       val;         /* runtime value (interpreter phase)         */
     int         is_const;   /* predefined constant                        */
     int         line;        /* declaration site                          */
@@ -38,12 +42,20 @@ typedef struct FuncParam {
     CimpleType  type;
     char       *struct_name;
     FuncType   *func_type;
+    CimpleType  map_key_type;
+    CimpleType  map_inner_key_type;
+    CimpleType  map_val_type;
+    char       *map_val_struct_name;
 } FuncParam;
 
 typedef struct FuncSig {
     char       *name;
     CimpleType  ret_type;
     char       *ret_struct_name;
+    CimpleType  ret_map_key_type;
+    CimpleType  ret_map_inner_key_type;
+    CimpleType  ret_map_val_type;
+    char       *ret_map_val_struct_name;
     FuncParam  *params;
     int         param_count;
     int         line;
@@ -66,6 +78,8 @@ Symbol *scope_lookup_local(Scope *s, const char *name);
 /* Define a new symbol (returns NULL on redefinition). */
 Symbol *scope_define(Scope *s, const char *name, CimpleType type,
                      const char *struct_name, const FuncType *func_type,
+                     CimpleType map_key_type, CimpleType map_inner_key_type,
+                     CimpleType map_val_type, const char *map_val_struct_name,
                      int line, int col);
 
 /* -----------------------------------------------------------------------
@@ -82,6 +96,10 @@ FuncSig   *func_table_lookup(FuncTable *ft, const char *name);
 int        func_table_define(FuncTable *ft, const char *name,
                              CimpleType ret_type,
                              const char *ret_struct_name,
+                             CimpleType ret_map_key_type,
+                             CimpleType ret_map_inner_key_type,
+                             CimpleType ret_map_val_type,
+                             const char *ret_map_val_struct_name,
                              FuncParam *params, int param_count,
                              int line, int col);
 

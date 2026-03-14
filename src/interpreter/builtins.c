@@ -152,6 +152,12 @@ typedef enum {
     BI_SAFE_DIV_INT,
     BI_SAFE_MOD_INT,
     BI_COUNT,
+    BI_MAP_HAS,
+    BI_MAP_REMOVE,
+    BI_MAP_KEYS,
+    BI_MAP_VALUES,
+    BI_MAP_SIZE,
+    BI_MAP_CLEAR,
     BI_ARRAY_PUSH,
     BI_ARRAY_POP,
     BI_ARRAY_INSERT,
@@ -239,6 +245,12 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"copy", BI_COPY},
     {"cos", BI_COS},
     {"count", BI_COUNT},
+    {"mapClear", BI_MAP_CLEAR},
+    {"mapHas", BI_MAP_HAS},
+    {"mapKeys", BI_MAP_KEYS},
+    {"mapRemove", BI_MAP_REMOVE},
+    {"mapSize", BI_MAP_SIZE},
+    {"mapValues", BI_MAP_VALUES},
     {"cwd", BI_CWD},
     {"dirname", BI_DIRNAME},
     {"endsWith", BI_ENDS_WITH},
@@ -1842,7 +1854,42 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     /* ---- Array intrinsics ---- */
     if (id == BI_COUNT) {
         REQUIRE(1);
+        if (args[0].type == TYPE_MAP)
+            return val_int(map_size(args[0].u.map));
         return val_int(ARG_ARR(0)->count);
+    }
+    if (id == BI_MAP_HAS) {
+        REQUIRE(2);
+        return val_bool(map_has(args[0].u.map, args[1]));
+    }
+    if (id == BI_MAP_REMOVE) {
+        REQUIRE(2);
+        map_remove(args[0].u.map, args[1]);
+        return val_void();
+    }
+    if (id == BI_MAP_KEYS) {
+        REQUIRE(1);
+        Value out = val_void();
+        out.type = type_make_array(args[0].u.map->key_type);
+        out.u.arr = map_keys(args[0].u.map);
+        return out;
+    }
+    if (id == BI_MAP_VALUES) {
+        REQUIRE(1);
+        Value out = val_void();
+        out.type = args[0].u.map->val_type == TYPE_MAP ? TYPE_UNKNOWN : type_make_array(args[0].u.map->val_type);
+        out.u.arr = map_values(args[0].u.map);
+        if (args[0].u.map->val_type == TYPE_MAP) out.type = TYPE_UNKNOWN;
+        return out;
+    }
+    if (id == BI_MAP_SIZE) {
+        REQUIRE(1);
+        return val_int(map_size(args[0].u.map));
+    }
+    if (id == BI_MAP_CLEAR) {
+        REQUIRE(1);
+        map_clear(args[0].u.map);
+        return val_void();
     }
     if (id == BI_ARRAY_PUSH) {
         REQUIRE(2);

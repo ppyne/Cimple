@@ -1,0 +1,7 @@
+void main() {
+    int[string] scores = [];
+    scores["alice"] = 10;
+    scores["bob"] = 7;
+    print(toString(scores["alice"]) + "\n");
+    print(toString(scores["carol"]) + "\n");
+}

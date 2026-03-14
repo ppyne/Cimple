@@ -35,6 +35,7 @@ const char *type_name(CimpleType t) {
     case TYPE_REGEXP:         return "RegExp";
     case TYPE_REGEXP_MATCH:   return "RegExpMatch";
     case TYPE_REGEXP_MATCH_ARR: return "RegExpMatch[]";
+    case TYPE_MAP:            return "map";
     default:                  return "<unknown>";
     }
 }
@@ -96,6 +97,10 @@ AstNode *ast_new(NodeKind kind, int line, int col) {
     n->type    = TYPE_UNKNOWN;
     n->type_name_hint = NULL;
     n->func_type_hint = NULL;
+    n->map_key_type = TYPE_UNKNOWN;
+    n->map_inner_key_type = TYPE_UNKNOWN;
+    n->map_val_type = TYPE_UNKNOWN;
+    n->map_val_struct_name = NULL;
     return n;
 }
 
@@ -213,6 +218,10 @@ void ast_free(AstNode *n) {
     case NODE_ARRAY_LIT:
         nodelist_free(&n->u.array_lit.elems);
         break;
+    case NODE_MAP_LIT:
+        nodelist_free(&n->u.map_lit.keys);
+        nodelist_free(&n->u.map_lit.values);
+        break;
     case NODE_IDENT:
         free(n->u.ident.name);
         break;
@@ -270,6 +279,7 @@ void ast_free(AstNode *n) {
     }
     free(n->type_name_hint);
     func_type_free(n->func_type_hint);
+    free(n->map_val_struct_name);
     free(n);
 }
 

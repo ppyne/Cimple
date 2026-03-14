@@ -1,0 +1,8 @@
+void main() {
+    int[string][bool] grid = [];
+    grid["row"][true] = 9;
+    grid["row"][false] = 4;
+    print(toString(grid["row"][true]) + "\n");
+    print(toString(grid["row"][false]) + "\n");
+    print(toString(grid["missing"][true]) + "\n");
+}

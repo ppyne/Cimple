@@ -1,0 +1,11 @@
+void main() {
+    int[string] freq = [];
+    string[] words = ["a", "b", "a", "c", "a"];
+    for (int i = 0; i < count(words); i++) {
+        string w = words[i];
+        freq[w] = freq[w] + 1;
+    }
+    print(toString(freq["a"]) + "\n");
+    print(toString(freq["b"]) + "\n");
+    print(toString(freq["z"]) + "\n");
+}

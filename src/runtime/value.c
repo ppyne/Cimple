@@ -7,6 +7,13 @@
 #include <string.h>
 #include <math.h>
 
+static Value map_default_value(const MapVal *m);
+static unsigned int map_hash_key(CimpleType key_type, Value key);
+static int map_key_equals(CimpleType key_type, Value a, Value b);
+static MapEntry **map_bucket_slot(MapVal *m, Value key);
+static MapEntry *map_find_entry(MapVal *m, Value key);
+static void map_rehash(MapVal *m, int new_bucket_count);
+
 /* -----------------------------------------------------------------------
  * Constructors
  * ----------------------------------------------------------------------- */
@@ -81,6 +88,13 @@ Value val_union(const char *union_name, int member_count) {
     return r;
 }
 
+Value val_map(MapVal *m) {
+    Value r;
+    r.type = TYPE_MAP;
+    r.u.map = m;
+    return r;
+}
+
 Value val_regexp(RegExpVal *re) {
     Value r;
     r.type = TYPE_REGEXP;
@@ -104,6 +118,201 @@ Value val_exec(int status, char *out, char *err) {
     return r;
 }
 
+MapVal *map_new(CimpleType key_type, CimpleType val_type,
+                const char *val_struct_name,
+                CimpleType inner_key_type,
+                CimpleType inner_val_type,
+                const char *inner_val_struct_name) {
+    MapVal *m = ALLOC(MapVal);
+    m->key_type = key_type;
+    m->val_type = val_type;
+    m->val_struct_name = val_struct_name ? cimple_strdup(val_struct_name) : NULL;
+    m->inner_key_type = inner_key_type;
+    m->inner_val_type = inner_val_type;
+    m->inner_val_struct_name = inner_val_struct_name ? cimple_strdup(inner_val_struct_name) : NULL;
+    m->bucket_count = 16;
+    m->count = 0;
+    m->buckets = ALLOC_N(MapEntry *, m->bucket_count);
+    return m;
+}
+
+static unsigned int map_hash_key(CimpleType key_type, Value key) {
+    if (key_type == TYPE_STRING) {
+        const unsigned char *s = (const unsigned char *)(key.u.s ? key.u.s : "");
+        unsigned int h = 5381u;
+        while (*s) h = h * 33u ^ *s++;
+        return h;
+    }
+    if (key_type == TYPE_BOOL) return (unsigned int)(key.u.b ? 1u : 0u);
+    return (unsigned int)((uint64_t)key.u.i ^ ((uint64_t)key.u.i >> 32));
+}
+
+static int map_key_equals(CimpleType key_type, Value a, Value b) {
+    if (key_type == TYPE_STRING)
+        return strcmp(a.u.s ? a.u.s : "", b.u.s ? b.u.s : "") == 0;
+    if (key_type == TYPE_BOOL) return a.u.b == b.u.b;
+    return a.u.i == b.u.i;
+}
+
+static MapEntry **map_bucket_slot(MapVal *m, Value key) {
+    unsigned int h = map_hash_key(m->key_type, key) % (unsigned int)m->bucket_count;
+    return &m->buckets[h];
+}
+
+static MapEntry *map_find_entry(MapVal *m, Value key) {
+    for (MapEntry *it = *map_bucket_slot(m, key); it; it = it->next) {
+        if (map_key_equals(m->key_type, it->key, key)) return it;
+    }
+    return NULL;
+}
+
+static void map_rehash(MapVal *m, int new_bucket_count) {
+    MapEntry **old_buckets = m->buckets;
+    int old_count = m->bucket_count;
+    m->buckets = ALLOC_N(MapEntry *, new_bucket_count);
+    m->bucket_count = new_bucket_count;
+    for (int i = 0; i < old_count; i++) {
+        MapEntry *it = old_buckets[i];
+        while (it) {
+            MapEntry *next = it->next;
+            unsigned int h = map_hash_key(m->key_type, it->key) % (unsigned int)m->bucket_count;
+            it->next = m->buckets[h];
+            m->buckets[h] = it;
+            it = next;
+        }
+    }
+    free(old_buckets);
+}
+
+static void map_maybe_grow(MapVal *m) {
+    if (m->count * 4 >= m->bucket_count * 3)
+        map_rehash(m, m->bucket_count ? m->bucket_count * 2 : 16);
+}
+
+static Value map_default_value(const MapVal *m) {
+    if (m->inner_key_type != TYPE_UNKNOWN)
+        return val_map(map_new(m->inner_key_type, m->inner_val_type,
+                               m->inner_val_struct_name,
+                               TYPE_UNKNOWN, TYPE_UNKNOWN, NULL));
+    return value_default(m->val_type);
+}
+
+MapVal *map_copy(const MapVal *m) {
+    if (!m) return NULL;
+    MapVal *out = map_new(m->key_type, m->val_type, m->val_struct_name,
+                          m->inner_key_type, m->inner_val_type, m->inner_val_struct_name);
+    for (int i = 0; i < m->bucket_count; i++) {
+        for (MapEntry *it = m->buckets[i]; it; it = it->next)
+            map_set(out, it->key, it->value);
+    }
+    return out;
+}
+
+void map_free(MapVal *m) {
+    if (!m) return;
+    for (int i = 0; i < m->bucket_count; i++) {
+        MapEntry *it = m->buckets[i];
+        while (it) {
+            MapEntry *next = it->next;
+            value_free(&it->key);
+            value_free(&it->value);
+            free(it);
+            it = next;
+        }
+    }
+    free(m->val_struct_name);
+    free(m->inner_val_struct_name);
+    free(m->buckets);
+    free(m);
+}
+
+Value map_get(MapVal *m, Value key) {
+    MapEntry *entry = map_find_entry(m, key);
+    if (entry) return value_copy(entry->value);
+    return map_default_value(m);
+}
+
+Value *map_get_or_create(MapVal *m, Value key) {
+    MapEntry *entry = map_find_entry(m, key);
+    if (entry) return &entry->value;
+    map_maybe_grow(m);
+    MapEntry *fresh = ALLOC(MapEntry);
+    fresh->key = value_copy(key);
+    fresh->value = map_default_value(m);
+    MapEntry **slot = map_bucket_slot(m, key);
+    fresh->next = *slot;
+    *slot = fresh;
+    m->count++;
+    return &fresh->value;
+}
+
+void map_set(MapVal *m, Value key, Value value) {
+    Value *slot = map_get_or_create(m, key);
+    value_free(slot);
+    *slot = value_copy(value);
+}
+
+int map_has(MapVal *m, Value key) {
+    return map_find_entry(m, key) != NULL;
+}
+
+void map_remove(MapVal *m, Value key) {
+    MapEntry **slot = map_bucket_slot(m, key);
+    while (*slot) {
+        if (map_key_equals(m->key_type, (*slot)->key, key)) {
+            MapEntry *victim = *slot;
+            *slot = victim->next;
+            value_free(&victim->key);
+            value_free(&victim->value);
+            free(victim);
+            m->count--;
+            return;
+        }
+        slot = &(*slot)->next;
+    }
+}
+
+ArrayVal *map_keys(MapVal *m) {
+    Value out = val_array(m->key_type);
+    for (int i = 0; i < m->bucket_count; i++) {
+        for (MapEntry *it = m->buckets[i]; it; it = it->next)
+            array_push(out.u.arr, it->key);
+    }
+    return out.u.arr;
+}
+
+ArrayVal *map_values(MapVal *m) {
+    Value out;
+    if (m->val_type == TYPE_MAP) out = val_array(TYPE_MAP);
+    else out = val_array(m->val_type);
+    if (m->val_type == TYPE_STRUCT || m->val_type == TYPE_UNION)
+        out.u.arr->struct_name = m->val_struct_name ? cimple_strdup(m->val_struct_name) : NULL;
+    for (int i = 0; i < m->bucket_count; i++) {
+        for (MapEntry *it = m->buckets[i]; it; it = it->next)
+            array_push(out.u.arr, it->value);
+    }
+    return out.u.arr;
+}
+
+void map_clear(MapVal *m) {
+    for (int i = 0; i < m->bucket_count; i++) {
+        MapEntry *it = m->buckets[i];
+        while (it) {
+            MapEntry *next = it->next;
+            value_free(&it->key);
+            value_free(&it->value);
+            free(it);
+            it = next;
+        }
+        m->buckets[i] = NULL;
+    }
+    m->count = 0;
+}
+
+int map_size(MapVal *m) {
+    return m ? m->count : 0;
+}
+
 /* -----------------------------------------------------------------------
  * Default values
  * ----------------------------------------------------------------------- */
@@ -116,6 +325,7 @@ Value value_default(CimpleType t) {
     case TYPE_FUNC:   return val_func("");
     case TYPE_BYTE:   return val_byte(0);
     case TYPE_UNION: { Value v; v.type = TYPE_VOID; v.u.i = 0; return v; }
+    case TYPE_MAP: { Value v; v.type = TYPE_VOID; v.u.i = 0; return v; }
     case TYPE_REGEXP_MATCH: return val_regexp_match(regex_match_empty());
     case TYPE_INT_ARR:      return val_array(TYPE_INT);
     case TYPE_FLOAT_ARR:    return val_array(TYPE_FLOAT);
@@ -651,6 +861,9 @@ Value value_copy(Value v) {
         }
         return out;
     }
+    if (v.type == TYPE_MAP) {
+        return val_map(map_copy(v.u.map));
+    }
     if (v.type == TYPE_REGEXP) {
         return val_regexp(regex_copy_value(v.u.re));
     }
@@ -741,6 +954,9 @@ void value_free(Value *v) {
             free(un);
         }
         v->u.un = NULL;
+    } else if (v->type == TYPE_MAP) {
+        map_free(v->u.map);
+        v->u.map = NULL;
     } else if (v->type == TYPE_REGEXP) {
         regex_free_value(v->u.re);
         v->u.re = NULL;
@@ -782,6 +998,8 @@ char *value_to_display(Value v) {
         return cimple_strdup(v.u.st && v.u.st->struct_name ? v.u.st->struct_name : "<struct>");
     case TYPE_UNION:
         return cimple_strdup(v.u.un && v.u.un->union_name ? v.u.un->union_name : "<union>");
+    case TYPE_MAP:
+        return cimple_strdup("<map>");
     case TYPE_REGEXP:
         return cimple_strdup("RegExp");
     case TYPE_REGEXP_MATCH:

@@ -1,0 +1,4 @@
+structure Person { string name = ""; }
+void main() {
+    int[Person] m = [];
+}

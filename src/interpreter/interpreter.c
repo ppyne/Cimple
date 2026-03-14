@@ -56,6 +56,16 @@ static int is_mutating_array_builtin(const char *name) {
            strcmp(name, "arraySet") == 0;
 }
 
+static int is_map_builtin(const char *name) {
+    return strcmp(name, "mapHas") == 0 ||
+           strcmp(name, "mapRemove") == 0 ||
+           strcmp(name, "mapKeys") == 0 ||
+           strcmp(name, "mapValues") == 0 ||
+           strcmp(name, "mapSize") == 0 ||
+           strcmp(name, "mapClear") == 0 ||
+           strcmp(name, "count") == 0;
+}
+
 static int is_int_like_value(CimpleType t) {
     return t == TYPE_INT || t == TYPE_BYTE;
 }
@@ -458,6 +468,16 @@ static Value *resolve_value_lvalue(Interp *ip, Scope *scope, AstNode *n, int lin
     if (n->kind == NODE_INDEX) {
         Value *base = resolve_value_lvalue(ip, scope, n->u.index.base, line, col);
         if (!base) return NULL;
+        if (base->type == TYPE_MAP) {
+            Value key = eval_expr(ip, scope, n->u.index.index);
+            if (interp_has_throw(ip)) {
+                value_free(&key);
+                return NULL;
+            }
+            Value *slot = map_get_or_create(base->u.map, key);
+            value_free(&key);
+            return slot;
+        }
         if (!type_is_array(base->type)) {
             error_runtime(line, col, "Operator '[]' cannot be applied to this value at runtime");
             return NULL;
@@ -636,6 +656,25 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         return arr;
     }
 
+    case NODE_MAP_LIT: {
+        MapVal *m = map_new(n->map_key_type, n->map_val_type, n->map_val_struct_name,
+                            n->map_inner_key_type, n->map_val_type, n->map_val_struct_name);
+        for (int i = 0; i < n->u.map_lit.keys.count; i++) {
+            Value k = eval_expr(ip, scope, n->u.map_lit.keys.items[i]);
+            Value v = eval_expr(ip, scope, n->u.map_lit.values.items[i]);
+            if (interp_has_throw(ip)) {
+                value_free(&k);
+                value_free(&v);
+                map_free(m);
+                return val_void();
+            }
+            map_set(m, k, v);
+            value_free(&k);
+            value_free(&v);
+        }
+        return val_map(m);
+    }
+
     case NODE_BINOP: {
         /* Short-circuit for &&, || */
         if (n->u.binop.op == OP_AND) {
@@ -798,12 +837,15 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
             result = val_string(buf);
         } else if (type_is_array(base.type)) {
             result = array_get(base.u.arr, idx, n->line, n->col);
+        } else if (base.type == TYPE_MAP) {
+            result = map_get(base.u.map, index);
         } else {
             error_runtime(n->line, n->col,
                           "Operator '[]' cannot be applied to this value at runtime");
             result = val_void();
         }
         value_free(&base);
+        value_free(&index);
         return result;
     }
 
@@ -907,13 +949,16 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
             int borrow_array_arg =
                 args->items[i]->kind == NODE_IDENT &&
                 ((i == 0 && is_mutating_array_builtin(dispatch_name)) ||
+                 (i == 0 && is_map_builtin(dispatch_name)) ||
                  (callback_sig &&
                   i < callback_sig->param_count &&
                   (type_is_array(callback_sig->params[i]) ||
+                   callback_sig->params[i] == TYPE_MAP ||
                    callback_sig->params[i] == TYPE_STRUCT)) ||
                  (user_func &&
                   i < user_func->u.func_decl.params.count &&
                   (type_is_array(user_func->u.func_decl.params.items[i]->u.param.type) ||
+                   user_func->u.func_decl.params.items[i]->u.param.type == TYPE_MAP ||
                    user_func->u.func_decl.params.items[i]->u.param.type == TYPE_STRUCT)));
 
             if (borrow_array_arg) {
@@ -966,20 +1011,30 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
             }
             /* Propagate element type for empty arrays */
             if (n->u.var_decl.init->kind == NODE_ARRAY_LIT &&
-                n->u.var_decl.init->u.array_lit.elems.count == 0 &&
-                v.u.arr) {
-                v.u.arr->elem_type = type_elem(t);
-                v.type = t;
+                n->u.var_decl.init->u.array_lit.elems.count == 0) {
+                if (t == TYPE_MAP) {
+                    value_free(&v);
+                    v = val_map(map_new(n->map_key_type, n->map_val_type, n->map_val_struct_name,
+                                        n->map_inner_key_type, n->map_val_type, n->map_val_struct_name));
+                } else if (v.u.arr) {
+                    v.u.arr->elem_type = type_elem(t);
+                    v.type = t;
+                }
             }
         } else {
             v = (t == TYPE_UNION && n->u.var_decl.struct_name)
                 ? create_union_instance(ip, n->u.var_decl.struct_name)
+                : (t == TYPE_MAP)
+                    ? val_map(map_new(n->map_key_type, n->map_val_type, n->map_val_struct_name,
+                                      n->map_inner_key_type, n->map_val_type, n->map_val_struct_name))
                 : value_default(t);
         }
 
         Symbol *sym = scope_define(scope, name, t,
                                    n->u.var_decl.struct_name,
                                    n->u.var_decl.func_type,
+                                   n->map_key_type, n->map_inner_key_type,
+                                   n->map_val_type, n->map_val_struct_name,
                                    n->line, n->col);
         if (!sym) {
             /* Re-definition at runtime (shouldn't happen if semantic check passed) */
@@ -1027,8 +1082,14 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
             value_free(&val);
             break;
         }
-        int   idx   = (int)idx_v.u.i;
-        array_set_owned(sym->val.u.arr, idx, &val, n->line, n->col);
+        if (sym->type == TYPE_MAP) {
+            Value *slot = map_get_or_create(sym->val.u.map, idx_v);
+            value_free(slot);
+            *slot = value_copy(val);
+        } else {
+            int idx = (int)idx_v.u.i;
+            array_set_owned(sym->val.u.arr, idx, &val, n->line, n->col);
+        }
         value_free(&idx_v);
         value_free(&val);
         break;
@@ -1050,19 +1111,32 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
             value_free(&val);
             break;
         }
-        int i1 = (int)i1v.u.i;
-        int i2 = (int)i2v.u.i;
-        if (i1 < 0 || i1 >= sym->val.u.arr->count)
-            error_runtime(n->line, n->col, "row index %d out of bounds (size %d)",
-                          i1, sym->val.u.arr->count);
-        if (interp_has_throw(ip)) {
-            value_free(&i1v);
-            value_free(&i2v);
-            value_free(&val);
-            break;
+        if (sym->type == TYPE_MAP) {
+            Value *outer_slot = map_get_or_create(sym->val.u.map, i1v);
+            if (outer_slot->type != TYPE_MAP) {
+                value_free(outer_slot);
+                *outer_slot = val_map(map_new(sym->map_inner_key_type, sym->map_val_type,
+                                              sym->map_val_struct_name,
+                                              TYPE_UNKNOWN, TYPE_UNKNOWN, NULL));
+            }
+            Value *inner_slot = map_get_or_create(outer_slot->u.map, i2v);
+            value_free(inner_slot);
+            *inner_slot = value_copy(val);
+        } else {
+            int i1 = (int)i1v.u.i;
+            int i2 = (int)i2v.u.i;
+            if (i1 < 0 || i1 >= sym->val.u.arr->count)
+                error_runtime(n->line, n->col, "row index %d out of bounds (size %d)",
+                              i1, sym->val.u.arr->count);
+            if (interp_has_throw(ip)) {
+                value_free(&i1v);
+                value_free(&i2v);
+                value_free(&val);
+                break;
+            }
+            ArrayVal *inner = sym->val.u.arr->data.arrays[i1];
+            array_set_owned(inner, i2, &val, n->line, n->col);
         }
-        ArrayVal *inner = sym->val.u.arr->data.arrays[i1];
-        array_set_owned(inner, i2, &val, n->line, n->col);
         value_free(&i1v);
         value_free(&i2v);
         value_free(&val);
@@ -1178,6 +1252,7 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
                 }
                 Symbol *sym  = scope_define(for_scope, init->u.for_init.name,
                                             TYPE_INT, NULL, NULL,
+                                            TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL,
                                             init->line, init->col);
                 if (sym) { value_free(&sym->val); sym->val = init_v; }
                 else value_free(&init_v);
@@ -1261,6 +1336,7 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
             Scope *catch_scope = scope_new(scope, 0);
             Symbol *sym = scope_define(catch_scope, cl->u.catch_clause.var_name,
                                        TYPE_STRUCT, thrown_type, NULL,
+                                       TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL,
                                        cl->line, cl->col);
             if (sym) {
                 value_free(&sym->val);
@@ -1418,10 +1494,13 @@ static Value call_user_func(Interp *ip, AstNode *f, Value *args, int nargs,
         Symbol  *sym = scope_define(fn_scope, p->u.param.name,
                                     p->u.param.type, p->u.param.struct_name,
                                     p->u.param.func_type,
+                                    p->map_key_type, p->map_inner_key_type,
+                                    p->map_val_type, p->map_val_struct_name,
                                     p->line, p->col);
         if (sym) {
             if ((type_is_array(p->u.param.type) && type_is_array(args[i].type)) ||
-                (p->u.param.type == TYPE_STRUCT && args[i].type == TYPE_STRUCT)) {
+                (p->u.param.type == TYPE_STRUCT && args[i].type == TYPE_STRUCT) ||
+                (p->u.param.type == TYPE_MAP && args[i].type == TYPE_MAP)) {
                 value_free(&sym->val);
                 sym->val = args[i];
                 borrowed_params[i] = 1;
@@ -1492,7 +1571,9 @@ static Value call_method(Interp *ip, Value *base, const char *method_name,
         error_runtime(line, col, "Unknown method '%s'", method_name);
 
     Scope *fn_scope = scope_new(ip->global, 1);
-    Symbol *self_sym = scope_define(fn_scope, "self", TYPE_STRUCT, base->u.st->struct_name, NULL, line, col);
+    Symbol *self_sym = scope_define(fn_scope, "self", TYPE_STRUCT, base->u.st->struct_name, NULL,
+                                    TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL,
+                                    line, col);
     value_free(&self_sym->val);
     self_sym->val = *base;
 
@@ -1501,8 +1582,10 @@ static Value call_method(Interp *ip, Value *base, const char *method_name,
         Symbol *sym = scope_define(fn_scope, p->u.param.name,
                                    p->u.param.type, p->u.param.struct_name,
                                    p->u.param.func_type,
+                                   p->map_key_type, p->map_inner_key_type,
+                                   p->map_val_type, p->map_val_struct_name,
                                    p->line, p->col);
-        if (type_is_array(p->u.param.type) || p->u.param.type == TYPE_STRUCT)
+        if (type_is_array(p->u.param.type) || p->u.param.type == TYPE_STRUCT || p->u.param.type == TYPE_MAP)
             sym->val = args[i];
         else
             sym->val = value_copy(args[i]);

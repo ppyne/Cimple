@@ -178,6 +178,12 @@ static const BuiltinSig BUILTINS[] = {
 
     /* Array intrinsics — polymorphic flag */
     { "count",       TYPE_INT,   { TYPE_UNKNOWN }, 1, 0, 1 },
+    { "mapHas",      TYPE_BOOL,  { TYPE_UNKNOWN, TYPE_UNKNOWN }, 2, 0, 1 },
+    { "mapRemove",   TYPE_VOID,  { TYPE_UNKNOWN, TYPE_UNKNOWN }, 2, 0, 1 },
+    { "mapKeys",     TYPE_UNKNOWN, { TYPE_UNKNOWN }, 1, 0, 1 },
+    { "mapValues",   TYPE_UNKNOWN, { TYPE_UNKNOWN }, 1, 0, 1 },
+    { "mapSize",     TYPE_INT,   { TYPE_UNKNOWN }, 1, 0, 1 },
+    { "mapClear",    TYPE_VOID,  { TYPE_UNKNOWN }, 1, 0, 1 },
     { "arrayPush",   TYPE_VOID,  { TYPE_UNKNOWN, TYPE_UNKNOWN }, 2, 0, 1 },
     { "arrayPop",    TYPE_UNKNOWN,{ TYPE_UNKNOWN }, 1, 0, 1 },
     { "arrayInsert", TYPE_VOID,  { TYPE_UNKNOWN, TYPE_INT, TYPE_UNKNOWN }, 3, 0, 1 },
@@ -269,6 +275,10 @@ static int types_equal_ex(CimpleType a, const char *a_name,
                           CimpleType b, const char *b_name);
 static int types_compatible(StructTable *st, CimpleType actual, const char *actual_name,
                             CimpleType expected, const char *expected_name);
+static int map_types_equal(CimpleType actual_key, CimpleType actual_inner_key,
+                           CimpleType actual_val, const char *actual_val_name,
+                           CimpleType expected_key, CimpleType expected_inner_key,
+                           CimpleType expected_val, const char *expected_val_name);
 static StructTable *struct_table_new(void);
 static void struct_table_free(StructTable *st);
 static StructInfo *struct_table_lookup(StructTable *st, const char *name);
@@ -297,6 +307,8 @@ static const FuncType *expr_func_type(SemCtx *ctx, AstNode *n);
 static int is_reserved_exception_name(const char *name);
 static int is_exception_type_name(SemCtx *ctx, const char *name);
 static void struct_add_builtin_field(StructInfo *si, const char *name, CimpleType type);
+static void set_node_map_meta(AstNode *n, CimpleType key_type, CimpleType inner_key_type,
+                              CimpleType val_type, const char *val_struct_name);
 
 /* Resolve intrinsic conversion overloads statically. */
 CimpleType builtin_resolve_intrinsic(const char *name, CimpleType arg_type,
@@ -345,6 +357,15 @@ static int types_equal_ex(CimpleType a, const char *a_name,
     return 1;
 }
 
+static int map_types_equal(CimpleType actual_key, CimpleType actual_inner_key,
+                           CimpleType actual_val, const char *actual_val_name,
+                           CimpleType expected_key, CimpleType expected_inner_key,
+                           CimpleType expected_val, const char *expected_val_name) {
+    return actual_key == expected_key &&
+           actual_inner_key == expected_inner_key &&
+           types_equal_ex(actual_val, actual_val_name, expected_val, expected_val_name);
+}
+
 static int struct_is_subtype(StructTable *st, const char *actual, const char *expected) {
     if (!actual || !expected) return 0;
     if (strcmp(actual, expected) == 0) return 1;
@@ -358,6 +379,7 @@ static int struct_is_subtype(StructTable *st, const char *actual, const char *ex
 static int types_compatible(StructTable *st, CimpleType actual, const char *actual_name,
                             CimpleType expected, const char *expected_name) {
     if (actual == TYPE_UNKNOWN || expected == TYPE_UNKNOWN) return 1;
+    if (actual == TYPE_MAP && expected == TYPE_MAP) return 1;
     if (actual == expected && actual != TYPE_STRUCT && actual != TYPE_STRUCT_ARR)
         return types_equal_ex(actual, actual_name, expected, expected_name);
     if (actual == TYPE_STRUCT && expected == TYPE_STRUCT)
@@ -421,6 +443,16 @@ static const FuncType *expr_func_type(SemCtx *ctx, AstNode *n) {
 
 static int is_int_like(CimpleType t) {
     return t == TYPE_INT || t == TYPE_BYTE;
+}
+
+static void set_node_map_meta(AstNode *n, CimpleType key_type, CimpleType inner_key_type,
+                              CimpleType val_type, const char *val_struct_name) {
+    if (!n) return;
+    n->map_key_type = key_type;
+    n->map_inner_key_type = inner_key_type;
+    n->map_val_type = val_type;
+    free(n->map_val_struct_name);
+    n->map_val_struct_name = val_struct_name ? cimple_strdup(val_struct_name) : NULL;
 }
 
 static StructTable *struct_table_new(void) {
@@ -773,6 +805,8 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         n->type_name_hint = sym->struct_name ? cimple_strdup(sym->struct_name) : NULL;
         func_type_free(n->func_type_hint);
         n->func_type_hint = func_type_copy(sym->func_type);
+        set_node_map_meta(n, sym->map_key_type, sym->map_inner_key_type,
+                          sym->map_val_type, sym->map_val_struct_name);
         return sym->type;
     }
 
@@ -891,6 +925,47 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         n->type_name_hint = (elem_t == TYPE_STRUCT || elem_t == TYPE_UNION) && elems->items[0]->type_name_hint
             ? cimple_strdup(elems->items[0]->type_name_hint) : NULL;
         return n->type;
+    }
+
+    case NODE_MAP_LIT: {
+        if (n->map_key_type == TYPE_UNKNOWN || n->map_val_type == TYPE_UNKNOWN) {
+            error_semantic(n->line, n->col,
+                           "map literal requires a map declaration context");
+            n->type = TYPE_UNKNOWN;
+            return TYPE_UNKNOWN;
+        }
+        for (int i = 0; i < n->u.map_lit.keys.count; i++) {
+            AstNode *k = n->u.map_lit.keys.items[i];
+            AstNode *v = n->u.map_lit.values.items[i];
+            CimpleType kt = check_expr(ctx, k);
+            CimpleType vt = check_expr(ctx, v);
+            if (kt != TYPE_UNKNOWN && kt != n->map_key_type)
+                error_semantic_hint(k->line, k->col,
+                                    "Map key type must match the declaration.",
+                                    "Type mismatch in initialization");
+            if (vt != TYPE_UNKNOWN &&
+                !types_compatible(ctx->structs, vt, v->type_name_hint,
+                                  n->map_val_type, n->map_val_struct_name)) {
+                error_semantic_hint(v->line, v->col,
+                                    "Map value type must match the declaration.",
+                                    "Type mismatch in initialization");
+            }
+            if (n->map_key_type == TYPE_STRING && k->kind == NODE_STRING_LIT) {
+                for (int j = 0; j < i; j++) {
+                    AstNode *prev = n->u.map_lit.keys.items[j];
+                    if (prev->kind == NODE_STRING_LIT &&
+                        strcmp(prev->u.string_lit.value, k->u.string_lit.value) == 0) {
+                        error_semantic(k->line, k->col,
+                                       "Duplicate key '%s' in map literal",
+                                       k->u.string_lit.value);
+                    }
+                }
+            }
+        }
+        n->type = TYPE_MAP;
+        set_node_map_meta(n, n->map_key_type, n->map_inner_key_type,
+                          n->map_val_type, n->map_val_struct_name);
+        return TYPE_MAP;
     }
 
     case NODE_BINOP: {
@@ -1073,6 +1148,52 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         /* Try builtin */
         const BuiltinSig *sig = builtin_lookup(fname);
         if (sig) {
+            if ((strcmp(fname, "mapHas") == 0 || strcmp(fname, "mapRemove") == 0 ||
+                 strcmp(fname, "mapKeys") == 0 || strcmp(fname, "mapValues") == 0 ||
+                 strcmp(fname, "mapSize") == 0 || strcmp(fname, "mapClear") == 0) ||
+                (strcmp(fname, "count") == 0 && nargs > 0 && arg_types[0] == TYPE_MAP)) {
+                if (nargs < 1) {
+                    error_semantic_hint(n->line, n->col, "Not enough arguments were provided.",
+                                        "Wrong number of arguments for '%s'", fname);
+                    n->type = TYPE_UNKNOWN;
+                    return TYPE_UNKNOWN;
+                }
+                if (arg_types[0] != TYPE_MAP) {
+                    error_semantic(n->line, n->col,
+                                   "Use '%s' only with map values", fname);
+                    n->type = TYPE_UNKNOWN;
+                    return TYPE_UNKNOWN;
+                }
+                AstNode *map_arg = args->items[0];
+                if ((strcmp(fname, "mapHas") == 0 || strcmp(fname, "mapRemove") == 0) && nargs > 1) {
+                    if (arg_types[1] != TYPE_UNKNOWN && arg_types[1] != map_arg->map_key_type)
+                        error_type_mismatch(args->items[1]->line, args->items[1]->col,
+                                            "map key", map_arg->map_key_type, arg_types[1]);
+                }
+                if (strcmp(fname, "mapKeys") == 0) {
+                    n->type = type_make_array(map_arg->map_key_type);
+                    return n->type;
+                }
+                if (strcmp(fname, "mapValues") == 0) {
+                    n->type = type_make_array(map_arg->map_val_type);
+                    free(n->type_name_hint);
+                    n->type_name_hint = map_arg->map_val_struct_name
+                        ? cimple_strdup(map_arg->map_val_struct_name) : NULL;
+                    return n->type;
+                }
+                if (strcmp(fname, "mapSize") == 0 || strcmp(fname, "count") == 0) {
+                    n->type = TYPE_INT;
+                    return TYPE_INT;
+                }
+                if (strcmp(fname, "mapClear") == 0 || strcmp(fname, "mapRemove") == 0) {
+                    n->type = TYPE_VOID;
+                    return TYPE_VOID;
+                }
+                if (strcmp(fname, "mapHas") == 0) {
+                    n->type = TYPE_BOOL;
+                    return TYPE_BOOL;
+                }
+            }
             if (sig->polymorphic) {
                 /* Array intrinsics — basic validation */
                 if (nargs < sig->param_count)
@@ -1202,6 +1323,19 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                         error_semantic(args->items[i]->line, args->items[i]->col,
                                        "Function signature mismatch in callback argument");
                     }
+                } else if (fsig->params[i].type == TYPE_MAP) {
+                    if (arg_types[i] != TYPE_MAP ||
+                        !map_types_equal(args->items[i]->map_key_type,
+                                         args->items[i]->map_inner_key_type,
+                                         args->items[i]->map_val_type,
+                                         args->items[i]->map_val_struct_name,
+                                         fsig->params[i].map_key_type,
+                                         fsig->params[i].map_inner_key_type,
+                                         fsig->params[i].map_val_type,
+                                         fsig->params[i].map_val_struct_name)) {
+                        error_semantic(args->items[i]->line, args->items[i]->col,
+                                       "Map type mismatch in function call");
+                    }
                 } else if (!types_compatible(ctx->structs, arg_types[i], args->items[i]->type_name_hint,
                                               fsig->params[i].type, fsig->params[i].struct_name)) {
                     error_type_mismatch(args->items[i]->line, args->items[i]->col,
@@ -1212,6 +1346,8 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
         n->type = fsig->ret_type;
         free(n->type_name_hint);
         n->type_name_hint = fsig->ret_struct_name ? cimple_strdup(fsig->ret_struct_name) : NULL;
+        set_node_map_meta(n, fsig->ret_map_key_type, fsig->ret_map_inner_key_type,
+                          fsig->ret_map_val_type, fsig->ret_map_val_struct_name);
         return fsig->ret_type;
     }
 
@@ -1351,14 +1487,17 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
     case NODE_INDEX: {
         CimpleType base_t = check_expr(ctx, n->u.index.base);
         CimpleType idx_t  = check_expr(ctx, n->u.index.index);
-        if (idx_t != TYPE_INT && idx_t != TYPE_UNKNOWN)
-            error_type_mismatch(n->u.index.index->line, n->u.index.index->col,
-                                "index expression", TYPE_INT, idx_t);
         if (base_t == TYPE_STRING) {
+            if (idx_t != TYPE_INT && idx_t != TYPE_UNKNOWN)
+                error_type_mismatch(n->u.index.index->line, n->u.index.index->col,
+                                    "index expression", TYPE_INT, idx_t);
             n->type = TYPE_STRING;
             return TYPE_STRING;
         }
         if (type_is_array(base_t)) {
+            if (idx_t != TYPE_INT && idx_t != TYPE_UNKNOWN)
+                error_type_mismatch(n->u.index.index->line, n->u.index.index->col,
+                                    "index expression", TYPE_INT, idx_t);
             CimpleType elem = type_elem(base_t);
             n->type = elem;
             free(n->type_name_hint);
@@ -1367,6 +1506,24 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                                   && n->u.index.base->type_name_hint)
                 ? cimple_strdup(n->u.index.base->type_name_hint) : NULL;
             return elem;
+        }
+        if (base_t == TYPE_MAP) {
+            if (idx_t != TYPE_UNKNOWN && idx_t != n->u.index.base->map_key_type)
+                error_type_mismatch(n->u.index.index->line, n->u.index.index->col,
+                                    "map key", n->u.index.base->map_key_type, idx_t);
+            n->type = n->u.index.base->map_inner_key_type != TYPE_UNKNOWN
+                ? TYPE_MAP
+                : n->u.index.base->map_val_type;
+            free(n->type_name_hint);
+            n->type_name_hint = n->u.index.base->map_inner_key_type == TYPE_UNKNOWN &&
+                                n->u.index.base->map_val_struct_name
+                ? cimple_strdup(n->u.index.base->map_val_struct_name) : NULL;
+            set_node_map_meta(n,
+                              n->u.index.base->map_inner_key_type,
+                              TYPE_UNKNOWN,
+                              n->u.index.base->map_val_type,
+                              n->u.index.base->map_val_struct_name);
+            return n->type;
         }
         if (base_t != TYPE_UNKNOWN)
             error_operator_type(n->line, n->col, "[]", "an array or string", base_t);
@@ -1419,6 +1576,10 @@ static int is_reserved_constant_name(const char *name) {
     return 0;
 }
 
+static int is_valid_map_key_type(CimpleType t) {
+    return t == TYPE_STRING || t == TYPE_INT || t == TYPE_BOOL;
+}
+
 /* -----------------------------------------------------------------------
  * check_stmt
  * ----------------------------------------------------------------------- */
@@ -1447,6 +1608,19 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                            n->u.var_decl.struct_name ? n->u.var_decl.struct_name : "<unknown>");
         }
 
+        if (t == TYPE_MAP) {
+            if (n->map_key_type == TYPE_FLOAT) {
+                error_semantic(n->line, n->col, "float map key type is not allowed");
+            } else if (!is_valid_map_key_type(n->map_key_type)) {
+                error_semantic(n->line, n->col,
+                               "map key type must be string, int, or bool");
+            }
+            if (n->map_val_type == TYPE_VOID) {
+                error_semantic(n->line, n->col,
+                               "map value type cannot be void");
+            }
+        }
+
         /* Check for predefined constant collision */
         if (is_reserved_constant_name(name)) {
             error_semantic(n->line, n->col,
@@ -1469,6 +1643,10 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         Symbol *sym = scope_define(ctx->current, name, t,
                                    n->u.var_decl.struct_name,
                                    n->u.var_decl.func_type,
+                                   n->map_key_type,
+                                   n->map_inner_key_type,
+                                   n->map_val_type,
+                                   n->map_val_struct_name,
                                    n->line, n->col);
         if (!sym) {
             Symbol *existing = scope_lookup_local(ctx->current, name);
@@ -1482,13 +1660,48 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
 
         /* Type-check initialiser */
         if (n->u.var_decl.init) {
-            CimpleType it = check_expr(ctx, n->u.var_decl.init);
             if (t == TYPE_FUNC) {
+                CimpleType it = check_expr(ctx, n->u.var_decl.init);
                 const FuncType *init_ft = expr_func_type(ctx, n->u.var_decl.init);
                 if (it != TYPE_FUNC || !func_types_equal(n->u.var_decl.func_type, init_ft)) {
                     error_semantic(n->u.var_decl.init->line, n->u.var_decl.init->col,
                                    "Function signature mismatch in initialization");
                 }
+                break;
+            }
+            if (t == TYPE_MAP) {
+                if (n->u.var_decl.init->kind == NODE_ARRAY_LIT &&
+                    n->u.var_decl.init->u.array_lit.elems.count == 0) {
+                    n->u.var_decl.init->type = TYPE_MAP;
+                    n->u.var_decl.init->u.array_lit.elem_type = TYPE_MAP;
+                } else {
+                    if (n->u.var_decl.init->kind == NODE_MAP_LIT) {
+                        set_node_map_meta(n->u.var_decl.init,
+                                          n->map_key_type, n->map_inner_key_type,
+                                          n->map_val_type, n->map_val_struct_name);
+                    }
+                    CimpleType it = check_expr(ctx, n->u.var_decl.init);
+                    if (it != TYPE_MAP ||
+                        !map_types_equal(n->u.var_decl.init->map_key_type,
+                                         n->u.var_decl.init->map_inner_key_type,
+                                         n->u.var_decl.init->map_val_type,
+                                         n->u.var_decl.init->map_val_struct_name,
+                                         n->map_key_type,
+                                         n->map_inner_key_type,
+                                         n->map_val_type,
+                                         n->map_val_struct_name)) {
+                        error_semantic_hint(n->line, n->col,
+                                            "Map literal and declaration must use the same key/value types.",
+                                            "Type mismatch in initialization");
+                    }
+                }
+                break;
+            }
+            CimpleType it = check_expr(ctx, n->u.var_decl.init);
+            if (n->u.var_decl.init->kind == NODE_MAP_LIT) {
+                error_semantic_hint(n->line, n->col,
+                                    "Map literals can only initialize map variables.",
+                                    "Type mismatch in initialization");
                 break;
             }
             /* Empty array lit */
@@ -1559,8 +1772,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                                 "a scalar variable on the left-hand side", sym->type);
             break;
         }
-        CimpleType vt = check_expr(ctx, n->u.assign.value);
         if (sym->type == TYPE_FUNC) {
+            CimpleType vt = check_expr(ctx, n->u.assign.value);
             const FuncType *rhs_ft = expr_func_type(ctx, n->u.assign.value);
             if (vt != TYPE_FUNC || !func_types_equal(sym->func_type, rhs_ft)) {
                 error_semantic(n->u.assign.value->line, n->u.assign.value->col,
@@ -1568,6 +1781,7 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
             }
             break;
         }
+        CimpleType vt = TYPE_UNKNOWN;
         if (sym->type == TYPE_BYTE && is_byte_compatible_literal_expr(n->u.assign.value)) {
             break;
         }
@@ -1575,6 +1789,31 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
             error_semantic(n->line, n->col, "Cannot reassign 'self'");
             break;
         }
+        if (sym->type == TYPE_MAP && n->u.assign.value->kind == NODE_MAP_LIT) {
+            set_node_map_meta(n->u.assign.value, sym->map_key_type, sym->map_inner_key_type,
+                              sym->map_val_type, sym->map_val_struct_name);
+            vt = check_expr(ctx, n->u.assign.value);
+        }
+        if (sym->type == TYPE_MAP) {
+            if (n->u.assign.value->kind == NODE_ARRAY_LIT &&
+                n->u.assign.value->u.array_lit.elems.count == 0) {
+                break;
+            }
+            vt = check_expr(ctx, n->u.assign.value);
+            if (vt != TYPE_MAP ||
+                !map_types_equal(n->u.assign.value->map_key_type,
+                                 n->u.assign.value->map_inner_key_type,
+                                 n->u.assign.value->map_val_type,
+                                 n->u.assign.value->map_val_struct_name,
+                                 sym->map_key_type, sym->map_inner_key_type,
+                                 sym->map_val_type, sym->map_val_struct_name)) {
+                error_semantic_hint(n->line, n->col,
+                                    "Map value must match the declared key/value types.",
+                                    "Type mismatch in assignment");
+            }
+            break;
+        }
+        vt = check_expr(ctx, n->u.assign.value);
         if (vt != TYPE_UNKNOWN &&
             !types_compatible(ctx->structs, vt, n->u.assign.value->type_name_hint,
                                sym->type, sym->struct_name)) {
@@ -1639,6 +1878,22 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                                 "Strings are immutable: index assignment is not allowed");
             break;
         }
+        if (sym->type == TYPE_MAP) {
+            CimpleType key_t = check_expr(ctx, n->u.index_assign.index);
+            if (key_t != TYPE_UNKNOWN && key_t != sym->map_key_type)
+                error_type_mismatch(n->u.index_assign.index->line,
+                                    n->u.index_assign.index->col,
+                                    "map key", sym->map_key_type, key_t);
+            CimpleType val_t = check_expr(ctx, n->u.index_assign.value);
+            if (val_t != TYPE_UNKNOWN &&
+                !types_compatible(ctx->structs, val_t, n->u.index_assign.value->type_name_hint,
+                                  sym->map_val_type, sym->map_val_struct_name)) {
+                error_type_mismatch(n->u.index_assign.value->line,
+                                    n->u.index_assign.value->col,
+                                    "map assignment", sym->map_val_type, val_t);
+            }
+            break;
+        }
         if (!type_is_array(sym->type)) {
             error_operator_type(n->line, n->col, "[]", "an array", sym->type);
             break;
@@ -1686,6 +1941,33 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
             break;
         }
         /* outer type must be a 2D array (elem is itself an array type) */
+        if (sym->type == TYPE_MAP) {
+            if (sym->map_inner_key_type == TYPE_UNKNOWN) {
+                error_semantic_hint(n->line, n->col,
+                                    "Use a 2D map type like int[string][bool].",
+                                    "Variable '%s' is not a 2D map", n->u.index2_assign.name);
+                break;
+            }
+            CimpleType idx1_t = check_expr(ctx, n->u.index2_assign.index1);
+            if (idx1_t != TYPE_UNKNOWN && idx1_t != sym->map_key_type)
+                error_type_mismatch(n->u.index2_assign.index1->line,
+                                    n->u.index2_assign.index1->col,
+                                    "map key", sym->map_key_type, idx1_t);
+            CimpleType idx2_t = check_expr(ctx, n->u.index2_assign.index2);
+            if (idx2_t != TYPE_UNKNOWN && idx2_t != sym->map_inner_key_type)
+                error_type_mismatch(n->u.index2_assign.index2->line,
+                                    n->u.index2_assign.index2->col,
+                                    "map key", sym->map_inner_key_type, idx2_t);
+            CimpleType val_t = check_expr(ctx, n->u.index2_assign.value);
+            if (val_t != TYPE_UNKNOWN &&
+                !types_compatible(ctx->structs, val_t, n->u.index2_assign.value->type_name_hint,
+                                  sym->map_val_type, sym->map_val_struct_name)) {
+                error_type_mismatch(n->u.index2_assign.value->line,
+                                    n->u.index2_assign.value->col,
+                                    "map assignment", sym->map_val_type, val_t);
+            }
+            break;
+        }
         if (!type_is_array(sym->type) || !type_is_array(type_elem(sym->type))) {
             error_semantic_hint(n->line, n->col,
                                 "Use a 2D array type like int[][].",
@@ -1791,7 +2073,9 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
 
             Scope *catch_scope = scope_new(ctx->current, 0);
             scope_define(catch_scope, cl->u.catch_clause.var_name,
-                         TYPE_STRUCT, tname, NULL, cl->line, cl->col);
+                         TYPE_STRUCT, tname, NULL,
+                         TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL,
+                         cl->line, cl->col);
             Scope *saved = ctx->current;
             ctx->current = catch_scope;
             check_stmt(ctx, cl->u.catch_clause.block);
@@ -1874,6 +2158,7 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
                 Symbol *sym = scope_define(ctx->current,
                                            init->u.for_init.name,
                                            TYPE_INT, NULL, NULL,
+                                           TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL,
                                            init->line, init->col);
                 if (!sym)
                     error_semantic(init->line, init->col,
@@ -2129,6 +2414,11 @@ static void validate_structs(SemCtx *ctx) {
                     method->params[j].struct_name = p->u.param.struct_name
                         ? cimple_strdup(p->u.param.struct_name) : NULL;
                     method->params[j].func_type = func_type_copy(p->u.param.func_type);
+                    method->params[j].map_key_type = p->map_key_type;
+                    method->params[j].map_inner_key_type = p->map_inner_key_type;
+                    method->params[j].map_val_type = p->map_val_type;
+                    method->params[j].map_val_struct_name = p->map_val_struct_name
+                        ? cimple_strdup(p->map_val_struct_name) : NULL;
                 }
                 method->decl = m;
                 method->next = si->methods;
@@ -2236,6 +2526,11 @@ static void collect_functions(SemCtx *ctx, AstNode *program) {
             fp[j].struct_name = params->items[j]->u.param.struct_name
                 ? cimple_strdup(params->items[j]->u.param.struct_name) : NULL;
             fp[j].func_type = func_type_copy(params->items[j]->u.param.func_type);
+            fp[j].map_key_type = params->items[j]->map_key_type;
+            fp[j].map_inner_key_type = params->items[j]->map_inner_key_type;
+            fp[j].map_val_type = params->items[j]->map_val_type;
+            fp[j].map_val_struct_name = params->items[j]->map_val_struct_name
+                ? cimple_strdup(params->items[j]->map_val_struct_name) : NULL;
             if ((fp[j].type == TYPE_STRUCT || fp[j].type == TYPE_STRUCT_ARR) &&
                 fp[j].struct_name &&
                 union_table_lookup(ctx->unions, fp[j].struct_name)) {
@@ -2253,6 +2548,10 @@ static void collect_functions(SemCtx *ctx, AstNode *program) {
         if (!func_table_define(ctx->funcs, name,
                                d->u.func_decl.ret_type,
                                d->u.func_decl.ret_struct_name,
+                               d->map_key_type,
+                               d->map_inner_key_type,
+                               d->map_val_type,
+                               d->map_val_struct_name,
                                fp, params->count,
                                d->line, d->col)) {
             error_semantic(d->line, d->col,
@@ -2261,6 +2560,7 @@ static void collect_functions(SemCtx *ctx, AstNode *program) {
         for (int j = 0; j < params->count; j++) {
             func_type_free(fp[j].func_type);
             free(fp[j].struct_name);
+            free(fp[j].map_val_struct_name);
         }
         free(fp);
     }
@@ -2278,11 +2578,14 @@ static void check_struct_methods(SemCtx *ctx) {
             ctx->current_base_name = si->base_name;
             ctx->in_method = 1;
 
-            scope_define(ctx->current, "self", TYPE_STRUCT, si->name, NULL, f->line, f->col);
+            scope_define(ctx->current, "self", TYPE_STRUCT, si->name, NULL,
+                         TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL, f->line, f->col);
             for (int i = 0; i < f->u.func_decl.params.count; i++) {
                 AstNode *p = f->u.func_decl.params.items[i];
                 scope_define(ctx->current, p->u.param.name, p->u.param.type,
-                             p->u.param.struct_name, p->u.param.func_type, p->line, p->col);
+                             p->u.param.struct_name, p->u.param.func_type,
+                             p->map_key_type, p->map_inner_key_type, p->map_val_type, p->map_val_struct_name,
+                             p->line, p->col);
             }
             NodeList *stmts = &f->u.func_decl.body->u.block.stmts;
             for (int i = 0; i < stmts->count; i++)
@@ -2316,7 +2619,9 @@ static void check_func(SemCtx *ctx, AstNode *f) {
     for (int i = 0; i < params->count; i++) {
         AstNode *p = params->items[i];
         scope_define(ctx->current, p->u.param.name, p->u.param.type,
-                     p->u.param.struct_name, p->u.param.func_type, p->line, p->col);
+                     p->u.param.struct_name, p->u.param.func_type,
+                     p->map_key_type, p->map_inner_key_type, p->map_val_type, p->map_val_struct_name,
+                     p->line, p->col);
     }
 
     /* Check body */

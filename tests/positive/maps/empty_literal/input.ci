@@ -1,0 +1,4 @@
+void main() {
+    int[string] m = [];
+    print(toString(mapSize(m)) + "\n");
+}

@@ -37,7 +37,8 @@ typedef enum {
     TYPE_REGEXP         = 26,
     TYPE_REGEXP_MATCH   = 27,
     TYPE_REGEXP_MATCH_ARR = 29,
-    TYPE_UNKNOWN        = 30
+    TYPE_UNKNOWN        = 30,
+    TYPE_MAP            = 31
 } CimpleType;
 
 typedef struct FuncType {
@@ -147,6 +148,7 @@ typedef enum {
     NODE_BOOL_LIT,       /* true / false                                */
     NODE_STRING_LIT,     /* string literal (decoded)                    */
     NODE_ARRAY_LIT,      /* [ expr, expr, ... ]                         */
+    NODE_MAP_LIT,        /* [expr: expr, ...]                           */
     NODE_IDENT,          /* identifier                                  */
     NODE_FUNC_REF,       /* named function used as a value              */
     NODE_BINOP,          /* binary operator                             */
@@ -202,6 +204,10 @@ struct AstNode {
     CimpleType type;   /* inferred/declared type (set by semantic pass) */
     char     *type_name_hint; /* structure name when type is TYPE_STRUCT/_ARR */
     FuncType *func_type_hint; /* function signature when type is TYPE_FUNC    */
+    CimpleType map_key_type;
+    CimpleType map_inner_key_type;
+    CimpleType map_val_type;
+    char      *map_val_struct_name;
 
     union {
         /* NODE_PROGRAM */
@@ -365,6 +371,16 @@ struct AstNode {
             NodeList   elems;
             CimpleType elem_type; /* resolved element type */
         } array_lit;
+
+        /* NODE_MAP_LIT */
+        struct {
+            NodeList   keys;
+            NodeList   values;
+            CimpleType key_type;
+            CimpleType val_type;
+            CimpleType inner_key_type;
+            char      *val_struct_name;
+        } map_lit;
 
         /* NODE_IDENT */
         struct { char *name; } ident;

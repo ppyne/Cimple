@@ -1,0 +1,7 @@
+void main() {
+    string[int] labels = [];
+    labels[1] = "one";
+    labels[2] = "two";
+    print(labels[2] + "\n");
+    print(toString(mapSize(labels)) + "\n");
+}
