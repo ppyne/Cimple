@@ -1,0 +1,13 @@
+void main() {
+    if (!termIsTTY()) {
+        print("interactive terminal required\n");
+        return;
+    }
+
+    termEnableRawMode();
+    termHideCursor();
+    termClear();
+    termWriteAt(1, 1, "Choose an item");
+    termShowCursor();
+    termDisableRawMode();
+}

@@ -16,7 +16,12 @@
 #ifdef _WIN32
 #  include <windows.h>
 #  include <io.h>
+#  include <conio.h>
 #else
+#  include <sys/ioctl.h>
+#  include <sys/select.h>
+#  include <termios.h>
+#  include <signal.h>
 #  include <unistd.h>
 #  include <spawn.h>
 #  include <sys/wait.h>
@@ -26,6 +31,40 @@ extern char **environ;
 #endif
 
 static int g_temp_path_counter = 0;
+
+enum {
+    TERM_KEY_NONE = 0,
+    TERM_KEY_CHAR = 1,
+    TERM_KEY_ENTER = 2,
+    TERM_KEY_ESC = 3,
+    TERM_KEY_TAB = 4,
+    TERM_KEY_BACKSPACE = 5,
+    TERM_KEY_DELETE = 6,
+    TERM_KEY_UP = 7,
+    TERM_KEY_DOWN = 8,
+    TERM_KEY_LEFT = 9,
+    TERM_KEY_RIGHT = 10,
+    TERM_KEY_HOME = 11,
+    TERM_KEY_END = 12,
+    TERM_KEY_PAGE_UP = 13,
+    TERM_KEY_PAGE_DOWN = 14,
+    TERM_KEY_RESIZE = 15
+};
+
+typedef struct {
+    int enabled;
+#ifdef _WIN32
+    DWORD in_mode;
+    DWORD out_mode;
+#else
+    struct termios saved;
+#endif
+} TerminalRawState;
+
+static TerminalRawState g_terminal_raw_state = {0};
+#ifndef _WIN32
+static volatile sig_atomic_t g_terminal_resize_pending = 0;
+#endif
 
 typedef struct {
     const char *type;
@@ -50,6 +89,65 @@ static void runtime_error_override_pop(RuntimeErrorOverride saved) {
     }
 }
 
+#ifndef _WIN32
+static void terminal_sigwinch_handler(int sig) {
+    (void)sig;
+    g_terminal_resize_pending = 1;
+}
+#endif
+
+static int terminal_is_tty(void) {
+#ifdef _WIN32
+    return _isatty(_fileno(stdin)) && _isatty(_fileno(stdout));
+#else
+    return isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
+#endif
+}
+
+static void terminal_require_available(int line, int col) {
+#ifdef __EMSCRIPTEN__
+    error_runtime(line, col, "terminal API is not available on this platform");
+#else
+    if (!terminal_is_tty())
+        error_runtime(line, col, "terminal is not interactive");
+#endif
+}
+
+static Value make_terminal_size_value(int width, int height) {
+    Value out = val_struct("TerminalSize", 2);
+    out.u.st->fields[0].name = cimple_strdup("width");
+    out.u.st->fields[0].type = TYPE_INT;
+    out.u.st->fields[0].value = val_int(width);
+    out.u.st->fields[1].name = cimple_strdup("height");
+    out.u.st->fields[1].type = TYPE_INT;
+    out.u.st->fields[1].value = val_int(height);
+    return out;
+}
+
+static Value make_key_event_value(int kind, int code, const char *text,
+                                  int ctrl, int alt, int shift) {
+    Value out = val_struct("KeyEvent", 6);
+    out.u.st->fields[0].name = cimple_strdup("kind");
+    out.u.st->fields[0].type = TYPE_INT;
+    out.u.st->fields[0].value = val_int(kind);
+    out.u.st->fields[1].name = cimple_strdup("code");
+    out.u.st->fields[1].type = TYPE_INT;
+    out.u.st->fields[1].value = val_int(code);
+    out.u.st->fields[2].name = cimple_strdup("text");
+    out.u.st->fields[2].type = TYPE_STRING;
+    out.u.st->fields[2].value = val_string(text ? text : "");
+    out.u.st->fields[3].name = cimple_strdup("ctrl");
+    out.u.st->fields[3].type = TYPE_BOOL;
+    out.u.st->fields[3].value = val_bool(ctrl);
+    out.u.st->fields[4].name = cimple_strdup("alt");
+    out.u.st->fields[4].type = TYPE_BOOL;
+    out.u.st->fields[4].value = val_bool(alt);
+    out.u.st->fields[5].name = cimple_strdup("shift");
+    out.u.st->fields[5].type = TYPE_BOOL;
+    out.u.st->fields[5].value = val_bool(shift);
+    return out;
+}
+
 /* -----------------------------------------------------------------------
  * Sentinel for "not a builtin"
  * ----------------------------------------------------------------------- */
@@ -61,6 +159,22 @@ typedef enum {
     BI_NONE = 0,
     BI_PRINT,
     BI_INPUT,
+    BI_TERM_IS_TTY,
+    BI_TERM_GET_SIZE,
+    BI_TERM_CLEAR,
+    BI_TERM_CLEAR_LINE,
+    BI_TERM_MOVE_CURSOR,
+    BI_TERM_WRITE_AT,
+    BI_TERM_HIDE_CURSOR,
+    BI_TERM_SHOW_CURSOR,
+    BI_TERM_FLUSH,
+    BI_TERM_BEEP,
+    BI_TERM_SET_STYLE,
+    BI_TERM_RESET_STYLE,
+    BI_TERM_ENABLE_RAW_MODE,
+    BI_TERM_DISABLE_RAW_MODE,
+    BI_TERM_READ_KEY,
+    BI_TERM_POLL_KEY,
     BI_LEN,
     BI_GLYPH_LEN,
     BI_GLYPH_AT,
@@ -343,6 +457,22 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"substr", BI_SUBSTR},
     {"tan", BI_TAN},
     {"tempPath", BI_TEMP_PATH},
+    {"termBeep", BI_TERM_BEEP},
+    {"termClear", BI_TERM_CLEAR},
+    {"termClearLine", BI_TERM_CLEAR_LINE},
+    {"termDisableRawMode", BI_TERM_DISABLE_RAW_MODE},
+    {"termEnableRawMode", BI_TERM_ENABLE_RAW_MODE},
+    {"termFlush", BI_TERM_FLUSH},
+    {"termGetSize", BI_TERM_GET_SIZE},
+    {"termHideCursor", BI_TERM_HIDE_CURSOR},
+    {"termIsTTY", BI_TERM_IS_TTY},
+    {"termMoveCursor", BI_TERM_MOVE_CURSOR},
+    {"termPollKey", BI_TERM_POLL_KEY},
+    {"termReadKey", BI_TERM_READ_KEY},
+    {"termResetStyle", BI_TERM_RESET_STYLE},
+    {"termSetStyle", BI_TERM_SET_STYLE},
+    {"termShowCursor", BI_TERM_SHOW_CURSOR},
+    {"termWriteAt", BI_TERM_WRITE_AT},
     {"toLower", BI_TO_LOWER},
     {"toBool", BI_TO_BOOL},
     {"toUpper", BI_TO_UPPER},
@@ -406,6 +536,228 @@ static char *sb_take(StringBuilder *sb) {
     sb->len = 0;
     sb->cap = 0;
     return out;
+}
+
+static Value terminal_get_size_value(void) {
+#ifdef __EMSCRIPTEN__
+    return make_terminal_size_value(0, 0);
+#elif defined(_WIN32)
+    if (!terminal_is_tty()) return make_terminal_size_value(0, 0);
+    CONSOLE_SCREEN_BUFFER_INFO info;
+    if (!GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &info))
+        return make_terminal_size_value(0, 0);
+    return make_terminal_size_value(
+        (int)(info.srWindow.Right - info.srWindow.Left + 1),
+        (int)(info.srWindow.Bottom - info.srWindow.Top + 1));
+#else
+    if (!terminal_is_tty()) return make_terminal_size_value(0, 0);
+    struct winsize ws;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) != 0)
+        return make_terminal_size_value(0, 0);
+    return make_terminal_size_value((int)ws.ws_col, (int)ws.ws_row);
+#endif
+}
+
+static void terminal_restore_raw_mode(void) {
+#ifdef __EMSCRIPTEN__
+    return;
+#elif defined(_WIN32)
+    if (!g_terminal_raw_state.enabled) return;
+    SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), g_terminal_raw_state.in_mode);
+    SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), g_terminal_raw_state.out_mode);
+    g_terminal_raw_state.enabled = 0;
+#else
+    if (!g_terminal_raw_state.enabled) return;
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &g_terminal_raw_state.saved);
+    g_terminal_raw_state.enabled = 0;
+#endif
+}
+
+static void terminal_enable_raw_mode(int line, int col) {
+#ifdef __EMSCRIPTEN__
+    error_runtime(line, col, "terminal API is not available on this platform");
+#elif defined(_WIN32)
+    terminal_require_available(line, col);
+    if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return;
+    if (g_terminal_raw_state.enabled) return;
+    HANDLE hin = GetStdHandle(STD_INPUT_HANDLE);
+    HANDLE hout = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD in_mode = 0, out_mode = 0;
+    if (!GetConsoleMode(hin, &in_mode) || !GetConsoleMode(hout, &out_mode)) {
+        error_runtime(line, col, "terminal raw mode is not supported on this platform");
+        return;
+    }
+    g_terminal_raw_state.in_mode = in_mode;
+    g_terminal_raw_state.out_mode = out_mode;
+    DWORD new_in_mode = in_mode;
+    new_in_mode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+    new_in_mode |= ENABLE_EXTENDED_FLAGS;
+    DWORD new_out_mode = out_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    if (!SetConsoleMode(hin, new_in_mode) || !SetConsoleMode(hout, new_out_mode)) {
+        error_runtime(line, col, "terminal raw mode is not supported on this platform");
+        return;
+    }
+    g_terminal_raw_state.enabled = 1;
+    atexit(terminal_restore_raw_mode);
+#else
+    terminal_require_available(line, col);
+    if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return;
+    if (g_terminal_raw_state.enabled) return;
+    struct termios raw;
+    if (tcgetattr(STDIN_FILENO, &g_terminal_raw_state.saved) != 0) {
+        error_runtime(line, col, "terminal raw mode is not supported on this platform");
+        return;
+    }
+    raw = g_terminal_raw_state.saved;
+    raw.c_iflag &= (tcflag_t) ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+    raw.c_oflag &= (tcflag_t) ~(OPOST);
+    raw.c_cflag |= (tcflag_t) (CS8);
+    raw.c_lflag &= (tcflag_t) ~(ECHO | ICANON | IEXTEN | ISIG);
+    raw.c_cc[VMIN] = 1;
+    raw.c_cc[VTIME] = 0;
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) != 0) {
+        error_runtime(line, col, "terminal raw mode is not supported on this platform");
+        return;
+    }
+    signal(SIGWINCH, terminal_sigwinch_handler);
+    g_terminal_raw_state.enabled = 1;
+    atexit(terminal_restore_raw_mode);
+#endif
+}
+
+static void terminal_disable_raw_mode(void) {
+    terminal_restore_raw_mode();
+}
+
+static int terminal_style_color_valid(int color) {
+    return color == -1 || (color >= 0 && color <= 7);
+}
+
+static void terminal_emit_style(int fg, int bg, int bold, int reverse, int underline) {
+    printf("\033[0");
+    if (bold) printf(";1");
+    if (underline) printf(";4");
+    if (reverse) printf(";7");
+    if (fg == -1) printf(";39");
+    else printf(";%d", 30 + fg);
+    if (bg == -1) printf(";49");
+    else printf(";%d", 40 + bg);
+    printf("m");
+}
+
+#ifndef _WIN32
+static Value terminal_read_key_posix(int timeout_ms) {
+    if (g_terminal_resize_pending) {
+        g_terminal_resize_pending = 0;
+        return make_key_event_value(TERM_KEY_RESIZE, TERM_KEY_RESIZE, "", 0, 0, 0);
+    }
+
+    fd_set set;
+    FD_ZERO(&set);
+    FD_SET(STDIN_FILENO, &set);
+    struct timeval tv;
+    struct timeval *tv_ptr = NULL;
+    if (timeout_ms >= 0) {
+        tv.tv_sec = timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        tv_ptr = &tv;
+    }
+    int sel = select(STDIN_FILENO + 1, &set, NULL, NULL, tv_ptr);
+    if (sel <= 0) return make_key_event_value(TERM_KEY_NONE, 0, "", 0, 0, 0);
+
+    unsigned char ch = 0;
+    if (read(STDIN_FILENO, &ch, 1) != 1)
+        return make_key_event_value(TERM_KEY_NONE, 0, "", 0, 0, 0);
+
+    if (ch == '\r' || ch == '\n') return make_key_event_value(TERM_KEY_ENTER, TERM_KEY_ENTER, "", 0, 0, 0);
+    if (ch == '\t') return make_key_event_value(TERM_KEY_TAB, TERM_KEY_TAB, "", 0, 0, 0);
+    if (ch == 127 || ch == 8) return make_key_event_value(TERM_KEY_BACKSPACE, TERM_KEY_BACKSPACE, "", 0, 0, 0);
+    if (ch == 27) {
+        unsigned char seq[3] = {0, 0, 0};
+        int have1 = read(STDIN_FILENO, &seq[0], 1) == 1;
+        if (!have1) return make_key_event_value(TERM_KEY_ESC, TERM_KEY_ESC, "", 0, 0, 0);
+        int have2 = read(STDIN_FILENO, &seq[1], 1) == 1;
+        if (seq[0] == '[' && have2) {
+            switch (seq[1]) {
+            case 'A': return make_key_event_value(TERM_KEY_UP, TERM_KEY_UP, "", 0, 0, 0);
+            case 'B': return make_key_event_value(TERM_KEY_DOWN, TERM_KEY_DOWN, "", 0, 0, 0);
+            case 'C': return make_key_event_value(TERM_KEY_RIGHT, TERM_KEY_RIGHT, "", 0, 0, 0);
+            case 'D': return make_key_event_value(TERM_KEY_LEFT, TERM_KEY_LEFT, "", 0, 0, 0);
+            case 'H': return make_key_event_value(TERM_KEY_HOME, TERM_KEY_HOME, "", 0, 0, 0);
+            case 'F': return make_key_event_value(TERM_KEY_END, TERM_KEY_END, "", 0, 0, 0);
+            case '3':
+                if (read(STDIN_FILENO, &seq[2], 1) == 1 && seq[2] == '~')
+                    return make_key_event_value(TERM_KEY_DELETE, TERM_KEY_DELETE, "", 0, 0, 0);
+                break;
+            case '5':
+                if (read(STDIN_FILENO, &seq[2], 1) == 1 && seq[2] == '~')
+                    return make_key_event_value(TERM_KEY_PAGE_UP, TERM_KEY_PAGE_UP, "", 0, 0, 0);
+                break;
+            case '6':
+                if (read(STDIN_FILENO, &seq[2], 1) == 1 && seq[2] == '~')
+                    return make_key_event_value(TERM_KEY_PAGE_DOWN, TERM_KEY_PAGE_DOWN, "", 0, 0, 0);
+                break;
+            default:
+                break;
+            }
+        }
+        return make_key_event_value(TERM_KEY_ESC, TERM_KEY_ESC, "", 0, 0, 0);
+    }
+
+    if (ch < 32) {
+        char text[2] = { (char)(ch + '@'), '\0' };
+        return make_key_event_value(TERM_KEY_CHAR, 0, text, 1, 0, 0);
+    }
+
+    {
+        char text[2] = { (char)ch, '\0' };
+        return make_key_event_value(TERM_KEY_CHAR, 0, text, 0, 0, 0);
+    }
+}
+#endif
+
+static Value terminal_read_key_value(int timeout_ms) {
+#ifdef __EMSCRIPTEN__
+    return make_key_event_value(TERM_KEY_NONE, 0, "", 0, 0, 0);
+#elif defined(_WIN32)
+    if (timeout_ms >= 0) {
+        DWORD waited = 0;
+        while (!_kbhit()) {
+            if (waited >= (DWORD)timeout_ms)
+                return make_key_event_value(TERM_KEY_NONE, 0, "", 0, 0, 0);
+            Sleep(1);
+            waited++;
+        }
+    } else {
+        while (!_kbhit()) Sleep(1);
+    }
+    int ch = _getch();
+    if (ch == 13) return make_key_event_value(TERM_KEY_ENTER, TERM_KEY_ENTER, "", 0, 0, 0);
+    if (ch == 9) return make_key_event_value(TERM_KEY_TAB, TERM_KEY_TAB, "", 0, 0, 0);
+    if (ch == 8) return make_key_event_value(TERM_KEY_BACKSPACE, TERM_KEY_BACKSPACE, "", 0, 0, 0);
+    if (ch == 27) return make_key_event_value(TERM_KEY_ESC, TERM_KEY_ESC, "", 0, 0, 0);
+    if (ch == 0 || ch == 224) {
+        int code = _getch();
+        switch (code) {
+        case 72: return make_key_event_value(TERM_KEY_UP, TERM_KEY_UP, "", 0, 0, 0);
+        case 80: return make_key_event_value(TERM_KEY_DOWN, TERM_KEY_DOWN, "", 0, 0, 0);
+        case 75: return make_key_event_value(TERM_KEY_LEFT, TERM_KEY_LEFT, "", 0, 0, 0);
+        case 77: return make_key_event_value(TERM_KEY_RIGHT, TERM_KEY_RIGHT, "", 0, 0, 0);
+        case 71: return make_key_event_value(TERM_KEY_HOME, TERM_KEY_HOME, "", 0, 0, 0);
+        case 79: return make_key_event_value(TERM_KEY_END, TERM_KEY_END, "", 0, 0, 0);
+        case 73: return make_key_event_value(TERM_KEY_PAGE_UP, TERM_KEY_PAGE_UP, "", 0, 0, 0);
+        case 81: return make_key_event_value(TERM_KEY_PAGE_DOWN, TERM_KEY_PAGE_DOWN, "", 0, 0, 0);
+        case 83: return make_key_event_value(TERM_KEY_DELETE, TERM_KEY_DELETE, "", 0, 0, 0);
+        default: return make_key_event_value(TERM_KEY_NONE, 0, "", 0, 0, 0);
+        }
+    }
+    {
+        char text[2] = { (char)ch, '\0' };
+        return make_key_event_value(TERM_KEY_CHAR, 0, text, 0, 0, 0);
+    }
+#else
+    return terminal_read_key_posix(timeout_ms);
+#endif
 }
 
 /* -----------------------------------------------------------------------
@@ -1249,6 +1601,139 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         if (len > 0 && buf[len - 1] == '\r') len--;
         buf[len] = '\0';
         return val_string_own(buf);
+    }
+
+    if (id == BI_TERM_IS_TTY) {
+        REQUIRE(0);
+        return val_bool(terminal_is_tty());
+    }
+
+    if (id == BI_TERM_GET_SIZE) {
+        REQUIRE(0);
+        return terminal_get_size_value();
+    }
+
+    if (id == BI_TERM_CLEAR) {
+        REQUIRE(0);
+        terminal_require_available(line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        fputs("\033[2J\033[H", stdout);
+        return val_void();
+    }
+
+    if (id == BI_TERM_CLEAR_LINE) {
+        REQUIRE(0);
+        terminal_require_available(line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        fputs("\033[2K\r", stdout);
+        return val_void();
+    }
+
+    if (id == BI_TERM_MOVE_CURSOR) {
+        REQUIRE(2);
+        if (ARG_INT(0) < 1 || ARG_INT(1) < 1)
+            error_runtime(line, col, "terminal coordinates must be >= 1");
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        terminal_require_available(line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        fprintf(stdout, "\033[%lld;%lldH", (long long)ARG_INT(0), (long long)ARG_INT(1));
+        return val_void();
+    }
+
+    if (id == BI_TERM_WRITE_AT) {
+        REQUIRE(3);
+        if (ARG_INT(0) < 1 || ARG_INT(1) < 1)
+            error_runtime(line, col, "terminal coordinates must be >= 1");
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        terminal_require_available(line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        fprintf(stdout, "\033[%lld;%lldH%s", (long long)ARG_INT(0), (long long)ARG_INT(1), ARG_STR(2));
+        return val_void();
+    }
+
+    if (id == BI_TERM_HIDE_CURSOR) {
+        REQUIRE(0);
+        terminal_require_available(line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        fputs("\033[?25l", stdout);
+        return val_void();
+    }
+
+    if (id == BI_TERM_SHOW_CURSOR) {
+        REQUIRE(0);
+        terminal_require_available(line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        fputs("\033[?25h", stdout);
+        return val_void();
+    }
+
+    if (id == BI_TERM_FLUSH) {
+        REQUIRE(0);
+        terminal_require_available(line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        fflush(stdout);
+        return val_void();
+    }
+
+    if (id == BI_TERM_BEEP) {
+        REQUIRE(0);
+        terminal_require_available(line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        fputc('\a', stdout);
+        return val_void();
+    }
+
+    if (id == BI_TERM_SET_STYLE) {
+        REQUIRE(5);
+        if (!terminal_style_color_valid((int)ARG_INT(0)) ||
+            !terminal_style_color_valid((int)ARG_INT(1))) {
+            error_runtime(line, col, "terminal color must be TERM_COLOR_DEFAULT or in range 0..7");
+        }
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        terminal_require_available(line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        terminal_emit_style((int)ARG_INT(0), (int)ARG_INT(1),
+                            ARG_BOOL(2), ARG_BOOL(3), ARG_BOOL(4));
+        return val_void();
+    }
+
+    if (id == BI_TERM_RESET_STYLE) {
+        REQUIRE(0);
+        terminal_require_available(line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        fputs("\033[0m", stdout);
+        return val_void();
+    }
+
+    if (id == BI_TERM_ENABLE_RAW_MODE) {
+        REQUIRE(0);
+        terminal_enable_raw_mode(line, col);
+        return val_void();
+    }
+
+    if (id == BI_TERM_DISABLE_RAW_MODE) {
+        REQUIRE(0);
+        terminal_require_available(line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        terminal_disable_raw_mode();
+        return val_void();
+    }
+
+    if (id == BI_TERM_READ_KEY) {
+        REQUIRE(0);
+        terminal_require_available(line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        return terminal_read_key_value(-1);
+    }
+
+    if (id == BI_TERM_POLL_KEY) {
+        REQUIRE(1);
+        if (ARG_INT(0) < 0)
+            error_runtime(line, col, "termPollKey: timeout must be >= 0");
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        terminal_require_available(line, col);
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        return terminal_read_key_value((int)ARG_INT(0));
     }
 
     /* ---- String ---- */

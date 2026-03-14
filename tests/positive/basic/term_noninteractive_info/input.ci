@@ -1,0 +1,5 @@
+void main() {
+    print(toString(termIsTTY()) + "\n");
+    TerminalSize sz = termGetSize();
+    print(toString(sz.width) + "x" + toString(sz.height) + "\n");
+}

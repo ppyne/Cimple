@@ -86,6 +86,7 @@ cmake --build build-wasm
 
 The `exec` built-in is unavailable on WebAssembly and produces a runtime error if called.
 `getEnv` always returns the fallback value on WebAssembly.
+The interactive terminal API (`term*`) is also unavailable on WebAssembly.
 
 ---
 
@@ -225,7 +226,11 @@ Point[string] positions;     // string keys, struct values
 
 ---
 
-### 3.3 Opaque type: `ExecResult`
+### 3.3 Runtime-provided types
+
+The runtime provides one opaque system type and two built-in structure types for terminal work.
+
+#### `ExecResult`
 
 `ExecResult` is the type returned by `exec()`. It is a first-class value that can be stored
 in a variable or passed to a function, but its internals are opaque. It can only be inspected
@@ -233,6 +238,40 @@ via `execStatus`, `execStdout`, and `execStderr`.
 
 There is no `ExecResult` literal. A variable of type `ExecResult` must be initialised by an
 `exec()` call; declaring one without initialisation is a semantic error.
+
+#### `TerminalSize`
+
+`TerminalSize` describes the current logical size of the terminal in cells:
+
+```c
+structure TerminalSize {
+    int width  = 0;
+    int height = 0;
+}
+```
+
+`width` is the number of columns, `height` the number of rows. A value of `0,0` means the
+size is unavailable or unknown.
+
+#### `KeyEvent`
+
+`KeyEvent` describes one keyboard or terminal event produced by the interactive terminal API:
+
+```c
+structure KeyEvent {
+    int  kind   = KEY_NONE;
+    int  code   = 0;
+    string text = "";
+    bool ctrl   = false;
+    bool alt    = false;
+    bool shift  = false;
+}
+```
+
+- `kind` identifies the logical event kind such as `KEY_CHAR`, `KEY_UP`, or `KEY_ENTER`
+- `text` contains the UTF-8 text for printable input
+- `ctrl`, `alt`, and `shift` indicate active modifiers
+- `KEY_NONE` represents “no event”
 
 ### 3.4 Type strictness
 
@@ -989,6 +1028,187 @@ read error. Takes no arguments.
 print("Enter your name: ");
 string name = input();
 print("Hello, " + name + "\n");
+```
+
+---
+
+#### Interactive terminal API
+
+The terminal built-ins are intended for full-screen text interfaces: menus, dialog boxes,
+checklists, gauges, and other `whiptail`-style programs.
+
+They are only available when the program is attached to an interactive terminal. On
+WebAssembly they are unavailable.
+
+```c
+bool         termIsTTY()
+TerminalSize termGetSize()
+void         termClear()
+void         termClearLine()
+void         termMoveCursor(int row, int col)
+void         termWriteAt(int row, int col, string text)
+void         termHideCursor()
+void         termShowCursor()
+void         termFlush()
+void         termBeep()
+void         termSetStyle(int fg, int bg, bool bold, bool reverse, bool underline)
+void         termResetStyle()
+void         termEnableRawMode()
+void         termDisableRawMode()
+KeyEvent     termReadKey()
+KeyEvent     termPollKey(int timeoutMs)
+```
+
+The coordinate system is **1-based**: `(1, 1)` is the top-left cell.
+
+#### Terminal constants
+
+The terminal API uses predefined integer constants:
+
+```c
+KEY_NONE
+KEY_CHAR
+KEY_ENTER
+KEY_ESC
+KEY_TAB
+KEY_BACKSPACE
+KEY_DELETE
+KEY_UP
+KEY_DOWN
+KEY_LEFT
+KEY_RIGHT
+KEY_HOME
+KEY_END
+KEY_PAGE_UP
+KEY_PAGE_DOWN
+KEY_RESIZE
+
+TERM_COLOR_DEFAULT
+TERM_COLOR_BLACK
+TERM_COLOR_RED
+TERM_COLOR_GREEN
+TERM_COLOR_YELLOW
+TERM_COLOR_BLUE
+TERM_COLOR_MAGENTA
+TERM_COLOR_CYAN
+TERM_COLOR_WHITE
+```
+
+#### `termIsTTY` and `termGetSize`
+
+```c
+bool termIsTTY()
+TerminalSize termGetSize()
+```
+
+`termIsTTY()` returns `true` when the process is attached to an interactive terminal.
+`termGetSize()` returns the current terminal dimensions in cells.
+
+```c
+if (!termIsTTY()) {
+    print("interactive terminal required\n");
+    return;
+}
+
+TerminalSize sz = termGetSize();
+print("terminal: " + toString(sz.width) + "x" + toString(sz.height) + "\n");
+```
+
+#### Screen and cursor control
+
+```c
+void termClear()
+void termClearLine()
+void termMoveCursor(int row, int col)
+void termWriteAt(int row, int col, string text)
+void termHideCursor()
+void termShowCursor()
+void termFlush()
+```
+
+- `termClear()` clears the visible screen and moves the cursor to `(1, 1)`
+- `termClearLine()` clears the current line
+- `termMoveCursor()` moves the cursor
+- `termWriteAt()` is a convenience helper: move, then write
+- `termFlush()` forces buffered terminal output to appear immediately
+
+```c
+termClear();
+termHideCursor();
+termWriteAt(2, 4, "Loading...");
+termFlush();
+sleep(500);
+termShowCursor();
+```
+
+#### Style and bell
+
+```c
+void termSetStyle(int fg, int bg, bool bold, bool reverse, bool underline)
+void termResetStyle()
+void termBeep()
+```
+
+`termSetStyle()` applies ANSI-style colours and text attributes to subsequent output.
+Use `TERM_COLOR_DEFAULT` for the terminal default colour, or one of the base colours
+`TERM_COLOR_BLACK` through `TERM_COLOR_WHITE`.
+
+```c
+termSetStyle(TERM_COLOR_YELLOW, TERM_COLOR_DEFAULT, true, false, false);
+print("Warning\n");
+termResetStyle();
+```
+
+`termBeep()` requests an audible or visual bell when supported.
+
+#### Raw mode and key reading
+
+```c
+void     termEnableRawMode()
+void     termDisableRawMode()
+KeyEvent termReadKey()
+KeyEvent termPollKey(int timeoutMs)
+```
+
+Raw mode allows key-by-key input instead of line-based input.
+
+- `termReadKey()` blocks until an event arrives
+- `termPollKey(timeoutMs)` waits up to `timeoutMs` milliseconds and returns `KEY_NONE` on timeout
+- printable keys usually produce `KEY_CHAR` with the character in `event.text`
+- arrows, Enter, Escape, Tab, Backspace, Delete, Home, End, PageUp, PageDown, and resize produce their corresponding `KEY_*` code when recognised
+
+```c
+void main() {
+    if (!termIsTTY()) {
+        print("interactive terminal required\n");
+        return;
+    }
+
+    termEnableRawMode();
+    termHideCursor();
+    termClear();
+    termWriteAt(1, 1, "Press arrows, Enter, or Esc.");
+    termFlush();
+
+    while (true) {
+        KeyEvent ev = termReadKey();
+        if (ev.kind == KEY_ESC) break;
+        if (ev.kind == KEY_UP) {
+            termWriteAt(3, 1, "up        ");
+        } else if (ev.kind == KEY_DOWN) {
+            termWriteAt(3, 1, "down      ");
+        } else if (ev.kind == KEY_ENTER) {
+            termWriteAt(3, 1, "enter     ");
+        } else if (ev.kind == KEY_CHAR) {
+            termWriteAt(3, 1, "char: " + ev.text + "   ");
+        }
+        termFlush();
+    }
+
+    termResetStyle();
+    termShowCursor();
+    termDisableRawMode();
+}
 ```
 
 ---
@@ -2688,6 +2908,18 @@ void main() {
 }
 ```
 
+### Terminal constants
+
+These constants are used by the interactive terminal API:
+
+| Constant group | Meaning |
+|----------------|---------|
+| `KEY_*` | keyboard and terminal event kinds |
+| `TERM_COLOR_*` | portable ANSI base colours plus default |
+
+Typical key constants include `KEY_NONE`, `KEY_CHAR`, `KEY_ENTER`, `KEY_ESC`, `KEY_UP`,
+`KEY_DOWN`, `KEY_LEFT`, `KEY_RIGHT`, and `KEY_RESIZE`.
+
 ---
 
 ## 12. Scoping Rules
@@ -2730,7 +2962,7 @@ The following identifiers are reserved and may not be used as variable or functi
 bool      break     clone     continue  else      ExecResult
 false     float     for       if        import
 int       return    self      string    structure super
-true      void      while     byte
+true      void      while     byte      TerminalSize  KeyEvent
 ```
 
 The predefined constants are also reserved (see §10):
@@ -2739,6 +2971,11 @@ The predefined constants are also reserved (see §10):
 FLOAT_DIG  FLOAT_EPSILON  FLOAT_MAX  FLOAT_MIN  FLOAT_SIZE
 INT_MAX    INT_MIN        INT_SIZE
 M_E        M_LN10         M_LN2      M_PI       M_SQRT2  M_TAU
+KEY_NONE   KEY_CHAR       KEY_ENTER  KEY_ESC    KEY_TAB  KEY_BACKSPACE
+KEY_DELETE KEY_UP         KEY_DOWN   KEY_LEFT   KEY_RIGHT
+KEY_HOME   KEY_END        KEY_PAGE_UP KEY_PAGE_DOWN KEY_RESIZE
+TERM_COLOR_DEFAULT TERM_COLOR_BLACK TERM_COLOR_RED TERM_COLOR_GREEN
+TERM_COLOR_YELLOW TERM_COLOR_BLUE TERM_COLOR_MAGENTA TERM_COLOR_CYAN TERM_COLOR_WHITE
 ```
 
 ---
@@ -2914,7 +3151,64 @@ void main() {
 }
 ```
 
-### 15.9 CSV line parser
+### 15.9 Minimal terminal menu
+
+```c
+void draw(string[] items, int selected) {
+    termClear();
+    termWriteAt(1, 1, "Choose an item with arrows, Enter to confirm, Esc to cancel");
+
+    for (int i = 0; i < count(items); i++) {
+        termMoveCursor(3 + i, 4);
+        if (i == selected) {
+            termSetStyle(TERM_COLOR_BLACK, TERM_COLOR_CYAN, true, false, false);
+            print("> " + items[i] + " <");
+            termResetStyle();
+        } else {
+            print("  " + items[i] + "  ");
+        }
+    }
+
+    termFlush();
+}
+
+void main() {
+    if (!termIsTTY()) {
+        print("interactive terminal required\n");
+        return;
+    }
+
+    string[] items = ["Open", "Save", "Quit"];
+    int selected = 0;
+
+    termEnableRawMode();
+    termHideCursor();
+    draw(items, selected);
+
+    while (true) {
+        KeyEvent ev = termReadKey();
+        if (ev.kind == KEY_ESC) {
+            break;
+        } else if (ev.kind == KEY_UP && selected > 0) {
+            selected--;
+            draw(items, selected);
+        } else if (ev.kind == KEY_DOWN && selected < count(items) - 1) {
+            selected++;
+            draw(items, selected);
+        } else if (ev.kind == KEY_ENTER) {
+            termClear();
+            termWriteAt(1, 1, "Selected: " + items[selected] + "\n");
+            termFlush();
+            break;
+        }
+    }
+
+    termShowCursor();
+    termDisableRawMode();
+}
+```
+
+### 15.10 CSV line parser
 
 ```c
 string[] parseCSV(string line) {
@@ -2939,7 +3233,7 @@ void main() {
 }
 ```
 
-### 15.10 Structures — a simple task list
+### 15.11 Structures — a simple task list
 
 This example shows structure declaration, `clone`, `self`, method calls, arrays of
 structures, and in-place mutation via direct indexed access.
@@ -2992,7 +3286,7 @@ void main() {
 }
 ```
 
-### 15.11 Structures — inheritance with `super`
+### 15.12 Structures — inheritance with `super`
 
 ```c
 structure Shape {

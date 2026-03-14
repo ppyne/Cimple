@@ -68,6 +68,12 @@ static const struct {
     { NULL, NULL }
 };
 
+static const char *BUILTIN_RUNTIME_STRUCTS[] = {
+    "TerminalSize",
+    "KeyEvent",
+    NULL
+};
+
 /* -----------------------------------------------------------------------
  * Built-in function signatures
  * ----------------------------------------------------------------------- */
@@ -79,179 +85,195 @@ static const struct {
  */
 static const BuiltinSig BUILTINS[] = {
     /* I/O */
-    { "print",      TYPE_VOID,   { TYPE_STRING },          1, 0, 0 },
-    { "input",      TYPE_STRING, { TYPE_UNKNOWN },          0, 0, 0 },
+    { "print",      TYPE_VOID,   NULL, { TYPE_STRING },          1, 0, 0 },
+    { "input",      TYPE_STRING, NULL, { TYPE_UNKNOWN },          0, 0, 0 },
+    { "termIsTTY",  TYPE_BOOL,   NULL, { TYPE_UNKNOWN },          0, 0, 0 },
+    { "termGetSize", TYPE_STRUCT, "TerminalSize", { TYPE_UNKNOWN }, 0, 0, 0 },
+    { "termClear",  TYPE_VOID,   NULL, { TYPE_UNKNOWN },          0, 0, 0 },
+    { "termClearLine", TYPE_VOID, NULL, { TYPE_UNKNOWN },         0, 0, 0 },
+    { "termMoveCursor", TYPE_VOID, NULL, { TYPE_INT, TYPE_INT },  2, 0, 0 },
+    { "termWriteAt", TYPE_VOID, NULL, { TYPE_INT, TYPE_INT, TYPE_STRING }, 3, 0, 0 },
+    { "termHideCursor", TYPE_VOID, NULL, { TYPE_UNKNOWN },        0, 0, 0 },
+    { "termShowCursor", TYPE_VOID, NULL, { TYPE_UNKNOWN },        0, 0, 0 },
+    { "termFlush",  TYPE_VOID,   NULL, { TYPE_UNKNOWN },          0, 0, 0 },
+    { "termBeep",   TYPE_VOID,   NULL, { TYPE_UNKNOWN },          0, 0, 0 },
+    { "termSetStyle", TYPE_VOID, NULL, { TYPE_INT, TYPE_INT, TYPE_BOOL, TYPE_BOOL, TYPE_BOOL }, 5, 0, 0 },
+    { "termResetStyle", TYPE_VOID, NULL, { TYPE_UNKNOWN },        0, 0, 0 },
+    { "termEnableRawMode", TYPE_VOID, NULL, { TYPE_UNKNOWN },     0, 0, 0 },
+    { "termDisableRawMode", TYPE_VOID, NULL, { TYPE_UNKNOWN },    0, 0, 0 },
+    { "termReadKey", TYPE_STRUCT, "KeyEvent", { TYPE_UNKNOWN },   0, 0, 0 },
+    { "termPollKey", TYPE_STRUCT, "KeyEvent", { TYPE_INT },       1, 0, 0 },
 
     /* String */
-    { "len",        TYPE_INT,    { TYPE_STRING },           1, 0, 0 },
-    { "glyphLen",   TYPE_INT,    { TYPE_STRING },           1, 0, 0 },
-    { "glyphAt",    TYPE_STRING, { TYPE_STRING, TYPE_INT }, 2, 0, 0 },
-    { "byteAt",     TYPE_INT,    { TYPE_STRING, TYPE_INT }, 2, 0, 0 },
-    { "substr",     TYPE_STRING, { TYPE_STRING, TYPE_INT, TYPE_INT }, 3, 0, 0 },
-    { "indexOf",    TYPE_INT,    { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
-    { "contains",   TYPE_BOOL,   { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
-    { "startsWith", TYPE_BOOL,   { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
-    { "endsWith",   TYPE_BOOL,   { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
-    { "replace",    TYPE_STRING, { TYPE_STRING, TYPE_STRING, TYPE_STRING }, 3, 0, 0 },
-    { "format",     TYPE_STRING, { TYPE_STRING, TYPE_STR_ARR }, 2, 0, 0 },
-    { "join",       TYPE_STRING, { TYPE_STR_ARR, TYPE_STRING }, 2, 0, 0 },
-    { "split",      TYPE_STR_ARR,{ TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
-    { "concat",     TYPE_STRING, { TYPE_STR_ARR },           1, 0, 0 },
-    { "trim",       TYPE_STRING, { TYPE_STRING },           1, 0, 0 },
-    { "trimLeft",   TYPE_STRING, { TYPE_STRING },           1, 0, 0 },
-    { "trimRight",  TYPE_STRING, { TYPE_STRING },           1, 0, 0 },
-    { "toUpper",    TYPE_STRING, { TYPE_STRING },           1, 0, 0 },
-    { "toLower",    TYPE_STRING, { TYPE_STRING },           1, 0, 0 },
-    { "capitalize", TYPE_STRING, { TYPE_STRING },           1, 0, 0 },
-    { "padLeft",    TYPE_STRING, { TYPE_STRING, TYPE_INT, TYPE_STRING }, 3, 0, 0 },
-    { "padRight",   TYPE_STRING, { TYPE_STRING, TYPE_INT, TYPE_STRING }, 3, 0, 0 },
-    { "repeat",     TYPE_STRING, { TYPE_STRING, TYPE_INT }, 2, 0, 0 },
-    { "lastIndexOf",TYPE_INT,    { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
-    { "countOccurrences", TYPE_INT, { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
-    { "isBlank",    TYPE_BOOL,   { TYPE_STRING },           1, 0, 0 },
+    { "len",        TYPE_INT, NULL,   { TYPE_STRING },           1, 0, 0 },
+    { "glyphLen",   TYPE_INT, NULL,   { TYPE_STRING },           1, 0, 0 },
+    { "glyphAt",    TYPE_STRING, NULL, { TYPE_STRING, TYPE_INT }, 2, 0, 0 },
+    { "byteAt",     TYPE_INT, NULL,   { TYPE_STRING, TYPE_INT }, 2, 0, 0 },
+    { "substr",     TYPE_STRING, NULL, { TYPE_STRING, TYPE_INT, TYPE_INT }, 3, 0, 0 },
+    { "indexOf",    TYPE_INT, NULL,   { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "contains",   TYPE_BOOL, NULL,  { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "startsWith", TYPE_BOOL, NULL,  { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "endsWith",   TYPE_BOOL, NULL,  { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "replace",    TYPE_STRING, NULL, { TYPE_STRING, TYPE_STRING, TYPE_STRING }, 3, 0, 0 },
+    { "format",     TYPE_STRING, NULL, { TYPE_STRING, TYPE_STR_ARR }, 2, 0, 0 },
+    { "join",       TYPE_STRING, NULL, { TYPE_STR_ARR, TYPE_STRING }, 2, 0, 0 },
+    { "split",      TYPE_STR_ARR, NULL,{ TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "concat",     TYPE_STRING, NULL, { TYPE_STR_ARR },           1, 0, 0 },
+    { "trim",       TYPE_STRING, NULL, { TYPE_STRING },           1, 0, 0 },
+    { "trimLeft",   TYPE_STRING, NULL, { TYPE_STRING },           1, 0, 0 },
+    { "trimRight",  TYPE_STRING, NULL, { TYPE_STRING },           1, 0, 0 },
+    { "toUpper",    TYPE_STRING, NULL, { TYPE_STRING },           1, 0, 0 },
+    { "toLower",    TYPE_STRING, NULL, { TYPE_STRING },           1, 0, 0 },
+    { "capitalize", TYPE_STRING, NULL, { TYPE_STRING },           1, 0, 0 },
+    { "padLeft",    TYPE_STRING, NULL, { TYPE_STRING, TYPE_INT, TYPE_STRING }, 3, 0, 0 },
+    { "padRight",   TYPE_STRING, NULL, { TYPE_STRING, TYPE_INT, TYPE_STRING }, 3, 0, 0 },
+    { "repeat",     TYPE_STRING, NULL, { TYPE_STRING, TYPE_INT }, 2, 0, 0 },
+    { "lastIndexOf",TYPE_INT, NULL,   { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "countOccurrences", TYPE_INT, NULL, { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "isBlank",    TYPE_BOOL, NULL,  { TYPE_STRING },           1, 0, 0 },
 
     /* Regular expressions */
-    { "regexCompile", TYPE_REGEXP, { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
-    { "regexPattern", TYPE_STRING, { TYPE_REGEXP }, 1, 0, 0 },
-    { "regexFlags", TYPE_STRING, { TYPE_REGEXP }, 1, 0, 0 },
-    { "regexTest", TYPE_BOOL, { TYPE_REGEXP, TYPE_STRING, TYPE_INT }, 3, 0, 0 },
-    { "regexFind", TYPE_REGEXP_MATCH, { TYPE_REGEXP, TYPE_STRING, TYPE_INT }, 3, 0, 0 },
-    { "regexFindAll", TYPE_REGEXP_MATCH_ARR, { TYPE_REGEXP, TYPE_STRING, TYPE_INT, TYPE_INT }, 4, 0, 0 },
-    { "regexReplace", TYPE_STRING, { TYPE_REGEXP, TYPE_STRING, TYPE_STRING, TYPE_INT }, 4, 0, 0 },
-    { "regexReplaceAll", TYPE_STRING, { TYPE_REGEXP, TYPE_STRING, TYPE_STRING, TYPE_INT, TYPE_INT }, 5, 0, 0 },
-    { "regexSplit", TYPE_STR_ARR, { TYPE_REGEXP, TYPE_STRING, TYPE_INT, TYPE_INT }, 4, 0, 0 },
-    { "regexOk", TYPE_BOOL, { TYPE_REGEXP_MATCH }, 1, 0, 0 },
-    { "regexStart", TYPE_INT, { TYPE_REGEXP_MATCH }, 1, 0, 0 },
-    { "regexEnd", TYPE_INT, { TYPE_REGEXP_MATCH }, 1, 0, 0 },
-    { "regexGroups", TYPE_STR_ARR, { TYPE_REGEXP_MATCH }, 1, 0, 0 },
+    { "regexCompile", TYPE_REGEXP, NULL, { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "regexPattern", TYPE_STRING, NULL, { TYPE_REGEXP }, 1, 0, 0 },
+    { "regexFlags", TYPE_STRING, NULL, { TYPE_REGEXP }, 1, 0, 0 },
+    { "regexTest", TYPE_BOOL, NULL, { TYPE_REGEXP, TYPE_STRING, TYPE_INT }, 3, 0, 0 },
+    { "regexFind", TYPE_REGEXP_MATCH, NULL, { TYPE_REGEXP, TYPE_STRING, TYPE_INT }, 3, 0, 0 },
+    { "regexFindAll", TYPE_REGEXP_MATCH_ARR, NULL, { TYPE_REGEXP, TYPE_STRING, TYPE_INT, TYPE_INT }, 4, 0, 0 },
+    { "regexReplace", TYPE_STRING, NULL, { TYPE_REGEXP, TYPE_STRING, TYPE_STRING, TYPE_INT }, 4, 0, 0 },
+    { "regexReplaceAll", TYPE_STRING, NULL, { TYPE_REGEXP, TYPE_STRING, TYPE_STRING, TYPE_INT, TYPE_INT }, 5, 0, 0 },
+    { "regexSplit", TYPE_STR_ARR, NULL, { TYPE_REGEXP, TYPE_STRING, TYPE_INT, TYPE_INT }, 4, 0, 0 },
+    { "regexOk", TYPE_BOOL, NULL, { TYPE_REGEXP_MATCH }, 1, 0, 0 },
+    { "regexStart", TYPE_INT, NULL, { TYPE_REGEXP_MATCH }, 1, 0, 0 },
+    { "regexEnd", TYPE_INT, NULL, { TYPE_REGEXP_MATCH }, 1, 0, 0 },
+    { "regexGroups", TYPE_STR_ARR, NULL, { TYPE_REGEXP_MATCH }, 1, 0, 0 },
 
     /* Intrinsic conversions — resolved separately */
-    { "toString",   TYPE_STRING, { TYPE_UNKNOWN },          1, 0, 0 },
-    { "toInt",      TYPE_INT,    { TYPE_UNKNOWN },          1, 0, 0 },
-    { "toFloat",    TYPE_FLOAT,  { TYPE_UNKNOWN },          1, 0, 0 },
-    { "toBool",     TYPE_BOOL,   { TYPE_UNKNOWN },          1, 0, 0 },
+    { "toString",   TYPE_STRING, NULL, { TYPE_UNKNOWN },          1, 0, 0 },
+    { "toInt",      TYPE_INT,    NULL, { TYPE_UNKNOWN },          1, 0, 0 },
+    { "toFloat",    TYPE_FLOAT,  NULL, { TYPE_UNKNOWN },          1, 0, 0 },
+    { "toBool",     TYPE_BOOL,   NULL, { TYPE_UNKNOWN },          1, 0, 0 },
 
     /* String validation */
-    { "isIntString",   TYPE_BOOL, { TYPE_STRING }, 1, 0, 0 },
-    { "isFloatString", TYPE_BOOL, { TYPE_STRING }, 1, 0, 0 },
-    { "isBoolString",  TYPE_BOOL, { TYPE_STRING }, 1, 0, 0 },
+    { "isIntString",   TYPE_BOOL, NULL, { TYPE_STRING }, 1, 0, 0 },
+    { "isFloatString", TYPE_BOOL, NULL, { TYPE_STRING }, 1, 0, 0 },
+    { "isBoolString",  TYPE_BOOL, NULL, { TYPE_STRING }, 1, 0, 0 },
 
     /* Float math */
-    { "isNaN",              TYPE_BOOL,  { TYPE_FLOAT },               1, 0, 0 },
-    { "isInfinite",         TYPE_BOOL,  { TYPE_FLOAT },               1, 0, 0 },
-    { "isFinite",           TYPE_BOOL,  { TYPE_FLOAT },               1, 0, 0 },
-    { "isPositiveInfinity", TYPE_BOOL,  { TYPE_FLOAT },               1, 0, 0 },
-    { "isNegativeInfinity", TYPE_BOOL,  { TYPE_FLOAT },               1, 0, 0 },
-    { "abs",        TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "min",        TYPE_FLOAT,  { TYPE_FLOAT, TYPE_FLOAT },   2, 0, 0 },
-    { "max",        TYPE_FLOAT,  { TYPE_FLOAT, TYPE_FLOAT },   2, 0, 0 },
-    { "clamp",      TYPE_FLOAT,  { TYPE_FLOAT, TYPE_FLOAT, TYPE_FLOAT }, 3, 0, 0 },
-    { "floor",      TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "ceil",       TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "round",      TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "trunc",      TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "fmod",       TYPE_FLOAT,  { TYPE_FLOAT, TYPE_FLOAT },   2, 0, 0 },
-    { "sqrt",       TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "pow",        TYPE_FLOAT,  { TYPE_FLOAT, TYPE_FLOAT },   2, 0, 0 },
-    { "approxEqual",TYPE_BOOL,   { TYPE_FLOAT, TYPE_FLOAT, TYPE_FLOAT }, 3, 0, 0 },
-    { "sin",        TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "cos",        TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "tan",        TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "asin",       TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "acos",       TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "atan",       TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "atan2",      TYPE_FLOAT,  { TYPE_FLOAT, TYPE_FLOAT },   2, 0, 0 },
-    { "exp",        TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "log",        TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "log2",       TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
-    { "log10",      TYPE_FLOAT,  { TYPE_FLOAT },               1, 0, 0 },
+    { "isNaN",              TYPE_BOOL, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "isInfinite",         TYPE_BOOL, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "isFinite",           TYPE_BOOL, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "isPositiveInfinity", TYPE_BOOL, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "isNegativeInfinity", TYPE_BOOL, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "abs",        TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "min",        TYPE_FLOAT, NULL, { TYPE_FLOAT, TYPE_FLOAT },   2, 0, 0 },
+    { "max",        TYPE_FLOAT, NULL, { TYPE_FLOAT, TYPE_FLOAT },   2, 0, 0 },
+    { "clamp",      TYPE_FLOAT, NULL, { TYPE_FLOAT, TYPE_FLOAT, TYPE_FLOAT }, 3, 0, 0 },
+    { "floor",      TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "ceil",       TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "round",      TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "trunc",      TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "fmod",       TYPE_FLOAT, NULL, { TYPE_FLOAT, TYPE_FLOAT },   2, 0, 0 },
+    { "sqrt",       TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "pow",        TYPE_FLOAT, NULL, { TYPE_FLOAT, TYPE_FLOAT },   2, 0, 0 },
+    { "approxEqual",TYPE_BOOL,  NULL, { TYPE_FLOAT, TYPE_FLOAT, TYPE_FLOAT }, 3, 0, 0 },
+    { "sin",        TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "cos",        TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "tan",        TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "asin",       TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "acos",       TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "atan",       TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "atan2",      TYPE_FLOAT, NULL, { TYPE_FLOAT, TYPE_FLOAT },   2, 0, 0 },
+    { "exp",        TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "log",        TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "log2",       TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "log10",      TYPE_FLOAT, NULL, { TYPE_FLOAT },               1, 0, 0 },
 
     /* Integer math */
-    { "absInt",     TYPE_INT,   { TYPE_INT },                  1, 0, 0 },
-    { "minInt",     TYPE_INT,   { TYPE_INT, TYPE_INT },        2, 0, 0 },
-    { "maxInt",     TYPE_INT,   { TYPE_INT, TYPE_INT },        2, 0, 0 },
-    { "clampInt",   TYPE_INT,   { TYPE_INT, TYPE_INT, TYPE_INT }, 3, 0, 0 },
-    { "isEven",     TYPE_BOOL,  { TYPE_INT },                  1, 0, 0 },
-    { "isOdd",      TYPE_BOOL,  { TYPE_INT },                  1, 0, 0 },
-    { "safeDivInt", TYPE_INT,   { TYPE_INT, TYPE_INT, TYPE_INT }, 3, 0, 0 },
-    { "safeModInt", TYPE_INT,   { TYPE_INT, TYPE_INT, TYPE_INT }, 3, 0, 0 },
+    { "absInt",     TYPE_INT,   NULL, { TYPE_INT },                  1, 0, 0 },
+    { "minInt",     TYPE_INT,   NULL, { TYPE_INT, TYPE_INT },        2, 0, 0 },
+    { "maxInt",     TYPE_INT,   NULL, { TYPE_INT, TYPE_INT },        2, 0, 0 },
+    { "clampInt",   TYPE_INT,   NULL, { TYPE_INT, TYPE_INT, TYPE_INT }, 3, 0, 0 },
+    { "isEven",     TYPE_BOOL,  NULL, { TYPE_INT },                  1, 0, 0 },
+    { "isOdd",      TYPE_BOOL,  NULL, { TYPE_INT },                  1, 0, 0 },
+    { "safeDivInt", TYPE_INT,   NULL, { TYPE_INT, TYPE_INT, TYPE_INT }, 3, 0, 0 },
+    { "safeModInt", TYPE_INT,   NULL, { TYPE_INT, TYPE_INT, TYPE_INT }, 3, 0, 0 },
 
     /* Array intrinsics — polymorphic flag */
-    { "count",       TYPE_INT,   { TYPE_UNKNOWN }, 1, 0, 1 },
-    { "mapHas",      TYPE_BOOL,  { TYPE_UNKNOWN, TYPE_UNKNOWN }, 2, 0, 1 },
-    { "mapRemove",   TYPE_VOID,  { TYPE_UNKNOWN, TYPE_UNKNOWN }, 2, 0, 1 },
-    { "mapKeys",     TYPE_UNKNOWN, { TYPE_UNKNOWN }, 1, 0, 1 },
-    { "mapValues",   TYPE_UNKNOWN, { TYPE_UNKNOWN }, 1, 0, 1 },
-    { "mapSize",     TYPE_INT,   { TYPE_UNKNOWN }, 1, 0, 1 },
-    { "mapClear",    TYPE_VOID,  { TYPE_UNKNOWN }, 1, 0, 1 },
-    { "arrayPush",   TYPE_VOID,  { TYPE_UNKNOWN, TYPE_UNKNOWN }, 2, 0, 1 },
-    { "arrayPop",    TYPE_UNKNOWN,{ TYPE_UNKNOWN }, 1, 0, 1 },
-    { "arrayInsert", TYPE_VOID,  { TYPE_UNKNOWN, TYPE_INT, TYPE_UNKNOWN }, 3, 0, 1 },
-    { "arrayRemove", TYPE_VOID,  { TYPE_UNKNOWN, TYPE_INT }, 2, 0, 1 },
-    { "arrayGet",    TYPE_UNKNOWN,{ TYPE_UNKNOWN, TYPE_INT }, 2, 0, 1 },
-    { "arraySet",    TYPE_VOID,  { TYPE_UNKNOWN, TYPE_INT, TYPE_UNKNOWN }, 3, 0, 1 },
+    { "count",       TYPE_INT,   NULL, { TYPE_UNKNOWN }, 1, 0, 1 },
+    { "mapHas",      TYPE_BOOL,  NULL, { TYPE_UNKNOWN, TYPE_UNKNOWN }, 2, 0, 1 },
+    { "mapRemove",   TYPE_VOID,  NULL, { TYPE_UNKNOWN, TYPE_UNKNOWN }, 2, 0, 1 },
+    { "mapKeys",     TYPE_UNKNOWN, NULL, { TYPE_UNKNOWN }, 1, 0, 1 },
+    { "mapValues",   TYPE_UNKNOWN, NULL, { TYPE_UNKNOWN }, 1, 0, 1 },
+    { "mapSize",     TYPE_INT,   NULL, { TYPE_UNKNOWN }, 1, 0, 1 },
+    { "mapClear",    TYPE_VOID,  NULL, { TYPE_UNKNOWN }, 1, 0, 1 },
+    { "arrayPush",   TYPE_VOID,  NULL, { TYPE_UNKNOWN, TYPE_UNKNOWN }, 2, 0, 1 },
+    { "arrayPop",    TYPE_UNKNOWN, NULL,{ TYPE_UNKNOWN }, 1, 0, 1 },
+    { "arrayInsert", TYPE_VOID,  NULL, { TYPE_UNKNOWN, TYPE_INT, TYPE_UNKNOWN }, 3, 0, 1 },
+    { "arrayRemove", TYPE_VOID,  NULL, { TYPE_UNKNOWN, TYPE_INT }, 2, 0, 1 },
+    { "arrayGet",    TYPE_UNKNOWN, NULL,{ TYPE_UNKNOWN, TYPE_INT }, 2, 0, 1 },
+    { "arraySet",    TYPE_VOID,  NULL, { TYPE_UNKNOWN, TYPE_INT, TYPE_UNKNOWN }, 3, 0, 1 },
 
     /* File I/O */
-    { "readFile",    TYPE_STRING,   { TYPE_STRING },              1, 0, 0 },
-    { "writeFile",   TYPE_VOID,     { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
-    { "appendFile",  TYPE_VOID,     { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
-    { "readFileBytes", TYPE_BYTE_ARR, { TYPE_STRING },            1, 0, 0 },
-    { "writeFileBytes", TYPE_VOID, { TYPE_STRING, TYPE_BYTE_ARR }, 2, 0, 0 },
-    { "appendFileBytes", TYPE_VOID, { TYPE_STRING, TYPE_BYTE_ARR }, 2, 0, 0 },
-    { "fileExists",  TYPE_BOOL,     { TYPE_STRING },              1, 0, 0 },
-    { "tempPath",    TYPE_STRING,   { TYPE_UNKNOWN },             0, 0, 0 },
-    { "remove",      TYPE_VOID,     { TYPE_STRING },              1, 0, 0 },
-    { "chmod",       TYPE_VOID,     { TYPE_STRING, TYPE_INT },    2, 0, 0 },
-    { "cwd",         TYPE_STRING,   { TYPE_UNKNOWN },             0, 0, 0 },
-    { "copy",        TYPE_VOID,     { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
-    { "move",        TYPE_VOID,     { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
-    { "isReadable",  TYPE_BOOL,     { TYPE_STRING },              1, 0, 0 },
-    { "isWritable",  TYPE_BOOL,     { TYPE_STRING },              1, 0, 0 },
-    { "isExecutable",TYPE_BOOL,     { TYPE_STRING },              1, 0, 0 },
-    { "isDirectory", TYPE_BOOL,     { TYPE_STRING },              1, 0, 0 },
-    { "dirname",     TYPE_STRING,   { TYPE_STRING },              1, 0, 0 },
-    { "basename",    TYPE_STRING,   { TYPE_STRING },              1, 0, 0 },
-    { "filename",    TYPE_STRING,   { TYPE_STRING },              1, 0, 0 },
-    { "extension",   TYPE_STRING,   { TYPE_STRING },              1, 0, 0 },
-    { "readLines",   TYPE_STR_ARR,  { TYPE_STRING },              1, 0, 0 },
-    { "writeLines",  TYPE_VOID,     { TYPE_STRING, TYPE_STR_ARR }, 2, 0, 0 },
-    { "byteToInt",   TYPE_INT,      { TYPE_BYTE },                1, 0, 0 },
-    { "intToByte",   TYPE_BYTE,     { TYPE_INT },                 1, 0, 0 },
-    { "stringToBytes", TYPE_BYTE_ARR, { TYPE_STRING },            1, 0, 0 },
-    { "bytesToString", TYPE_STRING, { TYPE_BYTE_ARR },            1, 0, 0 },
-    { "intToBytes",  TYPE_BYTE_ARR, { TYPE_INT },                 1, 0, 0 },
-    { "floatToBytes",TYPE_BYTE_ARR, { TYPE_FLOAT },               1, 0, 0 },
-    { "bytesToInt",  TYPE_INT,      { TYPE_BYTE_ARR },            1, 0, 0 },
-    { "bytesToFloat",TYPE_FLOAT,    { TYPE_BYTE_ARR },            1, 0, 0 },
+    { "readFile",    TYPE_STRING, NULL,   { TYPE_STRING },              1, 0, 0 },
+    { "writeFile",   TYPE_VOID,   NULL,   { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "appendFile",  TYPE_VOID,   NULL,   { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "readFileBytes", TYPE_BYTE_ARR, NULL, { TYPE_STRING },            1, 0, 0 },
+    { "writeFileBytes", TYPE_VOID, NULL, { TYPE_STRING, TYPE_BYTE_ARR }, 2, 0, 0 },
+    { "appendFileBytes", TYPE_VOID, NULL, { TYPE_STRING, TYPE_BYTE_ARR }, 2, 0, 0 },
+    { "fileExists",  TYPE_BOOL,   NULL,   { TYPE_STRING },              1, 0, 0 },
+    { "tempPath",    TYPE_STRING, NULL,   { TYPE_UNKNOWN },             0, 0, 0 },
+    { "remove",      TYPE_VOID,   NULL,   { TYPE_STRING },              1, 0, 0 },
+    { "chmod",       TYPE_VOID,   NULL,   { TYPE_STRING, TYPE_INT },    2, 0, 0 },
+    { "cwd",         TYPE_STRING, NULL,   { TYPE_UNKNOWN },             0, 0, 0 },
+    { "copy",        TYPE_VOID,   NULL,   { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "move",        TYPE_VOID,   NULL,   { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "isReadable",  TYPE_BOOL,   NULL,   { TYPE_STRING },              1, 0, 0 },
+    { "isWritable",  TYPE_BOOL,   NULL,   { TYPE_STRING },              1, 0, 0 },
+    { "isExecutable",TYPE_BOOL,   NULL,   { TYPE_STRING },              1, 0, 0 },
+    { "isDirectory", TYPE_BOOL,   NULL,   { TYPE_STRING },              1, 0, 0 },
+    { "dirname",     TYPE_STRING, NULL,   { TYPE_STRING },              1, 0, 0 },
+    { "basename",    TYPE_STRING, NULL,   { TYPE_STRING },              1, 0, 0 },
+    { "filename",    TYPE_STRING, NULL,   { TYPE_STRING },              1, 0, 0 },
+    { "extension",   TYPE_STRING, NULL,   { TYPE_STRING },              1, 0, 0 },
+    { "readLines",   TYPE_STR_ARR,NULL,   { TYPE_STRING },              1, 0, 0 },
+    { "writeLines",  TYPE_VOID,   NULL,   { TYPE_STRING, TYPE_STR_ARR }, 2, 0, 0 },
+    { "byteToInt",   TYPE_INT,    NULL,   { TYPE_BYTE },                1, 0, 0 },
+    { "intToByte",   TYPE_BYTE,   NULL,   { TYPE_INT },                 1, 0, 0 },
+    { "stringToBytes", TYPE_BYTE_ARR, NULL, { TYPE_STRING },            1, 0, 0 },
+    { "bytesToString", TYPE_STRING, NULL, { TYPE_BYTE_ARR },            1, 0, 0 },
+    { "intToBytes",  TYPE_BYTE_ARR, NULL, { TYPE_INT },                 1, 0, 0 },
+    { "floatToBytes",TYPE_BYTE_ARR, NULL, { TYPE_FLOAT },               1, 0, 0 },
+    { "bytesToInt",  TYPE_INT,    NULL,   { TYPE_BYTE_ARR },            1, 0, 0 },
+    { "bytesToFloat",TYPE_FLOAT,  NULL,   { TYPE_BYTE_ARR },            1, 0, 0 },
 
     /* exec */
-    { "exec",        TYPE_EXEC_RESULT, { TYPE_STR_ARR, TYPE_STR_ARR }, 2, 0, 0 },
-    { "execStatus",  TYPE_INT,     { TYPE_EXEC_RESULT }, 1, 0, 0 },
-    { "execStdout",  TYPE_STRING,  { TYPE_EXEC_RESULT }, 1, 0, 0 },
-    { "execStderr",  TYPE_STRING,  { TYPE_EXEC_RESULT }, 1, 0, 0 },
+    { "exec",        TYPE_EXEC_RESULT, NULL, { TYPE_STR_ARR, TYPE_STR_ARR }, 2, 0, 0 },
+    { "execStatus",  TYPE_INT,     NULL, { TYPE_EXEC_RESULT }, 1, 0, 0 },
+    { "execStdout",  TYPE_STRING,  NULL, { TYPE_EXEC_RESULT }, 1, 0, 0 },
+    { "execStderr",  TYPE_STRING,  NULL, { TYPE_EXEC_RESULT }, 1, 0, 0 },
 
     /* Environment */
-    { "getEnv",      TYPE_STRING,  { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "getEnv",      TYPE_STRING,  NULL, { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
 
     /* Time */
-    { "now",          TYPE_INT, { TYPE_UNKNOWN }, 0, 0, 0 },
-    { "epochToYear",  TYPE_INT, { TYPE_INT },     1, 0, 0 },
-    { "epochToMonth", TYPE_INT, { TYPE_INT },     1, 0, 0 },
-    { "epochToDay",   TYPE_INT, { TYPE_INT },     1, 0, 0 },
-    { "epochToHour",  TYPE_INT, { TYPE_INT },     1, 0, 0 },
-    { "epochToMinute",TYPE_INT, { TYPE_INT },     1, 0, 0 },
-    { "epochToSecond",TYPE_INT, { TYPE_INT },     1, 0, 0 },
-    { "makeEpoch",    TYPE_INT, { TYPE_INT, TYPE_INT, TYPE_INT,
+    { "now",          TYPE_INT, NULL, { TYPE_UNKNOWN }, 0, 0, 0 },
+    { "epochToYear",  TYPE_INT, NULL, { TYPE_INT },     1, 0, 0 },
+    { "epochToMonth", TYPE_INT, NULL, { TYPE_INT },     1, 0, 0 },
+    { "epochToDay",   TYPE_INT, NULL, { TYPE_INT },     1, 0, 0 },
+    { "epochToHour",  TYPE_INT, NULL, { TYPE_INT },     1, 0, 0 },
+    { "epochToMinute",TYPE_INT, NULL, { TYPE_INT },     1, 0, 0 },
+    { "epochToSecond",TYPE_INT, NULL, { TYPE_INT },     1, 0, 0 },
+    { "makeEpoch",    TYPE_INT, NULL, { TYPE_INT, TYPE_INT, TYPE_INT,
                                    TYPE_INT, TYPE_INT, TYPE_INT }, 6, 0, 0 },
-    { "formatDate",   TYPE_STRING, { TYPE_INT, TYPE_STRING }, 2, 0, 0 },
+    { "formatDate",   TYPE_STRING, NULL, { TYPE_INT, TYPE_STRING }, 2, 0, 0 },
 
     /* Utility */
-    { "assert",    TYPE_VOID,  { TYPE_BOOL, TYPE_STRING }, 1, 1, 0 }, /* variadic: 1 or 2 args */
-    { "randInt",   TYPE_INT,   { TYPE_INT,  TYPE_INT },    2, 0, 0 },
-    { "randFloat", TYPE_FLOAT, { TYPE_UNKNOWN },           0, 0, 0 },
-    { "sleep",     TYPE_VOID,  { TYPE_INT },               1, 0, 0 },
+    { "assert",    TYPE_VOID,  NULL, { TYPE_BOOL, TYPE_STRING }, 1, 1, 0 }, /* variadic: 1 or 2 args */
+    { "randInt",   TYPE_INT,   NULL, { TYPE_INT,  TYPE_INT },    2, 0, 0 },
+    { "randFloat", TYPE_FLOAT, NULL, { TYPE_UNKNOWN },           0, 0, 0 },
+    { "sleep",     TYPE_VOID,  NULL, { TYPE_INT },               1, 0, 0 },
 
-    { NULL, TYPE_UNKNOWN, {TYPE_UNKNOWN}, 0, 0, 0 }
+    { NULL, TYPE_UNKNOWN, NULL, {TYPE_UNKNOWN}, 0, 0, 0 }
 };
 
 const BuiltinSig *builtin_lookup(const char *name) {
@@ -1292,6 +1314,8 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                 }
             }
             n->type = sig->ret_type;
+            free(n->type_name_hint);
+            n->type_name_hint = sig->ret_struct_name ? cimple_strdup(sig->ret_struct_name) : NULL;
             return sig->ret_type;
         }
 
@@ -1568,7 +1592,14 @@ static int is_reserved_constant_name(const char *name) {
     static const char *reserved_consts[] = {
         "INT_MAX","INT_MIN","INT_SIZE","FLOAT_SIZE","FLOAT_DIG",
         "FLOAT_EPSILON","FLOAT_MIN","FLOAT_MAX",
-        "M_PI","M_E","M_TAU","M_SQRT2","M_LN2","M_LN10", NULL
+        "M_PI","M_E","M_TAU","M_SQRT2","M_LN2","M_LN10",
+        "KEY_NONE","KEY_CHAR","KEY_ENTER","KEY_ESC","KEY_TAB",
+        "KEY_BACKSPACE","KEY_DELETE","KEY_UP","KEY_DOWN","KEY_LEFT",
+        "KEY_RIGHT","KEY_HOME","KEY_END","KEY_PAGE_UP","KEY_PAGE_DOWN",
+        "KEY_RESIZE","TERM_COLOR_DEFAULT","TERM_COLOR_BLACK",
+        "TERM_COLOR_RED","TERM_COLOR_GREEN","TERM_COLOR_YELLOW",
+        "TERM_COLOR_BLUE","TERM_COLOR_MAGENTA","TERM_COLOR_CYAN",
+        "TERM_COLOR_WHITE", NULL
     };
     for (int i = 0; reserved_consts[i]; i++) {
         if (strcmp(name, reserved_consts[i]) == 0) return 1;
@@ -2726,6 +2757,22 @@ int semantic_check(AstNode *program) {
         }
         if (si && strcmp(BUILTIN_EXCEPTIONS[i].name, "RegExpException") == 0)
             struct_add_builtin_field(si, "message", TYPE_STRING);
+    }
+
+    for (int i = 0; BUILTIN_RUNTIME_STRUCTS[i]; i++) {
+        StructInfo *si = struct_table_define(ctx.structs, BUILTIN_RUNTIME_STRUCTS[i], NULL, NULL);
+        if (!si) continue;
+        if (strcmp(BUILTIN_RUNTIME_STRUCTS[i], "TerminalSize") == 0) {
+            struct_add_builtin_field(si, "width", TYPE_INT);
+            struct_add_builtin_field(si, "height", TYPE_INT);
+        } else if (strcmp(BUILTIN_RUNTIME_STRUCTS[i], "KeyEvent") == 0) {
+            struct_add_builtin_field(si, "kind", TYPE_INT);
+            struct_add_builtin_field(si, "code", TYPE_INT);
+            struct_add_builtin_field(si, "text", TYPE_STRING);
+            struct_add_builtin_field(si, "ctrl", TYPE_BOOL);
+            struct_add_builtin_field(si, "alt", TYPE_BOOL);
+            struct_add_builtin_field(si, "shift", TYPE_BOOL);
+        }
     }
 
     collect_structs(&ctx, program);

@@ -31,6 +31,13 @@ static inline int is_predefined_constant(const char *name) {
         "FLOAT_SIZE", "FLOAT_DIG",
         "FLOAT_EPSILON", "FLOAT_MIN", "FLOAT_MAX",
         "M_PI", "M_E", "M_TAU", "M_SQRT2", "M_LN2", "M_LN10",
+        "KEY_NONE", "KEY_CHAR", "KEY_ENTER", "KEY_ESC", "KEY_TAB",
+        "KEY_BACKSPACE", "KEY_DELETE", "KEY_UP", "KEY_DOWN", "KEY_LEFT",
+        "KEY_RIGHT", "KEY_HOME", "KEY_END", "KEY_PAGE_UP", "KEY_PAGE_DOWN",
+        "KEY_RESIZE", "TERM_COLOR_DEFAULT", "TERM_COLOR_BLACK",
+        "TERM_COLOR_RED", "TERM_COLOR_GREEN", "TERM_COLOR_YELLOW",
+        "TERM_COLOR_BLUE", "TERM_COLOR_MAGENTA", "TERM_COLOR_CYAN",
+        "TERM_COLOR_WHITE",
         NULL
     };
     for (int i = 0; consts[i]; i++)

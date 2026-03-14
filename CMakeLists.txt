@@ -24,8 +24,16 @@ if(NOT LEMON_EXECUTABLE)
     message(STATUS "lemon not found in PATH, building from tools/")
     add_executable(lemon_tool "${TOOLS_DIR}/lemon.c")
     target_compile_options(lemon_tool PRIVATE -w)
+    if(EMSCRIPTEN)
+        target_link_options(lemon_tool PRIVATE "-sNODERAWFS=1")
+    endif()
     set(LEMON_EXECUTABLE $<TARGET_FILE:lemon_tool>)
     set(LEMON_BUILT_HERE TRUE)
+endif()
+
+set(LEMON_COMMAND "${LEMON_EXECUTABLE}")
+if(LEMON_BUILT_HERE AND CMAKE_CROSSCOMPILING_EMULATOR)
+    set(LEMON_COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${LEMON_EXECUTABLE}")
 endif()
 
 # --- Generate lexer with re2c ---
@@ -45,7 +53,7 @@ set(PARSER_C  "${GENERATED_DIR}/parser.c")
 set(PARSER_H  "${GENERATED_DIR}/parser.h")
 add_custom_command(
     OUTPUT  "${PARSER_C}" "${PARSER_H}"
-    COMMAND "${LEMON_EXECUTABLE}" "-d${GENERATED_DIR}" "${PARSER_Y}"
+    COMMAND ${LEMON_COMMAND} "-d${GENERATED_DIR}" "${PARSER_Y}"
     DEPENDS "${PARSER_Y}"
             $<$<BOOL:${LEMON_BUILT_HERE}>:lemon_tool>
     COMMENT "Generating parser from ${PARSER_Y}"

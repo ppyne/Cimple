@@ -40,6 +40,7 @@ int semantic_check(AstNode *program);
 typedef struct {
     const char *name;
     CimpleType  ret_type;
+    const char *ret_struct_name;
     /* param types array (up to 8 params) */
     CimpleType  param_types[8];
     int         param_count;

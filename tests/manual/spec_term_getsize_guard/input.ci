@@ -1,0 +1,9 @@
+void main() {
+    if (!termIsTTY()) {
+        print("interactive terminal required\n");
+        return;
+    }
+
+    TerminalSize sz = termGetSize();
+    print("terminal: " + toString(sz.width) + "x" + toString(sz.height) + "\n");
+}

@@ -321,9 +321,15 @@ Un type tableau est toujours associé à un type d'élément fixe. Il est interd
 
 Les **maps** `V[K]` sont des collections clé→valeur à accès par clé — voir §6.13.
 
-### 6.3 Type opaque natif : `ExecResult`
+### 6.3 Types natifs du runtime : `ExecResult`, `TerminalSize`, `KeyEvent`
 
-`ExecResult` est un type natif opaque fourni exclusivement par le runtime. Il représente le résultat d'une exécution de commande externe.
+Le runtime fournit trois types natifs prédéfinis destinés aux interactions système : un type
+opaque (`ExecResult`) et deux structures natives (`TerminalSize`, `KeyEvent`).
+
+#### 6.3.1 Type opaque natif : `ExecResult`
+
+`ExecResult` est un type natif opaque fourni exclusivement par le runtime. Il représente le
+résultat d'une exécution de commande externe.
 
 Propriétés :
 
@@ -333,11 +339,49 @@ Propriétés :
 - `ExecResult[]` n'existe pas ; on ne peut pas créer de tableau de `ExecResult` ;
 - une variable `ExecResult` non initialisée (déclarée sans appel à `exec`) est une **erreur sémantique**.
 
-- `int` : entier signé
-- `float` : nombre à virgule flottante
-- `bool` : `true` ou `false`
-- `string` : chaîne de caractères
-- `void` : absence de valeur de retour
+#### 6.3.2 Structure native : `TerminalSize`
+
+`TerminalSize` est une structure native fournie par le runtime pour décrire la taille logique
+d'un terminal interactif :
+
+```c
+structure TerminalSize {
+    int width  = 0;
+    int height = 0;
+}
+```
+
+Propriétés :
+
+- `width` et `height` sont exprimés en **cellules terminal** (colonnes et lignes), pas en pixels ;
+- `TerminalSize` est une structure ordinaire du point de vue du langage : elle peut être stockée, passée à une fonction, retournée, ou lue champ par champ ;
+- la valeur `{ width = 0, height = 0 }` est réservée au cas « taille inconnue / terminal indisponible » ;
+- `TerminalSize[]` est autorisé, comme pour toute structure native.
+
+#### 6.3.3 Structure native : `KeyEvent`
+
+`KeyEvent` est une structure native fournie par le runtime pour décrire une entrée clavier issue
+d'un terminal interactif :
+
+```c
+structure KeyEvent {
+    int  kind   = KEY_NONE;
+    int  code   = 0;
+    string text = "";
+    bool ctrl   = false;
+    bool alt    = false;
+    bool shift  = false;
+}
+```
+
+Propriétés :
+
+- `kind` indique la catégorie logique de l'événement ; sa valeur est l'une des constantes prédéfinies `KEY_*` décrites en section 9.2 ;
+- `code` contient le code logique de la touche ; pour les touches spéciales il vaut généralement la même constante `KEY_*` que `kind` ; pour `KEY_CHAR`, il vaut `0` ;
+- `text` contient le texte UTF-8 associé à une saisie imprimable ; il est non vide uniquement pour `KEY_CHAR` ;
+- `ctrl`, `alt` et `shift` indiquent les modificateurs observés au moment de l'événement ;
+- un timeout ou une absence d'événement est représenté par `kind = KEY_NONE`, `code = 0`, `text = ""`, modificateurs à `false` ;
+- un redimensionnement du terminal est représenté par `kind = KEY_RESIZE` ; la nouvelle taille doit alors être lue via `termGetSize()`.
 
 ### 6.4 Sémantique des tableaux
 
@@ -1520,6 +1564,22 @@ int glyphLen(string value);
 string glyphAt(string value, int index);
 int byteAt(string value, int index);
 string input();
+bool termIsTTY();
+TerminalSize termGetSize();
+void termClear();
+void termClearLine();
+void termMoveCursor(int row, int col);
+void termWriteAt(int row, int col, string text);
+void termHideCursor();
+void termShowCursor();
+void termFlush();
+void termBeep();
+void termSetStyle(int fg, int bg, bool bold, bool reverse, bool underline);
+void termResetStyle();
+void termEnableRawMode();
+void termDisableRawMode();
+KeyEvent termReadKey();
+KeyEvent termPollKey(int timeoutMs);
 string substr(string s, int start, int length);
 int    indexOf(string s, string needle);
 bool   contains(string s, string needle);
@@ -1679,7 +1739,7 @@ int    count(V[K] map);         // alias de mapSize
 
 La notation `T` dans les signatures des fonctions tableau indique un paramètre de type générique restreint aux quatre types tableau autorisés (`int`, `float`, `bool`, `string`). Ce polymorphisme est exclusivement réservé aux fonctions intrinsèques du runtime sur les tableaux ; il ne s'étend pas au code utilisateur et ne constitue pas une surcharge au sens de Cimple.
 
-### 9.2 Affichage et saisie
+### 9.2 Affichage, saisie et terminal
 
 - `print` n'accepte que `string` ;
 - pour afficher un `int`, un `float` ou un `bool`, il faut passer par `toString(...)` qui résout statiquement la bonne conversion selon le type de l'argument.
@@ -1705,6 +1765,198 @@ void main() {
     print("Entrez votre nom : ");
     string name = input();
     print("Bonjour, " + name + "\n");
+}
+```
+
+#### Constantes terminal prédéfinies
+
+Le runtime fournit les constantes globales suivantes pour l'API terminal :
+
+```c
+KEY_NONE
+KEY_CHAR
+KEY_ENTER
+KEY_ESC
+KEY_TAB
+KEY_BACKSPACE
+KEY_DELETE
+KEY_UP
+KEY_DOWN
+KEY_LEFT
+KEY_RIGHT
+KEY_HOME
+KEY_END
+KEY_PAGE_UP
+KEY_PAGE_DOWN
+KEY_RESIZE
+
+TERM_COLOR_DEFAULT   // -1
+TERM_COLOR_BLACK     // 0
+TERM_COLOR_RED       // 1
+TERM_COLOR_GREEN     // 2
+TERM_COLOR_YELLOW    // 3
+TERM_COLOR_BLUE      // 4
+TERM_COLOR_MAGENTA   // 5
+TERM_COLOR_CYAN      // 6
+TERM_COLOR_WHITE     // 7
+```
+
+Règles normatives :
+
+- les constantes `KEY_*` et `TERM_COLOR_*` sont des `int` globaux prédéfinis ;
+- `TERM_COLOR_DEFAULT` signifie « couleur par défaut du terminal » ;
+- les couleurs sont limitées à la palette ANSI de base pour préserver la portabilité ;
+- les valeurs numériques exactes des constantes `KEY_*` sont définies par l'implémentation, mais elles doivent être stables au sein d'une même version du langage.
+
+#### API terminal interactive
+
+L'API terminal a pour objectif de permettre l'écriture d'interfaces texte interactives
+(menus, boîtes de dialogue, listes, jauges, écrans redessinés) sans dépendance externe.
+
+Règles générales :
+
+- `termIsTTY()` retourne `true` uniquement si le runtime est attaché à un terminal interactif ;
+- sur WebAssembly, `termIsTTY()` retourne `false` et `termGetSize()` retourne `TerminalSize { 0, 0 }` ;
+- sur WebAssembly, toutes les autres fonctions `term*` lèvent une erreur runtime : `terminal API is not available on this platform` ;
+- sur une exécution non interactive (entrée ou sortie non-TTY), toutes les fonctions `term*` autres que `termIsTTY()` et `termGetSize()` lèvent une erreur runtime : `terminal is not interactive` ;
+- si le runtime active un mode terminal spécial (notamment raw mode), il doit le restaurer automatiquement à la fin du programme, y compris en cas d'erreur fatale, dans la mesure où la plateforme le permet ;
+- toutes les coordonnées terminal sont **1-based** : la cellule en haut à gauche est `(1, 1)`.
+
+#### `termIsTTY`
+
+```c
+bool termIsTTY()
+```
+
+Retourne `true` si le programme s'exécute dans un terminal interactif, sinon `false`.
+
+#### `termGetSize`
+
+```c
+TerminalSize termGetSize()
+```
+
+Retourne la taille courante du terminal en cellules.
+
+Règles normatives :
+
+- `width` est le nombre de colonnes ;
+- `height` est le nombre de lignes ;
+- si la taille est inconnue, les deux champs valent `0`.
+
+#### `termClear`, `termClearLine`, `termMoveCursor`, `termWriteAt`
+
+```c
+void termClear()
+void termClearLine()
+void termMoveCursor(int row, int col)
+void termWriteAt(int row, int col, string text)
+```
+
+Règles normatives :
+
+- `termClear()` efface l'écran visible et place le curseur en `(1, 1)` ;
+- `termClearLine()` efface la ligne courante entière ;
+- `termMoveCursor(row, col)` déplace le curseur à la position demandée ;
+- `termWriteAt(row, col, text)` est sémantiquement équivalent à `termMoveCursor(row, col)` puis `print(text)` ;
+- `row < 1` ou `col < 1` provoque une erreur runtime claire ;
+- écrire hors de la taille visible du terminal ne doit pas provoquer d'erreur runtime ; le comportement d'écrêtage dépend du terminal sous-jacent.
+
+#### `termHideCursor`, `termShowCursor`, `termFlush`, `termBeep`
+
+```c
+void termHideCursor()
+void termShowCursor()
+void termFlush()
+void termBeep()
+```
+
+Règles normatives :
+
+- `termHideCursor()` masque le curseur si la plateforme le permet ;
+- `termShowCursor()` le rend visible ;
+- `termFlush()` force l'émission de toute sortie terminal tamponnée ;
+- `termBeep()` émet un signal sonore ou visuel selon les capacités du terminal ; si la plateforme ne supporte pas cette notion, l'appel est sans effet.
+
+#### `termSetStyle`, `termResetStyle`
+
+```c
+void termSetStyle(int fg, int bg, bool bold, bool reverse, bool underline)
+void termResetStyle()
+```
+
+Règles normatives :
+
+- `fg` et `bg` doivent valoir `TERM_COLOR_DEFAULT` ou une couleur ANSI de base `0..7` ; toute autre valeur est une erreur runtime ;
+- `termSetStyle` modifie le style pour les écritures suivantes ;
+- `termResetStyle` rétablit le style par défaut du terminal ;
+- l'implémentation peut ignorer silencieusement un attribut non supporté (`underline`, par exemple) mais ne doit pas échouer pour cette raison ;
+- les styles sont globaux au flux terminal courant jusqu'au prochain changement ou reset.
+
+#### `termEnableRawMode`, `termDisableRawMode`
+
+```c
+void termEnableRawMode()
+void termDisableRawMode()
+```
+
+Règles normatives :
+
+- `termEnableRawMode()` place le terminal dans un mode de lecture caractère par caractère, sans attente obligatoire d'une fin de ligne ;
+- `termDisableRawMode()` restaure le mode terminal précédent ;
+- les deux fonctions sont idempotentes ;
+- une implémentation peut continuer à laisser certaines combinaisons réservées au terminal ou à l'OS ; la spec n'exige pas une interception parfaite de toutes les touches.
+
+#### `termReadKey`, `termPollKey`
+
+```c
+KeyEvent termReadKey()
+KeyEvent termPollKey(int timeoutMs)
+```
+
+Règles normatives :
+
+- `termReadKey()` bloque jusqu'à la réception d'un événement clavier ou terminal ;
+- `termPollKey(timeoutMs)` attend au plus `timeoutMs` millisecondes ;
+- si aucun événement n'est reçu avant expiration, `termPollKey` retourne un `KeyEvent` de type `KEY_NONE` ;
+- `timeoutMs < 0` est une erreur runtime ;
+- les touches imprimables produisent `kind = KEY_CHAR` et remplissent `text` avec la chaîne UTF-8 correspondante ;
+- `Enter`, `Esc`, `Tab`, `Backspace`, `Delete`, les flèches, `Home`, `End`, `PageUp`, `PageDown` et le redimensionnement doivent produire les constantes dédiées lorsqu'elles sont reconnues ;
+- lorsqu'une touche spéciale n'est pas reconnue de manière portable, l'implémentation peut retourner `KEY_NONE` au lieu d'inventer un code non documenté.
+
+Exemple minimal :
+
+```c
+void main() {
+    if (!termIsTTY()) {
+        print("interactive terminal required\n");
+        return;
+    }
+
+    termEnableRawMode();
+    termHideCursor();
+    termClear();
+    termWriteAt(1, 1, "Press arrows, Enter, or Esc.");
+    termFlush();
+
+    while (true) {
+        KeyEvent ev = termReadKey();
+        if (ev.kind == KEY_ESC) break;
+        if (ev.kind == KEY_ENTER) {
+            termWriteAt(3, 1, "Enter pressed   ");
+        } else if (ev.kind == KEY_UP) {
+            termWriteAt(3, 1, "Up pressed      ");
+        } else if (ev.kind == KEY_DOWN) {
+            termWriteAt(3, 1, "Down pressed    ");
+        } else if (ev.kind == KEY_CHAR) {
+            termWriteAt(3, 1, "Char: " + ev.text + "      ");
+        }
+        termFlush();
+    }
+
+    termResetStyle();
+    termShowCursor();
+    termDisableRawMode();
 }
 ```
 
@@ -7261,11 +7513,13 @@ Cimple est :
 - avec lexer généré par **re2c** et parseur généré par **Lemon de SQLite** ;
 - **implémenté en C** (C99/C11) exclusivement, compilable avec GCC, Clang et MSVC sans modification ;
 - **multiplateforme** : fonctionne sans modification sur macOS, Linux, Unix, Windows et WebAssembly (Emscripten, cible `wasm32`) ; build natif via CMake ≥ 3.15 ; `exec` et `getEnv` ont un comportement dégradé défini sous WebAssembly ;
+- avec structures natives de runtime `TerminalSize` et `KeyEvent` pour les interactions terminal ;
 - avec fonctions, variables globales, conditions, boucles, `break`, `continue`, retours, appels ;
-- avec **constantes prédéfinies** numériques (`INT_MAX`, `INT_MIN`, `INT_SIZE`, `FLOAT_SIZE`, `FLOAT_DIG`, `FLOAT_EPSILON`, `FLOAT_MIN`, `FLOAT_MAX`) et mathématiques (`M_PI`, `M_E`, `M_TAU`, `M_SQRT2`, `M_LN2`, `M_LN10`) ; pour `int[]`, `float[]`, `bool[]`, `string[]`, indexés à partir de `0`, passés par référence aux fonctions ;
+- avec **constantes prédéfinies** numériques (`INT_MAX`, `INT_MIN`, `INT_SIZE`, `FLOAT_SIZE`, `FLOAT_DIG`, `FLOAT_EPSILON`, `FLOAT_MIN`, `FLOAT_MAX`), mathématiques (`M_PI`, `M_E`, `M_TAU`, `M_SQRT2`, `M_LN2`, `M_LN10`) et terminal (`KEY_*`, `TERM_COLOR_*`) ; pour `int[]`, `float[]`, `bool[]`, `string[]`, indexés à partir de `0`, passés par référence aux fonctions ;
 - avec fonctions intrinsèques de manipulation de tableaux : `count`, `arrayPush`, `arrayPop`, `arrayInsert`, `arrayRemove`, `arrayGet`, `arraySet` ;
 - avec fonctions de manipulation de chaînes incluant `len` (octets UTF-8), `glyphLen` (points de code NFC), `glyphAt` (accès par glyphe NFC), `join`, `split`, `concat`, `replace` (remplacement toutes occurrences) et `format` (substitution positionnelle `{}` avec `string[]`) ;
 - avec fonctions de temps et dates UTC : `now()` (epoch ms), `epochToYear/Month/Day/Hour/Minute/Second`, `makeEpoch` (composants → epoch, `-1` sur invalide), `formatDate` (tokens `YYYY MM DD HH mm ss w yday WW ISO`) ;
+- avec API terminal interactive : `termIsTTY`, `termGetSize`, effacement/curseur/style, raw mode, et lecture de touches via `KeyEvent` ;
 - avec fonctions d'entrées/sorties fichiers texte UTF-8 : `readFile`, `writeFile`, `appendFile`, `fileExists`, `readLines`, `writeLines` ; toute erreur d'I/O est une erreur runtime explicite ;
 - avec exécution de commandes externes via `exec` retournant un `ExecResult` opaque natif ; stdout et stderr capturés séparément via `execStdout` et `execStderr` ; code de retour via `execStatus` ;
 - avec fonctions mathématiques complètes : noyau (`sqrt`, `pow`, `abs`, `min`, `max`, `floor`, `ceil`, `round`, `trunc`, `fmod`, `approxEqual`), trigonométrie (`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`), logarithmes et exponentielle (`exp`, `log`, `log2`, `log10`) ;
@@ -7406,7 +7660,8 @@ void main() {
 10. Printing and reading
     10.1 print() — output to stdout
     10.2 input() — reading a line from stdin
-    10.3 Converting values before printing: toString()
+    10.3 Terminal interaction: screen, cursor, raw mode, key events
+    10.4 Converting values before printing: toString()
 
 11. Conditional statements
     11.1 if
@@ -7512,31 +7767,39 @@ void main() {
                                   FLOAT_EPSILON, FLOAT_MIN, FLOAT_MAX
     23.3 Mathematical constants: M_PI, M_E, M_TAU, M_SQRT2, M_LN2, M_LN10
 
-24. File I/O
-    24.1 readFile, writeFile, appendFile
-    24.2 fileExists
-    24.3 readLines, writeLines
-    24.4 Error handling in file operations
-    24.5 UTF-8 and line endings
+24. Terminal interaction
+    24.1 termIsTTY, termGetSize
+    24.2 termClear, termClearLine, termMoveCursor, termWriteAt
+    24.3 termHideCursor, termShowCursor, termFlush, termBeep
+    24.4 termSetStyle, termResetStyle
+    24.5 termEnableRawMode, termDisableRawMode
+    24.6 termReadKey, termPollKey, TerminalSize, KeyEvent
 
-25. Running external commands
-    25.1 exec: syntax and behaviour
-    25.2 The ExecResult type
-    25.3 execStatus, execStdout, execStderr
-    25.4 Passing environment variables
-    25.5 Error cases
+25. File I/O
+    25.1 readFile, writeFile, appendFile
+    25.2 fileExists
+    25.3 readLines, writeLines
+    25.4 Error handling in file operations
+    25.5 UTF-8 and line endings
 
-26. Environment variables
-    26.1 getEnv
+26. Running external commands
+    26.1 exec: syntax and behaviour
+    26.2 The ExecResult type
+    26.3 execStatus, execStdout, execStderr
+    26.4 Passing environment variables
+    26.5 Error cases
 
-27. Date and time
-    27.1 now() — current epoch in milliseconds
-    27.2 epochToYear, epochToMonth, epochToDay
-    27.3 epochToHour, epochToMinute, epochToSecond
-    27.4 makeEpoch
-    27.5 formatDate and format tokens
-    27.6 Working with durations
-    27.7 UTC and the absence of time zones
+27. Environment variables
+    27.1 getEnv
+
+28. Date and time
+    28.1 now() — current epoch in milliseconds
+    28.2 epochToYear, epochToMonth, epochToDay
+    28.3 epochToHour, epochToMinute, epochToSecond
+    28.4 makeEpoch
+    28.5 formatDate and format tokens
+    28.6 Working with durations
+    28.7 UTC and the absence of time zones
 ```
 
 ### 31.9 Structure — Part VI: Types in Depth
@@ -7642,6 +7905,12 @@ The manual version number must match the specification version number. A changel
 
 ```
 ## Changelog
+
+### v43
+- Added: terminal runtime structures `TerminalSize` and `KeyEvent` (section 6.3)
+- Added: interactive terminal API for TUI-style programs — `termIsTTY`, `termGetSize`, cursor/screen/style functions, raw mode, and key events (sections 9.1, 9.2, 30, 31)
+- Added: predefined terminal constants `KEY_*` and `TERM_COLOR_*` (section 9.2)
+- Updated: manual outline to require explicit terminal-interaction documentation (section 31)
 
 ### v42
 - Added: note d'implémentation obligatoire — passe de pré-collecte des noms de structures avant le parse principal, nécessaire pour produire des erreurs sémantiques (et non syntaxiques) sur les références forward, la récursion indirecte et les cycles d'héritage (section 6.8.1)

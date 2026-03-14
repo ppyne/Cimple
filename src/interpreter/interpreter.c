@@ -219,6 +219,31 @@ static Value eval_constant(const char *name) {
     if (strcmp(name, "M_SQRT2")       == 0) return val_float(1.4142135623730951);
     if (strcmp(name, "M_LN2")         == 0) return val_float(0.6931471805599453);
     if (strcmp(name, "M_LN10")        == 0) return val_float(2.302585092994046);
+    if (strcmp(name, "KEY_NONE")      == 0) return val_int(0);
+    if (strcmp(name, "KEY_CHAR")      == 0) return val_int(1);
+    if (strcmp(name, "KEY_ENTER")     == 0) return val_int(2);
+    if (strcmp(name, "KEY_ESC")       == 0) return val_int(3);
+    if (strcmp(name, "KEY_TAB")       == 0) return val_int(4);
+    if (strcmp(name, "KEY_BACKSPACE") == 0) return val_int(5);
+    if (strcmp(name, "KEY_DELETE")    == 0) return val_int(6);
+    if (strcmp(name, "KEY_UP")        == 0) return val_int(7);
+    if (strcmp(name, "KEY_DOWN")      == 0) return val_int(8);
+    if (strcmp(name, "KEY_LEFT")      == 0) return val_int(9);
+    if (strcmp(name, "KEY_RIGHT")     == 0) return val_int(10);
+    if (strcmp(name, "KEY_HOME")      == 0) return val_int(11);
+    if (strcmp(name, "KEY_END")       == 0) return val_int(12);
+    if (strcmp(name, "KEY_PAGE_UP")   == 0) return val_int(13);
+    if (strcmp(name, "KEY_PAGE_DOWN") == 0) return val_int(14);
+    if (strcmp(name, "KEY_RESIZE")    == 0) return val_int(15);
+    if (strcmp(name, "TERM_COLOR_DEFAULT") == 0) return val_int(-1);
+    if (strcmp(name, "TERM_COLOR_BLACK")   == 0) return val_int(0);
+    if (strcmp(name, "TERM_COLOR_RED")     == 0) return val_int(1);
+    if (strcmp(name, "TERM_COLOR_GREEN")   == 0) return val_int(2);
+    if (strcmp(name, "TERM_COLOR_YELLOW")  == 0) return val_int(3);
+    if (strcmp(name, "TERM_COLOR_BLUE")    == 0) return val_int(4);
+    if (strcmp(name, "TERM_COLOR_MAGENTA") == 0) return val_int(5);
+    if (strcmp(name, "TERM_COLOR_CYAN")    == 0) return val_int(6);
+    if (strcmp(name, "TERM_COLOR_WHITE")   == 0) return val_int(7);
     return val_void();
 }
 
@@ -298,6 +323,8 @@ static StructFieldVal *struct_field_lookup(StructVal *st, const char *name) {
 
 static int builtin_exception_field_count(const char *name) {
     if (!name) return 0;
+    if (strcmp(name, "TerminalSize") == 0) return 2;
+    if (strcmp(name, "KeyEvent") == 0) return 6;
     if (strcmp(name, "IoException") == 0) return 2;
     if (strcmp(name, "Exception") == 0 ||
         strcmp(name, "RuntimeException") == 0 ||
@@ -307,6 +334,14 @@ static int builtin_exception_field_count(const char *name) {
 
 static int builtin_exception_has_field(const char *type_name, const char *field_name) {
     if (!type_name || !field_name) return 0;
+    if (strcmp(type_name, "TerminalSize") == 0 &&
+        (strcmp(field_name, "width") == 0 || strcmp(field_name, "height") == 0))
+        return 1;
+    if (strcmp(type_name, "KeyEvent") == 0 &&
+        (strcmp(field_name, "kind") == 0 || strcmp(field_name, "code") == 0 ||
+         strcmp(field_name, "text") == 0 || strcmp(field_name, "ctrl") == 0 ||
+         strcmp(field_name, "alt") == 0 || strcmp(field_name, "shift") == 0))
+        return 1;
     if ((strcmp(type_name, "Exception") == 0 ||
          strcmp(type_name, "RuntimeException") == 0 ||
          strcmp(type_name, "RegExpException") == 0) &&
@@ -322,6 +357,36 @@ static void fill_builtin_exception_defaults(StructVal *out, const char *type_nam
     if (!out || !type_name) return;
     int idx = 0;
     while (idx < out->field_count && out->fields[idx].name) idx++;
+    if (strcmp(type_name, "TerminalSize") == 0) {
+        out->fields[idx].name = cimple_strdup("width");
+        out->fields[idx].type = TYPE_INT;
+        out->fields[idx].value = val_int(0);
+        out->fields[idx + 1].name = cimple_strdup("height");
+        out->fields[idx + 1].type = TYPE_INT;
+        out->fields[idx + 1].value = val_int(0);
+        return;
+    }
+    if (strcmp(type_name, "KeyEvent") == 0) {
+        out->fields[idx].name = cimple_strdup("kind");
+        out->fields[idx].type = TYPE_INT;
+        out->fields[idx].value = val_int(0);
+        out->fields[idx + 1].name = cimple_strdup("code");
+        out->fields[idx + 1].type = TYPE_INT;
+        out->fields[idx + 1].value = val_int(0);
+        out->fields[idx + 2].name = cimple_strdup("text");
+        out->fields[idx + 2].type = TYPE_STRING;
+        out->fields[idx + 2].value = val_string("");
+        out->fields[idx + 3].name = cimple_strdup("ctrl");
+        out->fields[idx + 3].type = TYPE_BOOL;
+        out->fields[idx + 3].value = val_bool(0);
+        out->fields[idx + 4].name = cimple_strdup("alt");
+        out->fields[idx + 4].type = TYPE_BOOL;
+        out->fields[idx + 4].value = val_bool(0);
+        out->fields[idx + 5].name = cimple_strdup("shift");
+        out->fields[idx + 5].type = TYPE_BOOL;
+        out->fields[idx + 5].value = val_bool(0);
+        return;
+    }
     if (strcmp(type_name, "Exception") == 0 ||
         strcmp(type_name, "RuntimeException") == 0 ||
         strcmp(type_name, "RegExpException") == 0) {
@@ -434,6 +499,11 @@ static Value create_union_instance(Interp *ip, const char *name) {
 }
 
 static Value clone_struct_instance(Interp *ip, const char *name, Scope *scope, int line, int col) {
+    if (strcmp(name, "TerminalSize") == 0 || strcmp(name, "KeyEvent") == 0) {
+        Value out = val_struct(name, builtin_exception_field_count(name));
+        fill_builtin_exception_defaults(out.u.st, name);
+        return out;
+    }
     AstNode *decl = find_struct_decl(ip, name);
     if (!decl) {
         error_runtime(line, col, "Unknown structure '%s'", name);
