@@ -1,0 +1,660 @@
+structure MenuItem {
+    string id    = "";
+    string label = "";
+}
+
+structure ChoiceItem {
+    string id      = "";
+    string label   = "";
+    bool   checked = false;
+}
+
+structure ShellRect {
+    int row    = 1;
+    int col    = 1;
+    int width  = 40;
+    int height = 10;
+}
+
+int sbMinInt(int a, int b) {
+    if (a < b) { return a; }
+    return b;
+}
+
+int sbMaxInt(int a, int b) {
+    if (a > b) { return a; }
+    return b;
+}
+
+int sbClampInt(int value, int low, int high) {
+    if (value < low) { return low; }
+    if (value > high) { return high; }
+    return value;
+}
+
+string sbSpaces(int n) {
+    if (n <= 0) { return ""; }
+    return repeat(" ", n);
+}
+
+string sbClip(string text, int width) {
+    if (width <= 0) { return ""; }
+    if (len(text) <= width) { return text; }
+    if (width <= 3) { return substr(text, 0, width); }
+    return substr(text, 0, width - 3) + "...";
+}
+
+string sbFit(string text, int width) {
+    string clipped = sbClip(text, width);
+    return padRight(clipped, width, " ");
+}
+
+string sbCenter(string text, int width) {
+    string clipped = sbClip(text, width);
+    int left = (width - len(clipped)) / 2;
+    int right = width - len(clipped) - left;
+    return sbSpaces(left) + clipped + sbSpaces(right);
+}
+
+int sbLongest(string[] lines) {
+    int longest = 0;
+    for (int i = 0; i < count(lines); i++) {
+        if (len(lines[i]) > longest) {
+            longest = len(lines[i]);
+        }
+    }
+    return longest;
+}
+
+ShellRect sbMakeRect(int desiredWidth, int desiredHeight) {
+    TerminalSize size = termGetSize();
+    int termWidth = size.width;
+    int termHeight = size.height;
+
+    if (termWidth <= 0) { termWidth = 80; }
+    if (termHeight <= 0) { termHeight = 24; }
+
+    int width = sbClampInt(desiredWidth, 24, termWidth - 2);
+    int height = sbClampInt(desiredHeight, 8, termHeight - 2);
+
+    ShellRect rect = clone ShellRect;
+    rect.width = width;
+    rect.height = height;
+    rect.row = sbMaxInt(1, (termHeight - height) / 2);
+    rect.col = sbMaxInt(1, (termWidth - width) / 2);
+    return rect;
+}
+
+void sbDrawBox(ShellRect rect, string title) {
+    string top = "+" + repeat("-", rect.width - 2) + "+";
+    string mid = "|" + repeat(" ", rect.width - 2) + "|";
+
+    for (int i = 0; i < rect.height; i++) {
+        termWriteAt(rect.row + i, rect.col, mid);
+    }
+
+    termWriteAt(rect.row, rect.col, top);
+    termWriteAt(rect.row + rect.height - 1, rect.col, top);
+    termWriteAt(rect.row + 1, rect.col, "|" + sbCenter(title, rect.width - 2) + "|");
+}
+
+void sbWriteBodyLine(ShellRect rect, int rowOffset, string text) {
+    termWriteAt(rect.row + rowOffset, rect.col, "|" + sbFit(text, rect.width - 2) + "|");
+}
+
+void sbDrawButtons(ShellRect rect, string[] labels, int selected, int rowOffset) {
+    int totalWidth = 0;
+    for (int i = 0; i < count(labels); i++) {
+        totalWidth = totalWidth + len(labels[i]) + 4;
+        if (i < count(labels) - 1) {
+            totalWidth = totalWidth + 3;
+        }
+    }
+
+    int col = rect.col + 1 + sbMaxInt(0, (rect.width - 2 - totalWidth) / 2);
+    int row = rect.row + rowOffset;
+    for (int i = 0; i < count(labels); i++) {
+        if (i == selected) {
+            termSetStyle(TERM_COLOR_BLACK, TERM_COLOR_CYAN, true, false, false);
+        }
+        termWriteAt(row, col, "[ " + labels[i] + " ]");
+        if (i == selected) {
+            termResetStyle();
+        }
+        col = col + len(labels[i]) + 7;
+    }
+}
+
+void sbDrawTextBlock(ShellRect rect, string[] lines, int startRowOffset, int maxLines, int scroll) {
+    for (int i = 0; i < maxLines; i++) {
+        int index = scroll + i;
+        if (index < count(lines)) {
+            sbWriteBodyLine(rect, startRowOffset + i, lines[index]);
+        } else {
+            sbWriteBodyLine(rect, startRowOffset + i, "");
+        }
+    }
+}
+
+string sbFallbackHeader(string kind, string title) {
+    return "[" + kind + "] " + title;
+}
+
+void sbFallbackPrint(string kind, string title, string text) {
+    print(sbFallbackHeader(kind, title) + "\n");
+    print(text + "\n");
+}
+
+void sbEnterScreen() {
+    termEnableRawMode();
+    termHideCursor();
+}
+
+void sbLeaveScreen() {
+    termShowCursor();
+    termDisableRawMode();
+}
+
+bool sbIsPrev(KeyEvent ev) {
+    return ev.kind == KEY_UP || ev.kind == KEY_LEFT;
+}
+
+bool sbIsNext(KeyEvent ev) {
+    return ev.kind == KEY_DOWN || ev.kind == KEY_RIGHT || ev.kind == KEY_TAB;
+}
+
+bool sbIsActivate(KeyEvent ev) {
+    return ev.kind == KEY_ENTER || (ev.kind == KEY_CHAR && ev.text == " ");
+}
+
+bool sbIsCancel(KeyEvent ev) {
+    return ev.kind == KEY_ESC;
+}
+
+void shellMessageBox(string title, string text) {
+    if (!termIsTTY()) {
+        sbFallbackPrint("MESSAGE", title, text);
+        return;
+    }
+
+    string[] lines = split(text, "\n");
+    int bodyRows = sbMaxInt(3, count(lines));
+    int width = sbMaxInt(36, sbLongest(lines) + 8);
+    width = sbMaxInt(width, len(title) + 6);
+    ShellRect rect = sbMakeRect(width, bodyRows + 6);
+
+    sbEnterScreen();
+    termClear();
+    sbDrawBox(rect, title);
+    sbDrawTextBlock(rect, lines, 3, bodyRows, 0);
+    sbDrawButtons(rect, ["OK"], 0, rect.height - 2);
+    termFlush();
+
+    while (true) {
+        KeyEvent ev = termReadKey();
+        if (sbIsActivate(ev) || sbIsCancel(ev)) {
+            break;
+        }
+    }
+
+    termClear();
+    termFlush();
+    sbLeaveScreen();
+}
+
+void shellInfoBox(string title, string text) {
+    shellMessageBox(title, text);
+}
+
+bool shellYesNoBox(string title, string question, bool defaultYes) {
+    if (!termIsTTY()) {
+        sbFallbackPrint("YESNO", title, question + "\nDefault: " + toString(defaultYes));
+        return defaultYes;
+    }
+
+    string[] lines = split(question, "\n");
+    int bodyRows = sbMaxInt(3, count(lines));
+    int width = sbMaxInt(42, sbLongest(lines) + 8);
+    width = sbMaxInt(width, len(title) + 6);
+    ShellRect rect = sbMakeRect(width, bodyRows + 6);
+    int selected = 0;
+    if (!defaultYes) { selected = 1; }
+
+    sbEnterScreen();
+    while (true) {
+        termClear();
+        sbDrawBox(rect, title);
+        sbDrawTextBlock(rect, lines, 3, bodyRows, 0);
+        sbDrawButtons(rect, ["Yes", "No"], selected, rect.height - 2);
+        termFlush();
+
+        KeyEvent ev = termReadKey();
+        if (sbIsPrev(ev) || sbIsNext(ev)) {
+            selected = 1 - selected;
+        } else if (sbIsActivate(ev)) {
+            termClear();
+            termFlush();
+            sbLeaveScreen();
+            return selected == 0;
+        } else if (sbIsCancel(ev)) {
+            termClear();
+            termFlush();
+            sbLeaveScreen();
+            return false;
+        } else if (ev.kind == KEY_CHAR && (ev.text == "y" || ev.text == "Y")) {
+            termClear();
+            termFlush();
+            sbLeaveScreen();
+            return true;
+        } else if (ev.kind == KEY_CHAR && (ev.text == "n" || ev.text == "N")) {
+            termClear();
+            termFlush();
+            sbLeaveScreen();
+            return false;
+        }
+    }
+
+    return false;
+}
+
+string sbDropLast(string value) {
+    if (len(value) == 0) { return ""; }
+    return substr(value, 0, len(value) - 1);
+}
+
+string sbMask(string value) {
+    return repeat("*", len(value));
+}
+
+string sbInputFallback(string kind, string title, string prompt, string defaultValue) {
+    sbFallbackPrint(kind, title, prompt + "\nDefault: " + defaultValue);
+    return defaultValue;
+}
+
+string sbInputBoxInternal(string kind, string title, string prompt, string initialValue, bool masked) {
+    if (!termIsTTY()) {
+        return sbInputFallback(kind, title, prompt, initialValue);
+    }
+
+    string value = initialValue;
+    string[] lines = split(prompt, "\n");
+    int bodyRows = sbMaxInt(2, count(lines));
+    int width = sbMaxInt(50, sbLongest(lines) + 10);
+    width = sbMaxInt(width, len(initialValue) + 12);
+    width = sbMaxInt(width, len(title) + 6);
+    ShellRect rect = sbMakeRect(width, bodyRows + 8);
+    int inputWidth = rect.width - 6;
+
+    sbEnterScreen();
+    while (true) {
+        string shown = value;
+        if (masked) {
+            shown = sbMask(value);
+        }
+
+        termClear();
+        sbDrawBox(rect, title);
+        sbDrawTextBlock(rect, lines, 3, bodyRows, 0);
+        sbWriteBodyLine(rect, bodyRows + 3, "> " + sbFit(shown, inputWidth - 2));
+        sbDrawButtons(rect, ["OK", "Cancel"], 0, rect.height - 2);
+        termMoveCursor(rect.row + bodyRows + 3, rect.col + 4 + sbMinInt(len(shown), inputWidth - 2));
+        termShowCursor();
+        termFlush();
+
+        KeyEvent ev = termReadKey();
+        if (ev.kind == KEY_CHAR) {
+            if (len(value) < 256) {
+                value = value + ev.text;
+            }
+        } else if (ev.kind == KEY_BACKSPACE) {
+            value = sbDropLast(value);
+        } else if (ev.kind == KEY_ENTER) {
+            termHideCursor();
+            termClear();
+            termFlush();
+            sbLeaveScreen();
+            return value;
+        } else if (ev.kind == KEY_ESC) {
+            termHideCursor();
+            termClear();
+            termFlush();
+            sbLeaveScreen();
+            return initialValue;
+        }
+    }
+
+    return initialValue;
+}
+
+string shellInputBox(string title, string prompt, string initialValue) {
+    return sbInputBoxInternal("INPUT", title, prompt, initialValue, false);
+}
+
+void shellTextBox(string title, string text) {
+    if (!termIsTTY()) {
+        sbFallbackPrint("TEXT", title, text);
+        return;
+    }
+
+    string[] lines = split(text, "\n");
+    int width = sbMaxInt(50, sbLongest(lines) + 8);
+    width = sbMaxInt(width, len(title) + 6);
+    ShellRect rect = sbMakeRect(width, 18);
+    int visibleRows = rect.height - 6;
+    int scroll = 0;
+    int maxScroll = sbMaxInt(0, count(lines) - visibleRows);
+
+    sbEnterScreen();
+    while (true) {
+        termClear();
+        sbDrawBox(rect, title);
+        sbDrawTextBlock(rect, lines, 3, visibleRows, scroll);
+        sbWriteBodyLine(rect, rect.height - 3, "Use arrows/Page Up/Page Down, Enter or Esc to close");
+        sbDrawButtons(rect, ["Close"], 0, rect.height - 2);
+        termFlush();
+
+        KeyEvent ev = termReadKey();
+        if (ev.kind == KEY_UP) {
+            scroll = sbClampInt(scroll - 1, 0, maxScroll);
+        } else if (ev.kind == KEY_DOWN) {
+            scroll = sbClampInt(scroll + 1, 0, maxScroll);
+        } else if (ev.kind == KEY_PAGE_UP) {
+            scroll = sbClampInt(scroll - visibleRows, 0, maxScroll);
+        } else if (ev.kind == KEY_PAGE_DOWN) {
+            scroll = sbClampInt(scroll + visibleRows, 0, maxScroll);
+        } else if (sbIsActivate(ev) || sbIsCancel(ev)) {
+            break;
+        }
+    }
+
+    termClear();
+    termFlush();
+    sbLeaveScreen();
+}
+
+string shellPasswordBox(string title, string prompt) {
+    return sbInputBoxInternal("PASSWORD", title, prompt, "", true);
+}
+
+int shellMenuBox(string title, string prompt, MenuItem[] items, int selected) {
+    if (count(items) == 0) {
+        return -1;
+    }
+
+    selected = sbClampInt(selected, 0, count(items) - 1);
+
+    if (!termIsTTY()) {
+        string[] lines = [prompt, "Default item: " + items[selected].id];
+        sbFallbackPrint("MENU", title, join(lines, "\n"));
+        return selected;
+    }
+
+    string[] promptLines = split(prompt, "\n");
+    int longestLabel = 0;
+    for (int i = 0; i < count(items); i++) {
+        if (len(items[i].label) > longestLabel) {
+            longestLabel = len(items[i].label);
+        }
+    }
+
+    int visibleRows = sbMinInt(count(items), 8);
+    int width = sbMaxInt(54, sbLongest(promptLines) + 8);
+    width = sbMaxInt(width, longestLabel + 14);
+    width = sbMaxInt(width, len(title) + 6);
+    ShellRect rect = sbMakeRect(width, count(promptLines) + visibleRows + 6);
+    int scroll = 0;
+
+    sbEnterScreen();
+    while (true) {
+        if (selected < scroll) { scroll = selected; }
+        if (selected >= scroll + visibleRows) { scroll = selected - visibleRows + 1; }
+
+        termClear();
+        sbDrawBox(rect, title);
+        sbDrawTextBlock(rect, promptLines, 3, count(promptLines), 0);
+
+        for (int i = 0; i < visibleRows; i++) {
+            int index = scroll + i;
+            string line = "  " + items[index].id + "  " + items[index].label;
+            int row = rect.row + 3 + count(promptLines) + i;
+            if (index == selected) {
+                termSetStyle(TERM_COLOR_BLACK, TERM_COLOR_CYAN, true, false, false);
+                termWriteAt(row, rect.col + 2, sbFit("> " + line, rect.width - 4));
+                termResetStyle();
+            } else {
+                termWriteAt(row, rect.col + 2, sbFit("  " + line, rect.width - 4));
+            }
+        }
+
+        sbDrawButtons(rect, ["Select", "Cancel"], 0, rect.height - 2);
+        termFlush();
+
+        KeyEvent ev = termReadKey();
+        if (ev.kind == KEY_UP && selected > 0) {
+            selected--;
+        } else if (ev.kind == KEY_DOWN && selected < count(items) - 1) {
+            selected++;
+        } else if (sbIsActivate(ev)) {
+            termClear();
+            termFlush();
+            sbLeaveScreen();
+            return selected;
+        } else if (sbIsCancel(ev)) {
+            termClear();
+            termFlush();
+            sbLeaveScreen();
+            return -1;
+        }
+    }
+
+    return -1;
+}
+
+void shellCheckListBox(string title, string prompt, ChoiceItem[] items, int selected) {
+    if (count(items) == 0) {
+        return;
+    }
+
+    selected = sbClampInt(selected, 0, count(items) - 1);
+
+    if (!termIsTTY()) {
+        sbFallbackPrint("CHECKLIST", title, prompt + "\nItems: " + toString(count(items)));
+        return;
+    }
+
+    string[] promptLines = split(prompt, "\n");
+    int longestLabel = 0;
+    for (int i = 0; i < count(items); i++) {
+        if (len(items[i].label) > longestLabel) {
+            longestLabel = len(items[i].label);
+        }
+    }
+
+    int visibleRows = sbMinInt(count(items), 8);
+    int width = sbMaxInt(58, sbLongest(promptLines) + 8);
+    width = sbMaxInt(width, longestLabel + 18);
+    width = sbMaxInt(width, len(title) + 6);
+    ShellRect rect = sbMakeRect(width, count(promptLines) + visibleRows + 7);
+    int scroll = 0;
+
+    sbEnterScreen();
+    while (true) {
+        if (selected < scroll) { scroll = selected; }
+        if (selected >= scroll + visibleRows) { scroll = selected - visibleRows + 1; }
+
+        termClear();
+        sbDrawBox(rect, title);
+        sbDrawTextBlock(rect, promptLines, 3, count(promptLines), 0);
+
+        for (int i = 0; i < visibleRows; i++) {
+            int index = scroll + i;
+            string mark = "[ ]";
+            if (items[index].checked) { mark = "[x]"; }
+            string line = mark + " " + items[index].id + "  " + items[index].label;
+            int row = rect.row + 3 + count(promptLines) + i;
+            if (index == selected) {
+                termSetStyle(TERM_COLOR_BLACK, TERM_COLOR_CYAN, true, false, false);
+                termWriteAt(row, rect.col + 2, sbFit("> " + line, rect.width - 4));
+                termResetStyle();
+            } else {
+                termWriteAt(row, rect.col + 2, sbFit("  " + line, rect.width - 4));
+            }
+        }
+
+        sbWriteBodyLine(rect, rect.height - 3, "Space toggles, Enter confirms, Esc keeps current state");
+        sbDrawButtons(rect, ["OK"], 0, rect.height - 2);
+        termFlush();
+
+        KeyEvent ev = termReadKey();
+        if (ev.kind == KEY_UP && selected > 0) {
+            selected--;
+        } else if (ev.kind == KEY_DOWN && selected < count(items) - 1) {
+            selected++;
+        } else if (ev.kind == KEY_CHAR && ev.text == " ") {
+            items[selected].checked = !items[selected].checked;
+        } else if (ev.kind == KEY_ENTER) {
+            termClear();
+            termFlush();
+            sbLeaveScreen();
+            return;
+        } else if (ev.kind == KEY_ESC) {
+            termClear();
+            termFlush();
+            sbLeaveScreen();
+            return;
+        }
+    }
+}
+
+void shellRadioListBox(string title, string prompt, ChoiceItem[] items, int selected) {
+    if (count(items) == 0) {
+        return;
+    }
+
+    selected = sbClampInt(selected, 0, count(items) - 1);
+
+    bool foundChecked = false;
+    for (int i = 0; i < count(items); i++) {
+        if (items[i].checked) {
+            selected = i;
+            foundChecked = true;
+            break;
+        }
+    }
+    if (!foundChecked) {
+        items[selected].checked = true;
+    }
+
+    if (!termIsTTY()) {
+        sbFallbackPrint("RADIOLIST", title, prompt + "\nDefault item: " + items[selected].id);
+        return;
+    }
+
+    string[] promptLines = split(prompt, "\n");
+    int longestLabel = 0;
+    for (int i = 0; i < count(items); i++) {
+        if (len(items[i].label) > longestLabel) {
+            longestLabel = len(items[i].label);
+        }
+    }
+
+    int visibleRows = sbMinInt(count(items), 8);
+    int width = sbMaxInt(58, sbLongest(promptLines) + 8);
+    width = sbMaxInt(width, longestLabel + 18);
+    width = sbMaxInt(width, len(title) + 6);
+    ShellRect rect = sbMakeRect(width, count(promptLines) + visibleRows + 7);
+    int scroll = 0;
+
+    sbEnterScreen();
+    while (true) {
+        if (selected < scroll) { scroll = selected; }
+        if (selected >= scroll + visibleRows) { scroll = selected - visibleRows + 1; }
+
+        termClear();
+        sbDrawBox(rect, title);
+        sbDrawTextBlock(rect, promptLines, 3, count(promptLines), 0);
+
+        for (int i = 0; i < visibleRows; i++) {
+            int index = scroll + i;
+            string mark = "( )";
+            if (items[index].checked) { mark = "(*)"; }
+            string line = mark + " " + items[index].id + "  " + items[index].label;
+            int row = rect.row + 3 + count(promptLines) + i;
+            if (index == selected) {
+                termSetStyle(TERM_COLOR_BLACK, TERM_COLOR_CYAN, true, false, false);
+                termWriteAt(row, rect.col + 2, sbFit("> " + line, rect.width - 4));
+                termResetStyle();
+            } else {
+                termWriteAt(row, rect.col + 2, sbFit("  " + line, rect.width - 4));
+            }
+        }
+
+        sbWriteBodyLine(rect, rect.height - 3, "Space selects, Enter confirms, Esc keeps current state");
+        sbDrawButtons(rect, ["OK"], 0, rect.height - 2);
+        termFlush();
+
+        KeyEvent ev = termReadKey();
+        if (ev.kind == KEY_UP && selected > 0) {
+            selected--;
+        } else if (ev.kind == KEY_DOWN && selected < count(items) - 1) {
+            selected++;
+        } else if (ev.kind == KEY_CHAR && ev.text == " ") {
+            for (int i = 0; i < count(items); i++) {
+                items[i].checked = i == selected;
+            }
+        } else if (ev.kind == KEY_ENTER) {
+            for (int i = 0; i < count(items); i++) {
+                items[i].checked = i == selected;
+            }
+            termClear();
+            termFlush();
+            sbLeaveScreen();
+            return;
+        } else if (ev.kind == KEY_ESC) {
+            termClear();
+            termFlush();
+            sbLeaveScreen();
+            return;
+        }
+    }
+}
+
+string sbGaugeBar(int percent, int width) {
+    int clamped = sbClampInt(percent, 0, 100);
+    int filled = (clamped * width) / 100;
+    return "[" + repeat("#", filled) + repeat("-", width - filled) + "]";
+}
+
+void shellGaugeBox(string title, string prompt, int percent) {
+    int clamped = sbClampInt(percent, 0, 100);
+
+    if (!termIsTTY()) {
+        sbFallbackPrint("GAUGE", title, prompt + "\n" + toString(clamped) + "%");
+        return;
+    }
+
+    string[] lines = split(prompt, "\n");
+    int bodyRows = sbMaxInt(2, count(lines));
+    int width = sbMaxInt(50, sbLongest(lines) + 8);
+    width = sbMaxInt(width, len(title) + 6);
+    ShellRect rect = sbMakeRect(width, bodyRows + 7);
+
+    sbEnterScreen();
+    termClear();
+    sbDrawBox(rect, title);
+    sbDrawTextBlock(rect, lines, 3, bodyRows, 0);
+    sbWriteBodyLine(rect, bodyRows + 3, sbCenter(sbGaugeBar(clamped, rect.width - 14) + " " + toString(clamped) + "%", rect.width - 2));
+    sbDrawButtons(rect, ["Close"], 0, rect.height - 2);
+    termFlush();
+
+    while (true) {
+        KeyEvent ev = termReadKey();
+        if (sbIsActivate(ev) || sbIsCancel(ev)) {
+            break;
+        }
+    }
+
+    termClear();
+    termFlush();
+    sbLeaveScreen();
+}

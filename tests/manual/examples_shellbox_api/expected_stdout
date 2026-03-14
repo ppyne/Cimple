@@ -1,0 +1,19 @@
+[MESSAGE] Demo
+Hello from tests
+[MENU] Menu
+Pick one
+Default item: first
+menu=0
+menu_id=first
+[CHECKLIST] Checklist
+Pick many
+Items: 2
+checklist=left
+[RADIOLIST] Radiolist
+Pick one
+Default item: beta
+radiolist=beta
+[GAUGE] Gauge
+Steady progress
+50%
+gauge_done

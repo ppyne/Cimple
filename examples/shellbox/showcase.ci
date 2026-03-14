@@ -1,0 +1,69 @@
+import "shellbox.ci";
+
+void pushMenu(MenuItem[] items, string id, string label) {
+    MenuItem item = clone MenuItem;
+    item.id = id;
+    item.label = label;
+    arrayPush(items, item);
+}
+
+void pushChoice(ChoiceItem[] items, string id, string label, bool checked) {
+    ChoiceItem item = clone ChoiceItem;
+    item.id = id;
+    item.label = label;
+    item.checked = checked;
+    arrayPush(items, item);
+}
+
+string checkedIds(ChoiceItem[] items) {
+    string[] ids = [];
+    for (int i = 0; i < count(items); i++) {
+        if (items[i].checked) {
+            arrayPush(ids, items[i].id);
+        }
+    }
+    return join(ids, ",");
+}
+
+void main() {
+    shellInfoBox("ShellBox", "Info box\nA lightweight whiptail-style toolkit written in Cimple.");
+    shellMessageBox("Welcome", "This showcase exercises the shellbox API.\nUse arrows, Enter, Esc, and Space in interactive mode.");
+
+    bool accepted = shellYesNoBox("Question", "Do you want to continue to the input boxes?", true);
+    print("yesno=" + toString(accepted) + "\n");
+
+    string name = shellInputBox("Input", "Type a project name", "shellbox");
+    print("input=" + name + "\n");
+
+    string password = shellPasswordBox("Password", "Type a secret value");
+    print("password_len=" + toString(len(password)) + "\n");
+
+    shellTextBox("Text", "ShellBox offers:\n- info and message boxes\n- choice dialogs\n- text viewing\n- a simple gauge");
+
+    MenuItem[] menu = [];
+    pushMenu(menu, "info", "Show the info panel");
+    pushMenu(menu, "build", "Build the project");
+    pushMenu(menu, "quit", "Leave the showcase");
+    int menuIndex = shellMenuBox("Menu", "Pick one entry", menu, 0);
+    print("menu=" + toString(menuIndex) + "\n");
+    if (menuIndex >= 0) {
+        print("menu_id=" + menu[menuIndex].id + "\n");
+    }
+
+    ChoiceItem[] checks = [];
+    pushChoice(checks, "docs", "Read the manual", true);
+    pushChoice(checks, "tests", "Run the tests", false);
+    pushChoice(checks, "release", "Prepare a release", true);
+    shellCheckListBox("Checklist", "Toggle one or more tasks", checks, 0);
+    print("checklist=" + checkedIds(checks) + "\n");
+
+    ChoiceItem[] radios = [];
+    pushChoice(radios, "debug", "Debug profile", false);
+    pushChoice(radios, "release", "Release profile", true);
+    pushChoice(radios, "san", "Sanitizer profile", false);
+    shellRadioListBox("Radiolist", "Choose exactly one profile", radios, 1);
+    print("radiolist=" + checkedIds(radios) + "\n");
+
+    shellGaugeBox("Gauge", "Build progress", 73);
+    print("gauge=73\n");
+}

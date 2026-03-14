@@ -1,0 +1,52 @@
+import "../../../examples/shellbox/shellbox.ci";
+
+void pushMenu(MenuItem[] items, string id, string label) {
+    MenuItem item = clone MenuItem;
+    item.id = id;
+    item.label = label;
+    arrayPush(items, item);
+}
+
+void pushChoice(ChoiceItem[] items, string id, string label, bool checked) {
+    ChoiceItem item = clone ChoiceItem;
+    item.id = id;
+    item.label = label;
+    item.checked = checked;
+    arrayPush(items, item);
+}
+
+string checkedIds(ChoiceItem[] items) {
+    string[] ids = [];
+    for (int i = 0; i < count(items); i++) {
+        if (items[i].checked) {
+            arrayPush(ids, items[i].id);
+        }
+    }
+    return join(ids, ",");
+}
+
+void main() {
+    shellMessageBox("Demo", "Hello from tests");
+
+    MenuItem[] menu = [];
+    pushMenu(menu, "first", "First entry");
+    pushMenu(menu, "second", "Second entry");
+    int selected = shellMenuBox("Menu", "Pick one", menu, 0);
+    print("menu=" + toString(selected) + "\n");
+    print("menu_id=" + menu[selected].id + "\n");
+
+    ChoiceItem[] checks = [];
+    pushChoice(checks, "left", "Left choice", true);
+    pushChoice(checks, "right", "Right choice", false);
+    shellCheckListBox("Checklist", "Pick many", checks, 0);
+    print("checklist=" + checkedIds(checks) + "\n");
+
+    ChoiceItem[] radios = [];
+    pushChoice(radios, "alpha", "Alpha", false);
+    pushChoice(radios, "beta", "Beta", true);
+    shellRadioListBox("Radiolist", "Pick one", radios, 0);
+    print("radiolist=" + checkedIds(radios) + "\n");
+
+    shellGaugeBox("Gauge", "Steady progress", 50);
+    print("gauge_done\n");
+}
