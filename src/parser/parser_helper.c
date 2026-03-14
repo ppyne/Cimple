@@ -16,7 +16,7 @@ int parse_state_has_struct(const ParseState *ps, const char *name) {
 }
 
 int parse_state_has_type_name(const ParseState *ps, const char *name) {
-    return parse_state_has_struct(ps, name);
+    return parse_state_has_struct(ps, name) || strcmp(name, "RegExp") == 0 || strcmp(name, "RegExpMatch") == 0;
 }
 
 void parse_state_add_struct(ParseState *ps, const char *name) {

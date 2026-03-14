@@ -1,6 +1,7 @@
 #include "value.h"
 #include "../common/memory.h"
 #include "../common/error.h"
+#include "regex_engine.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,6 +81,20 @@ Value val_union(const char *union_name, int member_count) {
     return r;
 }
 
+Value val_regexp(RegExpVal *re) {
+    Value r;
+    r.type = TYPE_REGEXP;
+    r.u.re = re;
+    return r;
+}
+
+Value val_regexp_match(RegExpMatchVal *m) {
+    Value r;
+    r.type = TYPE_REGEXP_MATCH;
+    r.u.rem = m;
+    return r;
+}
+
 Value val_exec(int status, char *out, char *err) {
     Value r;
     r.type           = TYPE_EXEC_RESULT;
@@ -101,6 +116,7 @@ Value value_default(CimpleType t) {
     case TYPE_FUNC:   return val_func("");
     case TYPE_BYTE:   return val_byte(0);
     case TYPE_UNION: { Value v; v.type = TYPE_VOID; v.u.i = 0; return v; }
+    case TYPE_REGEXP_MATCH: return val_regexp_match(regex_match_empty());
     case TYPE_INT_ARR:      return val_array(TYPE_INT);
     case TYPE_FLOAT_ARR:    return val_array(TYPE_FLOAT);
     case TYPE_BOOL_ARR:     return val_array(TYPE_BOOL);
@@ -108,6 +124,7 @@ Value value_default(CimpleType t) {
     case TYPE_BYTE_ARR:     return val_array(TYPE_BYTE);
     case TYPE_STRUCT_ARR:   return val_array(TYPE_STRUCT);
     case TYPE_UNION_ARR:    return val_array(TYPE_UNION);
+    case TYPE_REGEXP_MATCH_ARR: return val_array(TYPE_REGEXP_MATCH);
     /* 2D array defaults — empty outer array */
     case TYPE_INT_ARR_ARR:    return val_array(TYPE_INT_ARR);
     case TYPE_FLOAT_ARR_ARR:  return val_array(TYPE_FLOAT_ARR);
@@ -156,6 +173,10 @@ static void arr_ensure(ArrayVal *a, int new_count) {
         a->data.unions = (UnionVal **)cimple_realloc(a->data.unions,
                                                    (size_t)new_cap * sizeof(UnionVal *));
         break;
+    case TYPE_REGEXP_MATCH:
+        a->data.rems = (RegExpMatchVal **)cimple_realloc(a->data.rems,
+                                                   (size_t)new_cap * sizeof(RegExpMatchVal *));
+        break;
     default:
         /* 2D arrays: elem_type is itself an array type */
         if (type_is_array(a->elem_type)) {
@@ -177,6 +198,7 @@ void array_push(ArrayVal *a, Value v) {
     case TYPE_BYTE:   a->data.bytes[a->count]   = (unsigned char)v.u.i; break;
     case TYPE_STRUCT: a->data.structs[a->count] = value_copy(v).u.st; break;
     case TYPE_UNION:  a->data.unions[a->count] = value_copy(v).u.un; break;
+    case TYPE_REGEXP_MATCH: a->data.rems[a->count] = value_copy(v).u.rem; break;
     default:
         if (type_is_array(a->elem_type)) {
             /* deep-copy the inner array and store the ArrayVal* */
@@ -217,6 +239,11 @@ void array_push_owned(ArrayVal *a, Value *v) {
         v->u.un = NULL;
         v->type = TYPE_VOID;
         break;
+    case TYPE_REGEXP_MATCH:
+        a->data.rems[a->count++] = v->u.rem;
+        v->u.rem = NULL;
+        v->type = TYPE_VOID;
+        break;
     default:
         if (type_is_array(a->elem_type)) {
             a->data.arrays[a->count++] = v->u.arr;
@@ -246,6 +273,9 @@ Value array_pop(ArrayVal *a, int line, int col) {
     }
     case TYPE_UNION: {
         Value v; v.type = TYPE_UNION; v.u.un = a->data.unions[a->count]; a->data.unions[a->count] = NULL; return v;
+    }
+    case TYPE_REGEXP_MATCH: {
+        Value v; v.type = TYPE_REGEXP_MATCH; v.u.rem = a->data.rems[a->count]; a->data.rems[a->count] = NULL; return v;
     }
     default:
         if (type_is_array(a->elem_type)) {
@@ -297,6 +327,11 @@ void array_insert(ArrayVal *a, int idx, Value v, int line, int col) {
                 (size_t)(a->count - idx) * sizeof(UnionVal *));
         a->data.unions[idx] = value_copy(v).u.un;
         break;
+    case TYPE_REGEXP_MATCH:
+        memmove(&a->data.rems[idx + 1], &a->data.rems[idx],
+                (size_t)(a->count - idx) * sizeof(RegExpMatchVal *));
+        a->data.rems[idx] = value_copy(v).u.rem;
+        break;
     default:
         if (type_is_array(a->elem_type)) {
             memmove(&a->data.arrays[idx + 1], &a->data.arrays[idx],
@@ -321,6 +356,10 @@ void array_remove(ArrayVal *a, int idx, int line, int col) {
     }
     if (a->elem_type == TYPE_UNION) {
         Value tmp; tmp.type = TYPE_UNION; tmp.u.un = a->data.unions[idx];
+        value_free(&tmp);
+    }
+    if (a->elem_type == TYPE_REGEXP_MATCH) {
+        Value tmp; tmp.type = TYPE_REGEXP_MATCH; tmp.u.rem = a->data.rems[idx];
         value_free(&tmp);
     }
     if (type_is_array(a->elem_type) && a->data.arrays[idx]) {
@@ -356,6 +395,10 @@ void array_remove(ArrayVal *a, int idx, int line, int col) {
         memmove(&a->data.unions[idx], &a->data.unions[idx + 1],
                 (size_t)(a->count - idx - 1) * sizeof(UnionVal *));
         break;
+    case TYPE_REGEXP_MATCH:
+        memmove(&a->data.rems[idx], &a->data.rems[idx + 1],
+                (size_t)(a->count - idx - 1) * sizeof(RegExpMatchVal *));
+        break;
     default:
         if (type_is_array(a->elem_type)) {
             memmove(&a->data.arrays[idx], &a->data.arrays[idx + 1],
@@ -383,6 +426,10 @@ Value array_get(ArrayVal *a, int idx, int line, int col) {
     }
     case TYPE_UNION: {
         Value v; v.type = TYPE_UNION; v.u.un = a->data.unions[idx];
+        return value_copy(v);
+    }
+    case TYPE_REGEXP_MATCH: {
+        Value v; v.type = TYPE_REGEXP_MATCH; v.u.rem = a->data.rems[idx];
         return value_copy(v);
     }
     default:
@@ -418,6 +465,12 @@ void array_set(ArrayVal *a, int idx, Value v, int line, int col) {
         Value tmp; tmp.type = TYPE_UNION; tmp.u.un = a->data.unions[idx];
         value_free(&tmp);
         a->data.unions[idx] = value_copy(v).u.un;
+        break;
+    }
+    case TYPE_REGEXP_MATCH: {
+        Value tmp; tmp.type = TYPE_REGEXP_MATCH; tmp.u.rem = a->data.rems[idx];
+        value_free(&tmp);
+        a->data.rems[idx] = value_copy(v).u.rem;
         break;
     }
     default:
@@ -469,6 +522,14 @@ void array_set_owned(ArrayVal *a, int idx, Value *v, int line, int col) {
         value_free(&tmp);
         a->data.unions[idx] = v->u.un;
         v->u.un = NULL;
+        v->type = TYPE_VOID;
+        break;
+    }
+    case TYPE_REGEXP_MATCH: {
+        Value tmp; tmp.type = TYPE_REGEXP_MATCH; tmp.u.rem = a->data.rems[idx];
+        value_free(&tmp);
+        a->data.rems[idx] = v->u.rem;
+        v->u.rem = NULL;
         v->type = TYPE_VOID;
         break;
     }
@@ -532,6 +593,12 @@ Value value_copy(Value v) {
                 out->data.unions[i] = value_copy(tmp).u.un;
             }
             break;
+        case TYPE_REGEXP_MATCH:
+            for (int i = 0; i < src->count; i++) {
+                Value tmp; tmp.type = TYPE_REGEXP_MATCH; tmp.u.rem = src->data.rems[i];
+                out->data.rems[i] = value_copy(tmp).u.rem;
+            }
+            break;
         default:
             if (type_is_array(src->elem_type)) {
                 /* 2D array: deep-copy each inner ArrayVal */
@@ -572,6 +639,12 @@ Value value_copy(Value v) {
         }
         return out;
     }
+    if (v.type == TYPE_REGEXP) {
+        return val_regexp(regex_copy_value(v.u.re));
+    }
+    if (v.type == TYPE_REGEXP_MATCH) {
+        return val_regexp_match(regex_match_copy(v.u.rem));
+    }
     if (v.type == TYPE_EXEC_RESULT) {
         return val_exec(v.u.exec.status,
                         cimple_strdup(v.u.exec.out),
@@ -604,6 +677,12 @@ void value_free(Value *v) {
             if (a->elem_type == TYPE_UNION) {
                 for (int i = 0; i < a->count; i++) {
                     Value tmp; tmp.type = TYPE_UNION; tmp.u.un = a->data.unions[i];
+                    value_free(&tmp);
+                }
+            }
+            if (a->elem_type == TYPE_REGEXP_MATCH) {
+                for (int i = 0; i < a->count; i++) {
+                    Value tmp; tmp.type = TYPE_REGEXP_MATCH; tmp.u.rem = a->data.rems[i];
                     value_free(&tmp);
                 }
             }
@@ -650,6 +729,12 @@ void value_free(Value *v) {
             free(un);
         }
         v->u.un = NULL;
+    } else if (v->type == TYPE_REGEXP) {
+        regex_free_value(v->u.re);
+        v->u.re = NULL;
+    } else if (v->type == TYPE_REGEXP_MATCH) {
+        regex_match_free(v->u.rem);
+        v->u.rem = NULL;
     } else if (v->type == TYPE_EXEC_RESULT) {
         free(v->u.exec.out);
         free(v->u.exec.err);
@@ -685,6 +770,10 @@ char *value_to_display(Value v) {
         return cimple_strdup(v.u.st && v.u.st->struct_name ? v.u.st->struct_name : "<struct>");
     case TYPE_UNION:
         return cimple_strdup(v.u.un && v.u.un->union_name ? v.u.un->union_name : "<union>");
+    case TYPE_REGEXP:
+        return cimple_strdup("RegExp");
+    case TYPE_REGEXP_MATCH:
+        return cimple_strdup(v.u.rem && v.u.rem->ok && v.u.rem->group_count > 0 ? v.u.rem->groups[0] : "");
     default:
         return cimple_strdup("<void>");
     }

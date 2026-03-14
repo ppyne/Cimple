@@ -1,0 +1,4 @@
+void main() {
+    RegExp re = regexCompile("(", "");
+    print(regexPattern(re) + "\n");
+}

@@ -1,0 +1,4 @@
+void main() {
+    RegExp re = regexCompile("\d+", "");
+    print(toString(regexTest(re, "123", -1)) + "\n");
+}

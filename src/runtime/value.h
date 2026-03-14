@@ -12,6 +12,8 @@ typedef struct Value Value;
 typedef struct StructFieldVal StructFieldVal;
 typedef struct StructVal StructVal;
 typedef struct UnionVal UnionVal;
+typedef struct RegExpVal RegExpVal;
+typedef struct RegExpMatchVal RegExpMatchVal;
 typedef struct ArrayVal ArrayVal;   /* forward typedef so 'ArrayVal **' works inside the struct */
 
 /* Dynamic array (used for arrays at runtime). */
@@ -26,6 +28,7 @@ struct ArrayVal {
         unsigned char *bytes;
         struct StructVal **structs;
         struct UnionVal  **unions;
+        struct RegExpMatchVal **rems;
         ArrayVal         **arrays;   /* for 2D arrays: elem_type is itself an array type */
     } data;
     int count;
@@ -49,6 +52,8 @@ struct Value {
         ArrayVal     *arr;
         StructVal    *st;
         UnionVal     *un;
+        RegExpVal    *re;
+        RegExpMatchVal *rem;
         ExecResultVal exec;
     } u;
 };
@@ -90,6 +95,8 @@ Value  val_void(void);
 Value  val_array(CimpleType elem_type);
 Value  val_struct(const char *struct_name, int field_count);
 Value  val_union(const char *union_name, int member_count);
+Value  val_regexp(RegExpVal *re);
+Value  val_regexp_match(RegExpMatchVal *m);
 Value  val_exec(int status, char *out, char *err);
 
 /* -----------------------------------------------------------------------

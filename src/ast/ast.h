@@ -34,7 +34,10 @@ typedef enum {
     TYPE_BYTE_ARR_ARR   = 22,
     TYPE_STRUCT_ARR_ARR = 23,
     TYPE_UNION_ARR_ARR  = 24,
-    TYPE_UNKNOWN        = 25
+    TYPE_REGEXP         = 26,
+    TYPE_REGEXP_MATCH   = 27,
+    TYPE_REGEXP_MATCH_ARR = 29,
+    TYPE_UNKNOWN        = 30
 } CimpleType;
 
 typedef struct FuncType {
@@ -50,7 +53,7 @@ static inline int type_is_array(CimpleType t) {
         || t == TYPE_INT_ARR_ARR || t == TYPE_FLOAT_ARR_ARR
         || t == TYPE_BOOL_ARR_ARR || t == TYPE_STR_ARR_ARR
         || t == TYPE_BYTE_ARR_ARR || t == TYPE_STRUCT_ARR_ARR
-        || t == TYPE_UNION_ARR_ARR;
+        || t == TYPE_UNION_ARR_ARR || t == TYPE_REGEXP_MATCH_ARR;
 }
 
 /* Returns the element type of an array type. */
@@ -63,6 +66,7 @@ static inline CimpleType type_elem(CimpleType t) {
     case TYPE_BYTE_ARR:     return TYPE_BYTE;
     case TYPE_STRUCT_ARR:   return TYPE_STRUCT;
     case TYPE_UNION_ARR:    return TYPE_UNION;
+    case TYPE_REGEXP_MATCH_ARR: return TYPE_REGEXP_MATCH;
     /* 2D → 1D */
     case TYPE_INT_ARR_ARR:    return TYPE_INT_ARR;
     case TYPE_FLOAT_ARR_ARR:  return TYPE_FLOAT_ARR;
@@ -85,6 +89,7 @@ static inline CimpleType type_make_array(CimpleType t) {
     case TYPE_BYTE:       return TYPE_BYTE_ARR;
     case TYPE_STRUCT:     return TYPE_STRUCT_ARR;
     case TYPE_UNION:      return TYPE_UNION_ARR;
+    case TYPE_REGEXP_MATCH: return TYPE_REGEXP_MATCH_ARR;
     /* 1D → 2D */
     case TYPE_INT_ARR:    return TYPE_INT_ARR_ARR;
     case TYPE_FLOAT_ARR:  return TYPE_FLOAT_ARR_ARR;

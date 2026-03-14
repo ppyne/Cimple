@@ -1,0 +1,7 @@
+void main() {
+    RegExp sep = regexCompile(",\s*", "");
+    string[] parts = regexSplit(sep, "a, b,  c", 0, -1);
+    for (int i = 0; i < count(parts); i++) {
+        print(parts[i] + "\n");
+    }
+}

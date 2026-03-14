@@ -1,0 +1,8 @@
+void main() {
+    RegExp a = regexCompile("abc", "i");
+    RegExp b = regexCompile("^abc$", "m");
+    RegExp c = regexCompile("a.b", "s");
+    print(regexFlags(a) + ":" + toString(regexTest(a, "AbC", 0)) + "\n");
+    print(toString(regexTest(b, "x\nabc\ny", 0)) + "\n");
+    print(toString(regexTest(c, "a\nb", 0)) + "\n");
+}

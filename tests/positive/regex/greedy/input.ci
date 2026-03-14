@@ -1,0 +1,6 @@
+void main() {
+    RegExp g = regexCompile("a.+b", "");
+    RegExp ng = regexCompile("a.+?b", "");
+    print(regexGroups(regexFind(g, "a123b456b", 0))[0] + "\n");
+    print(regexGroups(regexFind(ng, "a123b456b", 0))[0] + "\n");
+}

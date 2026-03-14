@@ -1,0 +1,8 @@
+void main() {
+    RegExp re = regexCompile("\w+", "");
+    RegExpMatch[] ms = regexFindAll(re, "un deux trois quatre", 0, 3);
+    print(toString(count(ms)) + "\n");
+    for (int i = 0; i < count(ms); i++) {
+        print(regexGroups(ms[i])[0] + "\n");
+    }
+}

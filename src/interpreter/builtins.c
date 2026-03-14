@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <sys/stat.h>
+#include "../runtime/regex_engine.h"
 
 /* Platform-specific includes */
 #ifdef _WIN32
@@ -62,6 +63,19 @@ typedef enum {
     BI_LAST_INDEX_OF,
     BI_COUNT_OCCURRENCES,
     BI_IS_BLANK,
+    BI_REGEX_COMPILE,
+    BI_REGEX_PATTERN,
+    BI_REGEX_FLAGS,
+    BI_REGEX_TEST,
+    BI_REGEX_FIND,
+    BI_REGEX_FIND_ALL,
+    BI_REGEX_REPLACE,
+    BI_REGEX_REPLACE_ALL,
+    BI_REGEX_SPLIT,
+    BI_REGEX_OK,
+    BI_REGEX_START,
+    BI_REGEX_END,
+    BI_REGEX_GROUPS,
     BI_TO_STRING,
     BI_TO_INT,
     BI_TO_FLOAT,
@@ -265,6 +279,19 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"readFileBytes", BI_READ_FILE_BYTES},
     {"readLines", BI_READ_LINES},
     {"remove", BI_REMOVE},
+    {"regexCompile", BI_REGEX_COMPILE},
+    {"regexEnd", BI_REGEX_END},
+    {"regexFind", BI_REGEX_FIND},
+    {"regexFindAll", BI_REGEX_FIND_ALL},
+    {"regexFlags", BI_REGEX_FLAGS},
+    {"regexGroups", BI_REGEX_GROUPS},
+    {"regexOk", BI_REGEX_OK},
+    {"regexPattern", BI_REGEX_PATTERN},
+    {"regexReplace", BI_REGEX_REPLACE},
+    {"regexReplaceAll", BI_REGEX_REPLACE_ALL},
+    {"regexSplit", BI_REGEX_SPLIT},
+    {"regexStart", BI_REGEX_START},
+    {"regexTest", BI_REGEX_TEST},
     {"replace", BI_REPLACE},
     {"repeat", BI_REPEAT},
     {"randFloat", BI_RAND_FLOAT},
@@ -1411,6 +1438,82 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
             if (!is_blank_ascii((unsigned char)*s)) return val_bool(0);
         }
         return val_bool(1);
+    }
+
+    if (id == BI_REGEX_COMPILE) {
+        REQUIRE(2);
+        return val_regexp(regex_compile_value(ARG_STR(0), ARG_STR(1), line, col));
+    }
+    if (id == BI_REGEX_PATTERN) {
+        REQUIRE(1);
+        return val_string(args[0].u.re ? args[0].u.re->pattern : "");
+    }
+    if (id == BI_REGEX_FLAGS) {
+        REQUIRE(1);
+        return val_string(args[0].u.re ? args[0].u.re->flags : "");
+    }
+    if (id == BI_REGEX_TEST) {
+        REQUIRE(3);
+        return val_bool(regex_test_value(args[0].u.re, ARG_STR(1), (int)ARG_INT(2), line, col));
+    }
+    if (id == BI_REGEX_FIND) {
+        REQUIRE(3);
+        return val_regexp_match(regex_find_value(args[0].u.re, ARG_STR(1), (int)ARG_INT(2), line, col));
+    }
+    if (id == BI_REGEX_FIND_ALL) {
+        REQUIRE(4);
+        int count = 0;
+        RegExpMatchVal **matches = regex_find_all_values(args[0].u.re, ARG_STR(1), (int)ARG_INT(2), (int)ARG_INT(3), &count, line, col);
+        Value out = val_array(TYPE_REGEXP_MATCH);
+        for (int i = 0; i < count; i++) {
+            Value mv = val_regexp_match(matches[i]);
+            array_push_owned(out.u.arr, &mv);
+        }
+        free(matches);
+        return out;
+    }
+    if (id == BI_REGEX_REPLACE) {
+        REQUIRE(4);
+        return val_string_own(regex_replace_value(args[0].u.re, ARG_STR(1), ARG_STR(2), (int)ARG_INT(3), 0, 1, line, col));
+    }
+    if (id == BI_REGEX_REPLACE_ALL) {
+        REQUIRE(5);
+        return val_string_own(regex_replace_value(args[0].u.re, ARG_STR(1), ARG_STR(2), (int)ARG_INT(3), 1, (int)ARG_INT(4), line, col));
+    }
+    if (id == BI_REGEX_SPLIT) {
+        REQUIRE(4);
+        int count = 0;
+        char **parts = regex_split_value(args[0].u.re, ARG_STR(1), (int)ARG_INT(2), (int)ARG_INT(3), &count, line, col);
+        Value out = val_array(TYPE_STRING);
+        for (int i = 0; i < count; i++) {
+            Value sv = val_string_own(parts[i]);
+            array_push_owned(out.u.arr, &sv);
+        }
+        free(parts);
+        return out;
+    }
+    if (id == BI_REGEX_OK) {
+        REQUIRE(1);
+        return val_bool(args[0].u.rem && args[0].u.rem->ok);
+    }
+    if (id == BI_REGEX_START) {
+        REQUIRE(1);
+        return val_int(args[0].u.rem && args[0].u.rem->ok ? args[0].u.rem->start : 0);
+    }
+    if (id == BI_REGEX_END) {
+        REQUIRE(1);
+        return val_int(args[0].u.rem && args[0].u.rem->ok ? args[0].u.rem->end : 0);
+    }
+    if (id == BI_REGEX_GROUPS) {
+        REQUIRE(1);
+        Value out = val_array(TYPE_STRING);
+        if (args[0].u.rem && args[0].u.rem->ok) {
+            for (int i = 0; i < args[0].u.rem->group_count; i++) {
+                Value sv = val_string(args[0].u.rem->groups[i]);
+                array_push_owned(out.u.arr, &sv);
+            }
+        }
+        return out;
     }
 
     if (id == BI_BYTE_TO_INT) {

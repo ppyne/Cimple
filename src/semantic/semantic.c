@@ -99,6 +99,21 @@ static const BuiltinSig BUILTINS[] = {
     { "countOccurrences", TYPE_INT, { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
     { "isBlank",    TYPE_BOOL,   { TYPE_STRING },           1, 0, 0 },
 
+    /* Regular expressions */
+    { "regexCompile", TYPE_REGEXP, { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
+    { "regexPattern", TYPE_STRING, { TYPE_REGEXP }, 1, 0, 0 },
+    { "regexFlags", TYPE_STRING, { TYPE_REGEXP }, 1, 0, 0 },
+    { "regexTest", TYPE_BOOL, { TYPE_REGEXP, TYPE_STRING, TYPE_INT }, 3, 0, 0 },
+    { "regexFind", TYPE_REGEXP_MATCH, { TYPE_REGEXP, TYPE_STRING, TYPE_INT }, 3, 0, 0 },
+    { "regexFindAll", TYPE_REGEXP_MATCH_ARR, { TYPE_REGEXP, TYPE_STRING, TYPE_INT, TYPE_INT }, 4, 0, 0 },
+    { "regexReplace", TYPE_STRING, { TYPE_REGEXP, TYPE_STRING, TYPE_STRING, TYPE_INT }, 4, 0, 0 },
+    { "regexReplaceAll", TYPE_STRING, { TYPE_REGEXP, TYPE_STRING, TYPE_STRING, TYPE_INT, TYPE_INT }, 5, 0, 0 },
+    { "regexSplit", TYPE_STR_ARR, { TYPE_REGEXP, TYPE_STRING, TYPE_INT, TYPE_INT }, 4, 0, 0 },
+    { "regexOk", TYPE_BOOL, { TYPE_REGEXP_MATCH }, 1, 0, 0 },
+    { "regexStart", TYPE_INT, { TYPE_REGEXP_MATCH }, 1, 0, 0 },
+    { "regexEnd", TYPE_INT, { TYPE_REGEXP_MATCH }, 1, 0, 0 },
+    { "regexGroups", TYPE_STR_ARR, { TYPE_REGEXP_MATCH }, 1, 0, 0 },
+
     /* Intrinsic conversions — resolved separately */
     { "toString",   TYPE_STRING, { TYPE_UNKNOWN },          1, 0, 0 },
     { "toInt",      TYPE_INT,    { TYPE_UNKNOWN },          1, 0, 0 },
@@ -336,6 +351,17 @@ static int types_compatible(StructTable *st, CimpleType actual, const char *actu
     if (actual == TYPE_STRUCT_ARR && expected == TYPE_STRUCT_ARR)
         return struct_is_subtype(st, actual_name, expected_name);
     return types_equal_ex(actual, actual_name, expected, expected_name);
+}
+
+static void normalize_opaque_type(CimpleType *type, const char *name, int line, int col) {
+    if (!type || !name) return;
+    if ((*type == TYPE_STRUCT || *type == TYPE_STRUCT_ARR) && strcmp(name, "RegExp") == 0) {
+        if (*type == TYPE_STRUCT_ARR)
+            error_semantic(line, col, "'RegExp[]' is not a supported type");
+        *type = TYPE_REGEXP;
+    } else if ((*type == TYPE_STRUCT || *type == TYPE_STRUCT_ARR) && strcmp(name, "RegExpMatch") == 0) {
+        *type = (*type == TYPE_STRUCT) ? TYPE_REGEXP_MATCH : TYPE_REGEXP_MATCH_ARR;
+    }
 }
 
 static int func_types_equal(const FuncType *a, const FuncType *b) {
@@ -1365,6 +1391,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
     case NODE_VAR_DECL: {
         const char *name = n->u.var_decl.name;
         CimpleType   t   = n->u.var_decl.type;
+        normalize_opaque_type(&t, n->u.var_decl.struct_name, n->line, n->col);
+        n->u.var_decl.type = t;
         if ((t == TYPE_STRUCT || t == TYPE_STRUCT_ARR || t == TYPE_STRUCT_ARR_ARR) &&
             n->u.var_decl.struct_name &&
             union_table_lookup(ctx->unions, n->u.var_decl.struct_name)) {
@@ -1389,11 +1417,14 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
             return;
         }
 
-        /* ExecResult must be initialised */
+        /* Opaque runtime values must be initialised */
         if (t == TYPE_EXEC_RESULT && !n->u.var_decl.init) {
             error_semantic(n->line, n->col,
-                           "'ExecResult' variable must be initialized with exec()",
-                           name);
+                           "'ExecResult' variable must be initialized with exec()");
+        } else if ((t == TYPE_REGEXP || t == TYPE_REGEXP_MATCH || t == TYPE_REGEXP_MATCH_ARR) && !n->u.var_decl.init) {
+            error_semantic(n->line, n->col,
+                           "Opaque value of type '%s' must be initialized",
+                           type_name(t));
         }
 
         /* Define in current scope */
@@ -2080,6 +2111,8 @@ static void collect_functions(SemCtx *ctx, AstNode *program) {
         for (int j = 0; j < params->count; j++) {
             fp[j].name = cimple_strdup(params->items[j]->u.param.name);
             fp[j].type = params->items[j]->u.param.type;
+            normalize_opaque_type(&fp[j].type, params->items[j]->u.param.struct_name, params->items[j]->line, params->items[j]->col);
+            params->items[j]->u.param.type = fp[j].type;
             fp[j].struct_name = params->items[j]->u.param.struct_name
                 ? cimple_strdup(params->items[j]->u.param.struct_name) : NULL;
             fp[j].func_type = func_type_copy(params->items[j]->u.param.func_type);

@@ -1,0 +1,5 @@
+void main() {
+    RegExp re = regexCompile("(\w+)-(\w+)", "");
+    print(regexReplace(re, "alpha-beta gamma-delta", "$2:$1", 0) + "\n");
+    print(regexReplaceAll(re, "alpha-beta gamma-delta", "$2:$1", 0, -1) + "\n");
+}

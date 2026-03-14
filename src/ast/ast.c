@@ -32,6 +32,9 @@ const char *type_name(CimpleType t) {
     case TYPE_BYTE_ARR_ARR:   return "byte[][]";
     case TYPE_STRUCT_ARR_ARR: return "<structure[][]>";
     case TYPE_UNION_ARR_ARR:  return "<union[][]>";
+    case TYPE_REGEXP:         return "RegExp";
+    case TYPE_REGEXP_MATCH:   return "RegExpMatch";
+    case TYPE_REGEXP_MATCH_ARR: return "RegExpMatch[]";
     default:                  return "<unknown>";
     }
 }

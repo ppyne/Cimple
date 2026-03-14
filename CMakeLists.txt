@@ -62,6 +62,7 @@ set(CIMPLE_SOURCES
     "${SRC_DIR}/ast/ast.c"
     "${SRC_DIR}/runtime/value.c"
     "${SRC_DIR}/runtime/scope.c"
+    "${SRC_DIR}/runtime/regex_engine.c"
     "${SRC_DIR}/semantic/semantic.c"
     "${SRC_DIR}/interpreter/interpreter.c"
     "${SRC_DIR}/interpreter/builtins.c"

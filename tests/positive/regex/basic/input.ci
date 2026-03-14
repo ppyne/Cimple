@@ -1,0 +1,6 @@
+void main() {
+    RegExp re = regexCompile("abc", "");
+    print(regexPattern(re) + ":" + regexFlags(re) + "\n");
+    print(toString(regexTest(re, "xxabczz", 0)) + "\n");
+    print(toString(regexTest(re, "xxabczz", 3)) + "\n");
+}

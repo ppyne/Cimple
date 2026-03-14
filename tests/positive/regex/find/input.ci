@@ -1,0 +1,8 @@
+void main() {
+    RegExp re = regexCompile("(\d+)-(\w+)", "");
+    RegExpMatch m = regexFind(re, "id 42-alpha ok", 0);
+    print(toString(regexOk(m)) + "\n");
+    print(toString(regexStart(m)) + "," + toString(regexEnd(m)) + "\n");
+    string[] g = regexGroups(m);
+    print(g[0] + "|" + g[1] + "|" + g[2] + "\n");
+}

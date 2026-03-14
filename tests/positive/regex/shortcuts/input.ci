@@ -1,0 +1,7 @@
+void main() {
+    RegExp re = regexCompile("\d+\s+\w+\D", "");
+    RegExpMatch m = regexFind(re, "42 abc!", 0);
+    print(regexGroups(m)[0] + "\n");
+    print(toString(regexTest(regexCompile("\W+", ""), "!!!", 0)) + "\n");
+    print(toString(regexTest(regexCompile("\S+", ""), "abc", 0)) + "\n");
+}
