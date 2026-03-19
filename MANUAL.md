@@ -2871,6 +2871,102 @@ a.increment();
 `clone` takes a **type name**, not a variable. `clone a` (where `a` is a variable) is a
 semantic error; use `clone Counter` instead.
 
+### `_init` — initialization method
+
+A structure can define a special `void` method named `_init` to run initialization logic
+when an instance is created with arguments.
+
+```c
+structure Point {
+    float x = 0.0;
+    float y = 0.0;
+
+    void _init(float px, float py) {
+        self.x = px;
+        self.y = py;
+    }
+}
+
+Point p = clone Point(3.0, 4.0);   // calls _init(3.0, 4.0)
+Point q = clone Point;              // no _init call — field defaults only
+```
+
+The key distinction:
+
+| Syntax | Behaviour |
+|--------|-----------|
+| `clone Foo`      | zero-init + field defaults, `_init` never called |
+| `clone Foo()`    | zero-init + field defaults, then `_init()` called |
+| `clone Foo(a, b)`| zero-init + field defaults, then `_init(a, b)` called |
+
+#### Overloading
+
+Multiple `_init` with **different parameter counts** are allowed in the same structure:
+
+```c
+structure Vec {
+    float x = 0.0;
+    float y = 0.0;
+
+    void _init(float vx, float vy) {
+        self.x = vx;
+        self.y = vy;
+    }
+
+    void _init(float uniform) {
+        self.x = uniform;
+        self.y = uniform;
+    }
+}
+
+Vec a = clone Vec(1.0, 2.0);   // calls _init(float, float)
+Vec b = clone Vec(5.0);         // calls _init(float)
+```
+
+Two `_init` with the same parameter count in the same structure is a semantic error.
+
+#### Inheritance
+
+`_init` is **inherited**: if a derived structure defines no `_init`, its base's `_init`
+is used automatically.
+
+```c
+structure Base {
+    int value = 0;
+    void _init(int v) { self.value = v; }
+}
+
+structure Derived : Base {
+    string label = "ok";
+    // no _init — inherits Base._init
+}
+
+Derived d = clone Derived(42);
+// d.value == 42, d.label == "ok"
+```
+
+A derived structure can define its own `_init` and chain up with `super._init(...)`:
+
+```c
+structure Dog : Animal {
+    string breed = "";
+
+    void _init(string n, int a, string b) {
+        super._init(n, a);   // calls Animal._init
+        self.breed = b;
+    }
+}
+
+Dog d = clone Dog("Rex", 5, "Labrador");
+```
+
+#### Rules
+
+- `_init` **must** return `void` — any other return type is a semantic error.
+- `_init` **cannot** be called directly: `obj._init(...)` is a semantic error.
+- `super._init(...)` is only allowed **inside** a `_init` body.
+- There is no implicit call to `super._init` — it must be called explicitly if needed.
+
 ### Inheritance
 
 A structure may inherit from one base using `:`:
