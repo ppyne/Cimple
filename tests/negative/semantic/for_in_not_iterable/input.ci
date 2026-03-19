@@ -1,0 +1,6 @@
+void main() {
+    int x = 42;
+    for (int i in x) {
+        print(toString(i) + "\n");
+    }
+}

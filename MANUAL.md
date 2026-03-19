@@ -54,6 +54,14 @@ The resulting binary is `build/cimple`.
 
 ### Running a program
 
+The simplest form — just pass the filename:
+
+```sh
+./build/cimple hello.ci
+```
+
+The `run` sub-command is also accepted and does the same thing:
+
 ```sh
 ./build/cimple run hello.ci
 ```
@@ -61,19 +69,52 @@ The resulting binary is `build/cimple`.
 ### Type-checking without running
 
 ```sh
-./build/cimple check hello.ci
+./build/cimple check hello.ci    # sub-command form
+./build/cimple -c     hello.ci   # short flag
+./build/cimple --check hello.ci  # long flag
 ```
 
-This validates lexical, syntactic and semantic correctness but does not execute anything.
+All three validate lexical, syntactic and semantic correctness and print `OK` to stdout
+on success. Nothing is executed.
 
 ### Passing arguments
 
 ```sh
-./build/cimple run myprog.ci arg1 arg2
+./build/cimple myprog.ci arg1 arg2
+./build/cimple run myprog.ci arg1 arg2   # equivalent
 ```
 
 Arguments after the filename are passed to the program as `args[0]`, `args[1]`, etc.
 The program name itself is **not** included in `args`.
+
+### Using Cimple scripts (shebang)
+
+You can make a `.ci` file directly executable on POSIX systems.
+
+1. Add a shebang line as the very first line of the file:
+
+```c
+#!/usr/bin/env cimple
+void main() {
+    print("Hello from a script!\n");
+}
+```
+
+2. Mark the file executable:
+
+```sh
+chmod +x hello.ci
+```
+
+3. Run it directly (assuming `cimple` is on your `PATH`):
+
+```sh
+./hello.ci
+```
+
+The shebang line is silently ignored by the compiler — it is treated as whitespace so
+that line numbers in error messages remain accurate. Any path that follows `#!` is
+accepted; only the first line is stripped.
 
 ### WebAssembly
 
@@ -601,6 +642,33 @@ RegExp date  = regexCompile("(\d{2})/(\d{2})/(\d{4})", "");
 
 A raw newline inside a string literal is a lexical error; use `\n` instead.
 
+#### Multi-line strings
+
+Triple-quoted strings `"""..."""` span multiple lines. The content starts immediately after
+the opening `"""` and ends at the first closing `"""`. Literal newlines are preserved as-is;
+escape sequences (such as `\t`, `\\`, etc.) are still recognised.
+
+```c
+string poem = """Line one
+Line two
+Line three""";
+print(poem + "\n");
+// → Line one
+//   Line two
+//   Line three
+
+string tsv = """col1\tcol2""";   // \t still works
+```
+
+**Rules:**
+
+- A `"""` that appears inside a triple-quoted string must be preceded by a `\` to avoid
+  terminating the literal: `\"""`.
+- Line endings inside a triple-quoted string are stored verbatim (LF on all platforms after
+  lexing; CRLF sequences are normalised to LF during scanning).
+- Triple-quoted strings have the same type as regular strings (`string`) and can be used
+  everywhere a `string` is expected.
+
 ### 5.4 Boolean literals
 
 ```c
@@ -748,13 +816,37 @@ print(toString(1 + 2 << 3)             + "\n");  // 24  (+ before <<)
 print(toString(true || false && false)  + "\n");  // true (&& before ||)
 ```
 
-### 5.8 Restrictions
+### 5.8 String indexing
+
+`s[i]` returns the byte at position `i` (0-based) as a one-character `string`.
+There is no dedicated `char` type in Cimple.
+
+```c
+string s = "hello";
+print(s[0] + "\n");          // "h"
+print(s[1] + "\n");          // "e"
+print(toString(len(s[0])));  // "1"
+```
+
+The equivalent built-in is `byteAt(s, i)` which returns an `int` (the raw byte value):
+
+```c
+int code = byteAt("A", 0);   // 65
+```
+
+| Expression | Return type | Meaning |
+|------------|-------------|---------|
+| `s[i]`     | `string`    | one-character substring at byte position `i` |
+| `byteAt(s, i)` | `int`   | raw byte value at position `i` |
+
+Strings are **immutable**: `s[i] = ...` is a semantic error.
+
+### 5.9 Restrictions
 
 - `i++` and `i--` may only appear as standalone statements, not inside expressions.
 - There is no comma operator.
 - Assignment is a statement and cannot appear inside an expression.
 - Array element assignment `a[i] = v` is a standalone statement, not an expression.
-- There is no `char` type; use `string` (byte indexing) or `byteAt`.
 - Strings are immutable; `s[i] = ...` is a semantic error.
 
 ---
@@ -819,7 +911,59 @@ A single-statement body without braces is allowed:
 for (int j = 0; j < 3; j++) print(toString(j) + "\n");
 ```
 
-### 6.4 `break` and `continue`
+### 6.4 `for-in` — iteration over arrays and maps
+
+`for-in` provides a concise way to iterate over every element of an array, every key of a
+map, or every key-value pair of a map.
+
+#### Array iteration
+
+```c
+string[] fruits = ["apple", "banana", "cherry"];
+for (string f in fruits) {
+    print(f + "\n");
+}
+```
+
+The loop variable's type must match the element type of the array.
+
+#### Map key iteration
+
+```c
+int[string] scores;
+scores["alice"] = 95;
+scores["bob"]   = 87;
+
+for (string name in scores) {
+    print(name + ": " + toString(scores[name]) + "\n");
+}
+```
+
+The iteration order of a map is **unspecified**. Sort the keys if a deterministic order
+is required.
+
+#### Map key+value iteration
+
+```c
+string[string] capitals;
+capitals["France"] = "Paris";
+capitals["Germany"] = "Berlin";
+
+for (string country, string city in capitals) {
+    print(country + " -> " + city + "\n");
+}
+```
+
+**Rules:**
+
+- The declared loop variable type must match the element type (array) or the key/value
+  types (map); a type mismatch is a semantic error.
+- Loop variables are scoped to the loop body and are read-write (mutations do not affect
+  the underlying collection).
+- `break` and `continue` work normally inside `for-in` loops.
+- Two-variable form (`K k, V v`) is only valid for maps.
+
+### 6.5 `break` and `continue`
 
 ```c
 for (int i = 0; i < 10; i++) {
@@ -1060,6 +1204,29 @@ KeyEvent     termPollKey(int timeoutMs)
 ```
 
 The coordinate system is **1-based**: `(1, 1)` is the top-left cell.
+
+#### Error handling
+
+All terminal functions throw a `RuntimeException` when a precondition is violated.
+Common causes:
+
+| Situation | Message |
+|-----------|---------|
+| Called on WASM or a platform without terminal support | `"terminal API is not available on this platform"` |
+| Called when not attached to an interactive terminal | `"terminal is not interactive"` |
+| `termWriteAt` or `termMoveCursor` with `row < 1` or `col < 1` | `"terminal coordinates must be >= 1"` |
+| `termSetStyle` with a colour outside `0..7` and not `TERM_COLOR_DEFAULT` | `"terminal color must be TERM_COLOR_DEFAULT or in range 0..7"` |
+| `termPollKey` with a negative timeout | `"termPollKey: timeout must be >= 0"` |
+
+Always guard interactive code with `termIsTTY()` to avoid raising these exceptions in
+non-interactive environments (CI pipelines, piped output, WASM):
+
+```c
+if (!termIsTTY()) {
+    print("This program requires an interactive terminal.\n");
+    return;
+}
+```
 
 #### Terminal constants
 
@@ -1354,16 +1521,28 @@ print(replace("hello", "xyz", "abc")        + "\n");  // hello  (unchanged)
 #### `format`
 
 ```c
-string format(string template, string[] args)
+string format(string template, any...)
 ```
 
-Substitutes `{}` markers in order with elements of `args`. The number of markers must equal
-`count(args)` exactly; a mismatch is a runtime error. All arguments must be `string`; convert
-with `toString` beforehand.
+Substitutes `{}` placeholders in the template string with the remaining arguments, in order.
+Each argument is automatically converted to a string (`int`, `float`, `bool`, `byte` are
+converted like `toString`). The number of `{}` markers must equal the number of extra
+arguments exactly; a mismatch is a runtime error.
 
 ```c
-string msg = format("Name: {}, age: {}.", ["Alice", toString(30)]);
-print(msg + "\n");  // Name: Alice, age: 30.
+string name = "Alice";
+int    age  = 30;
+float  score = 9.5;
+bool   active = true;
+
+print(format("Hello, {}!\n", name));
+// → Hello, Alice!
+
+print(format("Name: {}, age: {}, score: {}, active: {}\n", name, age, score, active));
+// → Name: Alice, age: 30, score: 9.5, active: true
+
+print(format("no placeholders\n"));
+// → no placeholders
 ```
 
 #### `join`
@@ -2321,7 +2500,43 @@ try {
 - Putting a more general catch before a specific one is a **semantic error**
   (the specific clause would be unreachable).
 - Variables declared inside `try` are not visible inside `catch` blocks.
-- There is no `finally` in V1.
+
+#### Guaranteed cleanup with `finally`
+
+A `finally` block runs **unconditionally** after the `try`/`catch` sequence, whether
+execution left normally, via `return`, or via an uncaught exception.  Use it to release
+resources that must always be freed.
+
+```c
+// try / catch / finally
+try {
+    string data = readFile("/var/data.txt");
+    process(data);
+} catch (IoException e) {
+    print("I/O error: " + e.message + "\n");
+} finally {
+    print("cleanup\n");   // always runs
+}
+
+// try / finally — no catch needed
+try {
+    doWork();
+} finally {
+    releaseLock();   // always runs, even if doWork() throws
+}
+```
+
+**Semantics:**
+
+- The `finally` block always executes, even if no exception occurred and even if an
+  exception was *not* caught (the exception still propagates after `finally` completes).
+- If `finally` completes normally, the original outcome is preserved:
+  a caught exception stays caught, an uncaught one keeps propagating, a `return` value
+  is returned.
+- If `finally` itself throws or returns, that **new** signal supersedes the incoming one.
+  Avoid this pattern — it is error-prone and will silence the original exception.
+- A `try` block must have at least one `catch` clause **or** a `finally` block.
+  A plain `try { }` with neither is a semantic error.
 
 #### User-defined exception with multiple catch clauses
 
@@ -2999,7 +3214,23 @@ The implementation reports four categories of error, each with a source location
 |------|---------|
 | `0` | program completed successfully |
 | `1` | lexical, syntax, or semantic error |
-| `2` | runtime error |
+| `2` | runtime error or uncaught exception |
+
+An uncaught exception also exits with code `2` and prints a message to standard error:
+
+```
+Uncaught IoException: file not found: 'data.txt'   [example.ci:12:5]
+```
+
+This is important for shell scripting: you can test `$?` after `cimple run` to distinguish
+a clean exit (`0`) from a program-level failure (`2`).
+
+```sh
+cimple run myapp.ci
+if [ $? -eq 2 ]; then
+    echo "Runtime failure"
+fi
+```
 
 ### Error behaviour
 
@@ -3009,6 +3240,8 @@ The implementation reports four categories of error, each with a source location
   before stopping. This lets you fix several problems in one edit cycle.
 - **Runtime errors** abort the program immediately with a message that includes the source
   file, line, and column, followed by an indication line describing the cause.
+- **Uncaught exceptions** print the exception type and message then exit with code `2`.
+  Catch them with `try` / `catch` if you need a controlled shutdown (see §8.16).
 
 ### Common semantic errors
 
@@ -3339,6 +3572,100 @@ void main() {
     print("area = " + toString(r.area()) + "\n");  // 12
 }
 ```
+
+### 15.13 Shellbox — bibliothèque de boîtes de dialogue TUI
+
+`examples/shellbox/shellbox.ci` est une bibliothèque de boîtes de dialogue en mode
+texte écrite entièrement en Cimple, inspirée de `whiptail` / `dialog`.
+Elle s'appuie sur l'API terminal (`termXxx`) et gère automatiquement le repli en mode
+non-interactif (sortie standard simple quand `termIsTTY()` renvoie `false`).
+
+#### Utilisation
+
+```c
+import "shellbox.ci";
+
+void main() {
+    shellMessageBox("Bienvenue", "Application démarrée.");
+}
+```
+
+#### Structures de données
+
+```c
+structure MenuItem {
+    string id    = "";   // identifiant machine
+    string label = "";   // libellé affiché
+}
+
+structure ChoiceItem {
+    string id      = "";
+    string label   = "";
+    bool   checked = false;
+}
+```
+
+#### Fonctions publiques
+
+| Signature | Description |
+|-----------|-------------|
+| `void shellMessageBox(string title, string text)` | Boîte de message modale. Attend Enter ou Esc. |
+| `void shellInfoBox(string title, string text)` | Alias de `shellMessageBox`. |
+| `bool shellYesNoBox(string title, string question, bool defaultYes)` | Boîte Oui/Non. Renvoie `true` si l'utilisateur confirme. Esc renvoie `false`. |
+| `string shellInputBox(string title, string prompt, string initialValue)` | Saisie de texte libre. Esc rétablit `initialValue`. |
+| `string shellPasswordBox(string title, string prompt)` | Comme `shellInputBox` mais masque la saisie (`***`). |
+| `void shellTextBox(string title, string text)` | Afficheur de texte défilant. Flèches / PgUp / PgDn, Enter ou Esc pour quitter. |
+| `int shellMenuBox(string title, string prompt, MenuItem[] items, int selected)` | Menu de sélection. Renvoie l'index de l'entrée choisie, ou `-1` si annulation. |
+| `void shellCheckListBox(string title, string prompt, ChoiceItem[] items, int selected)` | Liste à coches (plusieurs sélections). Modifie le champ `checked` en place. Espace bascule, Enter confirme. |
+| `void shellRadioListBox(string title, string prompt, ChoiceItem[] items, int selected)` | Liste radio (une seule sélection). Modifie `checked` en place. |
+| `void shellGaugeBox(string title, string prompt, int percent)` | Barre de progression statique (`0`–`100`). |
+
+#### Exemple complet
+
+Le fichier `examples/shellbox/showcase.ci` illustre toutes les boîtes de dialogue :
+
+```c
+import "shellbox.ci";
+
+void pushMenu(MenuItem[] items, string id, string label) {
+    MenuItem item = clone MenuItem;
+    item.id = id;
+    item.label = label;
+    arrayPush(items, item);
+}
+
+void main() {
+    // Boîte de message
+    shellMessageBox("Bienvenue", "Ceci est shellbox.");
+
+    // Dialogue Oui/Non
+    bool ok = shellYesNoBox("Continuer ?", "Voulez-vous continuer ?", true);
+    if (!ok) { return; }
+
+    // Saisie utilisateur
+    string name = shellInputBox("Nom", "Entrez votre nom", "monde");
+    print("Bonjour, " + name + "!\n");
+
+    // Menu
+    MenuItem[] menu = [];
+    pushMenu(menu, "run",  "Exécuter");
+    pushMenu(menu, "quit", "Quitter");
+    int choice = shellMenuBox("Menu", "Choisissez une action :", menu, 0);
+    if (choice >= 0) {
+        print("Choix : " + menu[choice].id + "\n");
+    }
+
+    // Jauge
+    shellGaugeBox("Progression", "Traitement en cours…", 75);
+}
+```
+
+#### Repli non-interactif
+
+Toutes les fonctions appellent `termIsTTY()` en entrée. Si le programme ne s'exécute
+pas dans un terminal (scripts CI, redirection de sortie, WASM), elles affichent un résumé
+en texte brut sur la sortie standard et renvoient leur valeur par défaut. Aucune
+exception n'est levée.
 
 ---
 

@@ -1,0 +1,9 @@
+void main() {
+    try {
+        float x = 1.0 / 0.0;
+        print("unreachable\n");
+    } catch (RuntimeException e) {
+        print("caught: " + e.message + "\n");
+    }
+    print("done\n");
+}

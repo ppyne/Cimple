@@ -1,0 +1,20 @@
+// for (T x in arr) — iterates over array elements
+void main() {
+    int[] nums = [10, 20, 30, 40];
+    for (int n in nums) {
+        print(toString(n) + "\n");
+    }
+
+    string[] words = ["hello", "world"];
+    for (string w in words) {
+        print(w + "\n");
+    }
+
+    // works with break and continue
+    int[] data = [1, 2, 3, 4, 5];
+    for (int x in data) {
+        if (x == 2) { continue; }
+        if (x == 4) { break; }
+        print(toString(x) + "\n");
+    }
+}

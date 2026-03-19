@@ -9,6 +9,42 @@
 #include <math.h>
 #include <time.h>
 
+/* -----------------------------------------------------------------------
+ * Portable signed int64 overflow helpers.
+ * Returns 1 if overflow occurred, 0 on success. *r is set on success only.
+ * GCC/Clang: single-instruction builtins.
+ * MSVC / other: branch-free two's-complement arithmetic.
+ * ----------------------------------------------------------------------- */
+#if defined(__GNUC__) || defined(__clang__)
+#  define I64_ADD_OVF(a,b,r) __builtin_add_overflow((a),(b),(r))
+#  define I64_SUB_OVF(a,b,r) __builtin_sub_overflow((a),(b),(r))
+#  define I64_MUL_OVF(a,b,r) __builtin_mul_overflow((a),(b),(r))
+#else
+#  include <limits.h>
+static inline int i64_add_ovf_(int64_t a, int64_t b, int64_t *r) {
+    *r = (int64_t)((uint64_t)a + (uint64_t)b);
+    return b >= 0 ? *r < a : *r > a;
+}
+static inline int i64_sub_ovf_(int64_t a, int64_t b, int64_t *r) {
+    *r = (int64_t)((uint64_t)a - (uint64_t)b);
+    return b <= 0 ? *r < a : *r > a;
+}
+static inline int i64_mul_ovf_(int64_t a, int64_t b, int64_t *r) {
+    if (a == 0 || b == 0)             { *r = 0; return 0; }
+    if (b == -1) {
+        if (a == INT64_MIN)           { *r = 0; return 1; }
+        *r = -a; return 0;
+    }
+    if (a == INT64_MIN || b == INT64_MIN) { *r = 0; return 1; }
+    int64_t ua = a < 0 ? -a : a, ub = b < 0 ? -b : b;
+    if (ua > INT64_MAX / ub)          { *r = 0; return 1; }
+    *r = a * b; return 0;
+}
+#  define I64_ADD_OVF i64_add_ovf_
+#  define I64_SUB_OVF i64_sub_ovf_
+#  define I64_MUL_OVF i64_mul_ovf_
+#endif
+
 /* Forward declarations */
 static Value eval_expr(Interp *ip, Scope *scope, AstNode *n);
 static void  exec_stmt(Interp *ip, Scope *scope, AstNode *n);
@@ -291,6 +327,10 @@ void interp_throw(Interp *ip, const char *type_name, Value val) {
         value_free(&val);
         return;
     }
+    /* Defensively free any stale throw state that wasn't cleared by the
+       caller (e.g. a re-throw after a partially-handled catch). */
+    value_free(&ip->throw_val);
+    free(ip->throw_type_name);
     ip->signal = SIGNAL_THROW;
     ip->throw_val = val;
     ip->throw_type_name = cimple_strdup(type_name ? type_name : "Exception");
@@ -658,6 +698,7 @@ static const char *find_struct_method_owner(Interp *ip, const char *struct_name,
  * ----------------------------------------------------------------------- */
 static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
     if (!n) return val_void();
+    if (ip->signal != SIGNAL_NONE) return val_void();
 
     switch (n->kind) {
     case NODE_INT_LIT:    return val_int(n->u.int_lit.value);
@@ -790,18 +831,51 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
             if (l.type == TYPE_STRING && r.type == TYPE_STRING) {
                 result = val_string_own(cimple_strconcat(l.u.s, r.u.s));
             } else if (is_int_like_value(l.type) && is_int_like_value(r.type)) {
-                result = val_int(l.u.i + r.u.i);
+                if (l.type == TYPE_INT) {
+                    int64_t res;
+                    if (I64_ADD_OVF(l.u.i, r.u.i, &res)) {
+                        error_runtime(n->line, n->col, "Integer overflow");
+                        if (interp_has_throw(ip)) { value_free(&l); value_free(&r); return val_void(); }
+                    }
+                    result = val_int(res);
+                } else {
+                    result = val_int((int64_t)((unsigned char)l.u.i + (unsigned char)r.u.i));
+                }
             } else {
                 result = val_float(l.u.f + r.u.f);
             }
             break;
         case OP_SUB:
-            result = is_int_like_value(l.type) && is_int_like_value(r.type) ? val_int(l.u.i - r.u.i)
-                                        : val_float(l.u.f - r.u.f);
+            if (is_int_like_value(l.type) && is_int_like_value(r.type)) {
+                if (l.type == TYPE_INT) {
+                    int64_t res;
+                    if (I64_SUB_OVF(l.u.i, r.u.i, &res)) {
+                        error_runtime(n->line, n->col, "Integer overflow");
+                        if (interp_has_throw(ip)) { value_free(&l); value_free(&r); return val_void(); }
+                    }
+                    result = val_int(res);
+                } else {
+                    result = val_int((int64_t)((unsigned char)l.u.i - (unsigned char)r.u.i));
+                }
+            } else {
+                result = val_float(l.u.f - r.u.f);
+            }
             break;
         case OP_MUL:
-            result = is_int_like_value(l.type) && is_int_like_value(r.type) ? val_int(l.u.i * r.u.i)
-                                        : val_float(l.u.f * r.u.f);
+            if (is_int_like_value(l.type) && is_int_like_value(r.type)) {
+                if (l.type == TYPE_INT) {
+                    int64_t res;
+                    if (I64_MUL_OVF(l.u.i, r.u.i, &res)) {
+                        error_runtime(n->line, n->col, "Integer overflow");
+                        if (interp_has_throw(ip)) { value_free(&l); value_free(&r); return val_void(); }
+                    }
+                    result = val_int(res);
+                } else {
+                    result = val_int((int64_t)((unsigned char)l.u.i * (unsigned char)r.u.i));
+                }
+            } else {
+                result = val_float(l.u.f * r.u.f);
+            }
             break;
         case OP_DIV:
             if (is_int_like_value(l.type) && is_int_like_value(r.type)) {
@@ -810,6 +884,9 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
                 if (interp_has_throw(ip)) { value_free(&l); value_free(&r); return val_void(); }
                 result = val_int(l.u.i / r.u.i);
             } else {
+                if (r.u.f == 0.0)
+                    error_runtime(n->line, n->col, "Float division by zero");
+                if (interp_has_throw(ip)) { value_free(&l); value_free(&r); return val_void(); }
                 result = val_float(l.u.f / r.u.f);
             }
             break;
@@ -854,8 +931,22 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         case OP_BAND:   result = (l.type == TYPE_BYTE && r.type == TYPE_BYTE) ? val_byte((unsigned char)(l.u.i & r.u.i)) : val_int(l.u.i & r.u.i);  break;
         case OP_BOR:    result = (l.type == TYPE_BYTE && r.type == TYPE_BYTE) ? val_byte((unsigned char)(l.u.i | r.u.i)) : val_int(l.u.i | r.u.i);  break;
         case OP_BXOR:   result = (l.type == TYPE_BYTE && r.type == TYPE_BYTE) ? val_byte((unsigned char)(l.u.i ^ r.u.i)) : val_int(l.u.i ^ r.u.i);  break;
-        case OP_LSHIFT: result = val_int(l.u.i << (int)r.u.i); break;
-        case OP_RSHIFT: result = val_int(l.u.i >> (int)r.u.i); break;
+        case OP_LSHIFT:
+            if (r.u.i < 0 || r.u.i >= 64)
+                error_runtime(n->line, n->col,
+                    "Left-shift amount out of range: %lld (must be 0..63)",
+                    (long long)r.u.i);
+            if (interp_has_throw(ip)) { value_free(&l); value_free(&r); return val_void(); }
+            result = val_int((int64_t)((uint64_t)l.u.i << (int)r.u.i));
+            break;
+        case OP_RSHIFT:
+            if (r.u.i < 0 || r.u.i >= 64)
+                error_runtime(n->line, n->col,
+                    "Right-shift amount out of range: %lld (must be 0..63)",
+                    (long long)r.u.i);
+            if (interp_has_throw(ip)) { value_free(&l); value_free(&r); return val_void(); }
+            result = val_int(l.u.i >> (int)r.u.i);
+            break;
 
         default: result = val_void(); break;
         }
@@ -879,7 +970,15 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         switch (n->u.unop.op) {
         case OP_NOT:  result = val_bool(!v.u.b); break;
         case OP_NEG:
-            result = is_int_like_value(v.type) ? val_int(-v.u.i) : val_float(-v.u.f);
+            if (is_int_like_value(v.type)) {
+                if (v.type == TYPE_INT && v.u.i == INT64_MIN) {
+                    error_runtime(n->line, n->col, "Integer overflow (negation of INT64_MIN)");
+                    if (interp_has_throw(ip)) { value_free(&v); return val_void(); }
+                }
+                result = val_int(-v.u.i);
+            } else {
+                result = val_float(-v.u.f);
+            }
             break;
         case OP_BNOT: result = (v.type == TYPE_BYTE) ? val_byte((unsigned char)(~v.u.i)) : val_int(~v.u.i); break;
         default:      result = val_void(); break;
@@ -1307,6 +1406,85 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
         break;
     }
 
+    case NODE_FOR_IN: {
+        /* Evaluate the iterable (array or map) */
+        Value iter_val = eval_expr(ip, scope, n->u.for_in.iterable);
+        if (interp_has_throw(ip)) { value_free(&iter_val); break; }
+
+        int is_map = (iter_val.type == TYPE_MAP);
+
+        /* Build key list — for arrays: use the array directly;
+         * for maps: call map_keys() to get an ArrayVal of keys.        */
+        ArrayVal *keys_arr = NULL;    /* owned only when is_map */
+        ArrayVal *base_arr = NULL;    /* alias into iter_val for arrays */
+        MapVal   *map_val  = NULL;
+
+        if (is_map) {
+            map_val  = iter_val.u.map;
+            keys_arr = map_keys(map_val);      /* new ArrayVal, we own it */
+        } else {
+            base_arr = iter_val.u.arr;
+        }
+
+        int count = is_map ? keys_arr->count : base_arr->count;
+
+        for (int i = 0; i < count; i++) {
+            /* Get key/element value for this iteration */
+            Value key_val;
+            if (is_map) {
+                key_val = array_get(keys_arr, i, n->line, n->col);
+            } else {
+                key_val = array_get(base_arr, i, n->line, n->col);
+            }
+            if (interp_has_throw(ip)) { value_free(&key_val); break; }
+
+            Scope *iter_scope = scope_new(scope, 0);
+
+            /* Define key/element variable */
+            Symbol *ksym = scope_define(iter_scope,
+                                        n->u.for_in.key_name,
+                                        key_val.type,
+                                        n->u.for_in.key_struct_name, NULL,
+                                        TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL,
+                                        n->line, n->col);
+            if (ksym) { value_free(&ksym->val); ksym->val = key_val; }
+            else value_free(&key_val);
+
+            /* Define value variable (two-var map form: for (K k, V v in map)) */
+            if (n->u.for_in.val_name && is_map) {
+                Value v_key = ksym ? ksym->val : val_void();
+                Value v_val = map_get(map_val, v_key);
+                Symbol *vsym = scope_define(iter_scope,
+                                            n->u.for_in.val_name,
+                                            v_val.type,
+                                            n->u.for_in.val_struct_name, NULL,
+                                            TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL,
+                                            n->line, n->col);
+                if (vsym) { value_free(&vsym->val); vsym->val = v_val; }
+                else value_free(&v_val);
+            }
+
+            exec_stmt(ip, iter_scope, n->u.for_in.body);
+            scope_free(iter_scope);
+
+            if (ip->signal == SIGNAL_BREAK)    { ip->signal = SIGNAL_NONE; break; }
+            if (ip->signal == SIGNAL_CONTINUE) { ip->signal = SIGNAL_NONE; continue; }
+            if (ip->signal != SIGNAL_NONE) break;
+        }
+
+        /* Free keys_arr if we allocated it for a map.
+         * map_keys() returns an ArrayVal* that belongs to a Value we never kept;
+         * wrap it back into a Value so value_free() handles all element cleanup. */
+        if (is_map && keys_arr) {
+            Value keys_wrapper;
+            keys_wrapper.type  = type_make_array(map_val->key_type);
+            keys_wrapper.u.arr = keys_arr;
+            value_free(&keys_wrapper);
+        }
+        value_free(&iter_val);
+        break;
+    }
+
     case NODE_FOR: {
         Scope *for_scope = scope_new(scope, 0);
 
@@ -1389,44 +1567,82 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
 
     case NODE_TRY_CATCH: {
         exec_stmt(ip, scope, n->u.try_catch.try_block);
-        if (ip->signal != SIGNAL_THROW)
-            break;
 
-        Value thrown = ip->throw_val;
-        char *thrown_type = ip->throw_type_name;
-        ip->throw_val = val_void();
-        ip->throw_type_name = NULL;
-        ip->signal = SIGNAL_NONE;
+        /* ── catch processing (only if the try block threw) ── */
+        if (ip->signal == SIGNAL_THROW) {
+            Value thrown      = ip->throw_val;
+            char *thrown_type = ip->throw_type_name;
+            ip->throw_val        = val_void();
+            ip->throw_type_name  = NULL;
+            ip->signal           = SIGNAL_NONE;
 
-        int handled = 0;
-        for (int i = 0; i < n->u.try_catch.clauses.count; i++) {
-            AstNode *cl = n->u.try_catch.clauses.items[i];
-            if (!interp_struct_is_subtype(ip, thrown_type, cl->u.catch_clause.type_name))
-                continue;
-            Scope *catch_scope = scope_new(scope, 0);
-            Symbol *sym = scope_define(catch_scope, cl->u.catch_clause.var_name,
-                                       TYPE_STRUCT, thrown_type, NULL,
-                                       TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL,
-                                       cl->line, cl->col);
-            if (sym) {
-                value_free(&sym->val);
-                sym->val = thrown;
-            } else {
-                value_free(&thrown);
+            int handled = 0;
+            for (int i = 0; i < n->u.try_catch.clauses.count; i++) {
+                AstNode *cl = n->u.try_catch.clauses.items[i];
+                if (!interp_struct_is_subtype(ip, thrown_type, cl->u.catch_clause.type_name))
+                    continue;
+                Scope *catch_scope = scope_new(scope, 0);
+                Symbol *sym = scope_define(catch_scope, cl->u.catch_clause.var_name,
+                                           TYPE_STRUCT, thrown_type, NULL,
+                                           TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL,
+                                           cl->line, cl->col);
+                if (sym) {
+                    value_free(&sym->val);
+                    sym->val = thrown;
+                } else {
+                    value_free(&thrown);
+                }
+                exec_stmt(ip, catch_scope, cl->u.catch_clause.block);
+                /* scope_free calls value_free on each symbol — do NOT clear sym->val
+                   beforehand or the thrown value leaks without being freed. */
+                scope_free(catch_scope);
+                handled = 1;
+                break;
             }
-            exec_stmt(ip, catch_scope, cl->u.catch_clause.block);
-            /* scope_free calls value_free on each symbol — do NOT clear sym->val
-               beforehand or the thrown value leaks without being freed. */
-            scope_free(catch_scope);
-            handled = 1;
-            break;
+            if (!handled) {
+                ip->signal          = SIGNAL_THROW;
+                ip->throw_val       = thrown;
+                ip->throw_type_name = thrown_type;
+            } else {
+                free(thrown_type);
+            }
         }
-        if (!handled) {
-            ip->signal = SIGNAL_THROW;
-            ip->throw_val = thrown;
-            ip->throw_type_name = thrown_type;
-        } else {
-            free(thrown_type);
+
+        /* ── finally block: ALWAYS runs, regardless of signal ──
+           Semantics (Java / C# compatible):
+           - Save the current outcome (any signal).
+           - Execute finally with a clean signal.
+           - If finally completes normally  → restore the saved outcome.
+           - If finally itself signals      → the finally's signal wins;
+             the incoming outcome is discarded. */
+        if (n->u.try_catch.finally_block) {
+            Signal  pre_sig         = ip->signal;
+            Value   pre_throw       = ip->throw_val;
+            char   *pre_throw_type  = ip->throw_type_name;
+            Value   pre_ret         = ip->ret_val;
+
+            ip->signal          = SIGNAL_NONE;
+            ip->throw_val       = val_void();
+            ip->throw_type_name = NULL;
+            ip->ret_val         = val_void();
+
+            exec_stmt(ip, scope, n->u.try_catch.finally_block);
+
+            if (ip->signal == SIGNAL_NONE) {
+                /* finally completed normally — restore incoming outcome */
+                value_free(&ip->throw_val);
+                free(ip->throw_type_name);
+                value_free(&ip->ret_val);
+                ip->signal          = pre_sig;
+                ip->throw_val       = pre_throw;
+                ip->throw_type_name = pre_throw_type;
+                ip->ret_val         = pre_ret;
+            } else {
+                /* finally raised a new signal — it supersedes the incoming outcome */
+                value_free(&pre_throw);
+                free(pre_throw_type);
+                value_free(&pre_ret);
+            }
         }
         break;
     }
@@ -1446,7 +1662,10 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
                           "undefined variable '%s'", n->u.incr_decr.name);
             break;
         }
-        sym->val.u.i++;
+        if (sym->val.type == TYPE_INT && sym->val.u.i == INT64_MAX)
+            error_runtime(n->line, n->col, "Integer overflow");
+        else
+            sym->val.u.i++;
         break;
     }
 
@@ -1457,7 +1676,10 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
                           "undefined variable '%s'", n->u.incr_decr.name);
             break;
         }
-        sym->val.u.i--;
+        if (sym->val.type == TYPE_INT && sym->val.u.i == INT64_MIN)
+            error_runtime(n->line, n->col, "Integer overflow");
+        else
+            sym->val.u.i--;
         break;
     }
 
@@ -1477,16 +1699,52 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
         int is_int = (sym->val.type == TYPE_INT);
         switch (n->u.compound_assign.op) {
         case OP_ADD:
-            if (is_int) sym->val.u.i += rhs.u.i;
-            else        sym->val.u.f += rhs.u.f;
+            if (is_int) {
+                if (sym->val.type == TYPE_INT) {
+                    int64_t res;
+                    if (I64_ADD_OVF(sym->val.u.i, rhs.u.i, &res)) {
+                        error_runtime(n->line, n->col, "Integer overflow");
+                        if (interp_has_throw(ip)) break;
+                    }
+                    sym->val.u.i = res;
+                } else {
+                    sym->val.u.i = (int64_t)((unsigned char)sym->val.u.i + (unsigned char)rhs.u.i);
+                }
+            } else {
+                sym->val.u.f += rhs.u.f;
+            }
             break;
         case OP_SUB:
-            if (is_int) sym->val.u.i -= rhs.u.i;
-            else        sym->val.u.f -= rhs.u.f;
+            if (is_int) {
+                if (sym->val.type == TYPE_INT) {
+                    int64_t res;
+                    if (I64_SUB_OVF(sym->val.u.i, rhs.u.i, &res)) {
+                        error_runtime(n->line, n->col, "Integer overflow");
+                        if (interp_has_throw(ip)) break;
+                    }
+                    sym->val.u.i = res;
+                } else {
+                    sym->val.u.i = (int64_t)((unsigned char)sym->val.u.i - (unsigned char)rhs.u.i);
+                }
+            } else {
+                sym->val.u.f -= rhs.u.f;
+            }
             break;
         case OP_MUL:
-            if (is_int) sym->val.u.i *= rhs.u.i;
-            else        sym->val.u.f *= rhs.u.f;
+            if (is_int) {
+                if (sym->val.type == TYPE_INT) {
+                    int64_t res;
+                    if (I64_MUL_OVF(sym->val.u.i, rhs.u.i, &res)) {
+                        error_runtime(n->line, n->col, "Integer overflow");
+                        if (interp_has_throw(ip)) break;
+                    }
+                    sym->val.u.i = res;
+                } else {
+                    sym->val.u.i = (int64_t)((unsigned char)sym->val.u.i * (unsigned char)rhs.u.i);
+                }
+            } else {
+                sym->val.u.f *= rhs.u.f;
+            }
             break;
         case OP_DIV:
             if (is_int) {
@@ -1494,7 +1752,12 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
                     error_runtime(n->line, n->col, "Division by zero");
                 if (interp_has_throw(ip)) break;
                 sym->val.u.i /= rhs.u.i;
-            } else sym->val.u.f /= rhs.u.f;
+            } else {
+                if (rhs.u.f == 0.0)
+                    error_runtime(n->line, n->col, "Float division by zero");
+                if (interp_has_throw(ip)) break;
+                sym->val.u.f /= rhs.u.f;
+            }
             break;
         case OP_MOD:
             if (is_int) {
@@ -1502,7 +1765,12 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
                     error_runtime(n->line, n->col, "Modulo by zero");
                 if (interp_has_throw(ip)) break;
                 sym->val.u.i %= rhs.u.i;
-            } else sym->val.u.f = fmod(sym->val.u.f, rhs.u.f);
+            } else {
+                if (rhs.u.f == 0.0)
+                    error_runtime(n->line, n->col, "Float modulo by zero");
+                if (interp_has_throw(ip)) break;
+                sym->val.u.f = fmod(sym->val.u.f, rhs.u.f);
+            }
             break;
         default: break;
         }

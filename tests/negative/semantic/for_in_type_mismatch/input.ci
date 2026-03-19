@@ -1,0 +1,6 @@
+void main() {
+    string[] words = ["a", "b"];
+    for (int x in words) {
+        print(x + "\n");
+    }
+}

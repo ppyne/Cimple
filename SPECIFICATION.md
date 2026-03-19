@@ -1586,7 +1586,7 @@ bool   contains(string s, string needle);
 bool   startsWith(string s, string prefix);
 bool   endsWith(string s, string suffix);
 string replace(string s, string old, string new);
-string format(string template, string[] args);
+string format(string template, ...);
 string join(string[] array, string separator);
 string[] split(string value, string separator);
 string concat(string[] array);
@@ -2209,37 +2209,30 @@ string result = replace(replace("a-b-c", "-", "_"), "a", "x");
 #### `format`
 
 ```c
-string format(string template, string[] args)
+string format(string template, ...)
 ```
 
-Retourne une nouvelle chaîne construite à partir de `template` en remplaçant chaque marqueur `{}` par l'argument correspondant dans `args`, dans l'ordre d'apparition.
+Retourne une nouvelle chaîne construite à partir de `template` en remplaçant chaque marqueur `{}` par l'argument correspondant (dans l'ordre d'apparition). Les arguments supplémentaires peuvent être de n'importe quel type scalaire (`int`, `float`, `bool`, `byte`, `string`) ; ils sont automatiquement convertis en chaîne (comportement identique à `toString`).
 
 Règles normatives :
 
-- les marqueurs sont `{}` ; ils sont remplacés dans l'ordre par `args[0]`, `args[1]`, etc. ;
-- le nombre de `{}` dans `template` doit être exactement égal à `count(args)` ; tout écart est une **erreur runtime** avec message indiquant le nombre de marqueurs attendus et le nombre d'arguments fournis ;
-- les arguments doivent être de type `string` ; toute conversion doit être effectuée explicitement par l'utilisateur via `toString` avant l'appel ;
-- `{}` littéral dans la sortie n'est pas possible directement — si le template doit contenir les caractères `{` ou `}`, utiliser `replace` après `format` ou éviter ces caractères dans le template ;
-- `template` et `args` doivent respecter leurs types ; tout autre type est une erreur sémantique.
+- les marqueurs sont `{}` ; ils sont remplacés dans l'ordre par le 2e argument, le 3e, etc. ;
+- le nombre de `{}` dans `template` doit être exactement égal au nombre d'arguments supplémentaires ; tout écart est une **erreur runtime** ;
+- `{}` littéral dans la sortie n'est pas possible directement — si le template doit contenir les caractères `{` ou `}`, utiliser `replace` après `format` ou éviter ces caractères dans le template.
 
 ```c
 string name = "Alice";
 int age = 30;
 float score = 98.5;
 
-string msg = format("Bonjour {}, tu as {} ans.", [name, toString(age)]);
+string msg = format("Bonjour {}, tu as {} ans.", name, age);
 // → "Bonjour Alice, tu as 30 ans."
 
-string line = format("Nom: {}, Score: {}", [name, toString(score)]);
-// → "Nom: Alice, Score: 98.5"
-
-// Formatage de plusieurs valeurs
-string[] data = [toString(1), toString(2), toString(3)];
-string row = format("{} + {} = {}", data);
-// → "1 + 2 = 3"
+string line = format("Nom: {}, Score: {}, Actif: {}", name, score, true);
+// → "Nom: Alice, Score: 98.5, Actif: true"
 
 // Erreur runtime : 2 marqueurs mais 1 argument
-// string bad = format("x={}, y={}", [toString(x)]);  // erreur runtime
+// string bad = format("x={}, y={}", x);   // erreur runtime
 ```
 
 #### `trim`
@@ -4082,8 +4075,9 @@ Un **statement** est une instruction exécutable unique. Il peut s'agir notammen
 - `break` ;
 - `continue` ;
 - `return` ;
-- `throw` (§10.11) ;
-- `try / catch` (§10.12).
+- une boucle `for-in` (§10.9) ;
+- `throw` (§10.12) ;
+- `try / catch / finally` (§10.13).
 
 Règles générales :
 
@@ -4195,7 +4189,47 @@ Règles normatives de la boucle `for` :
 - les trois parties sont séparées par des `;` ;
 - aucune des trois parties ne peut être omise.
 
-### 10.9 Contrôle de boucle
+### 10.9 Boucle `for-in`
+
+Syntaxe retenue :
+
+```
+for (T x in expr) body                    /* tableau : T = type élément */
+for (K k in expr) body                    /* map : K = type clé         */
+for (K k, V v in expr) body               /* map : K = clé, V = valeur  */
+```
+
+**Sémantique :**
+
+- `expr` doit être de type **tableau** ou **map** ; tout autre type est une **erreur sémantique**.
+- Pour un **tableau** : la forme à une variable est obligatoire ; le type déclaré doit correspondre au type élément du tableau.
+- Pour une **map** : les deux formes sont valides.
+  - Forme à une variable : le type déclaré doit correspondre au type clé.
+  - Forme à deux variables : les types déclarés doivent correspondre respectivement au type clé et au type valeur.
+- La variable de boucle est scoped au corps de la boucle et ne persiste pas après.
+- L'ordre d'itération sur une map est **non spécifié**.
+- `break` et `continue` fonctionnent normalement à l'intérieur d'une boucle `for-in`.
+- La forme à deux variables (`K k, V v`) n'est autorisée que pour les maps ; l'utiliser sur un tableau est une **erreur sémantique**.
+
+**Exemples :**
+
+```c
+// Tableau
+string[] words = ["a", "b", "c"];
+for (string w in words) { print(w + "\n"); }
+
+// Map — clés seulement
+int[string] m;
+m["x"] = 1;
+for (string k in m) { print(k + "\n"); }
+
+// Map — clé + valeur
+for (string k, int v in m) {
+    print(k + "=" + toString(v) + "\n");
+}
+```
+
+### 10.10 Contrôle de boucle
 
 ```c
 break;
@@ -4204,21 +4238,21 @@ continue;
 
 Règles :
 
-- `break` termine immédiatement la boucle courante (`while` ou `for`) ;
+- `break` termine immédiatement la boucle courante (`while`, `for` ou `for-in`) ;
 - `continue` passe immédiatement à l'itération suivante de la boucle courante ;
 - `break` et `continue` sont valides uniquement à l'intérieur d'une boucle ;
 - leur utilisation en dehors d'une boucle doit produire une erreur sémantique claire ;
 - ils peuvent apparaître comme instruction simple unique dans un corps de boucle sans accolades ;
 - `break` et `continue` s'appliquent toujours à la boucle la plus proche.
 
-### 10.10 Retour
+### 10.11 Retour
 
 ```c
 return 0;
 return;
 ```
 
-### 10.11 Levée d'exception (`throw`)
+### 10.12 Levée d'exception (`throw`)
 
 ```c
 throw expr;
@@ -4241,7 +4275,7 @@ err.token   = "}";
 throw err;
 ```
 
-### 10.12 Bloc `try / catch`
+### 10.13 Bloc `try / catch / finally`
 
 ```
 try {
@@ -4252,15 +4286,26 @@ try {
     // traitement si l'exception est TypeException2 ou un sous-type
 } catch (Exception nom) {
     // clause catch-all — attrape tout ce qui hérite de Exception
+} finally {
+    // exécuté TOUJOURS, qu'il y ait eu exception ou non
 }
 ```
 
+Les formes suivantes sont toutes valides :
+
+| Forme | Description |
+|-------|-------------|
+| `try { } catch (T e) { }` | Sans finally |
+| `try { } catch (T e) { } finally { }` | Avec catch et finally |
+| `try { } finally { }` | Sans catch (nettoyage garanti) |
+
 **Règles syntaxiques :**
 
-- Au moins une clause `catch` est obligatoire.
+- Au moins une clause `catch` **ou** un bloc `finally` est obligatoire.
+  Un `try` sans aucun des deux est une **erreur sémantique**.
 - Chaque clause `catch` déclare un paramètre `(Type nom)` ; `nom` est visible
   uniquement dans le bloc de cette clause.
-- Il n'existe pas de clause `finally` en V1.
+- Le bloc `finally` est unique et se place après toutes les clauses `catch`.
 
 **Règles sémantiques :**
 
@@ -4272,11 +4317,23 @@ try {
 - Deux clauses `catch` pour le même type → erreur sémantique.
 - Les variables déclarées dans le bloc `try` ne sont **pas** visibles dans les blocs `catch`.
 
+**Sémantique de `finally` :**
+
+- Le bloc `finally` s'exécute **toujours**, quelle que soit la façon dont le contrôle
+  quitte le bloc `try`/`catch` : exécution normale, `return`, exception attrapée ou
+  exception non attrapée.
+- Si `finally` se termine normalement, l'issue d'entrée est préservée :
+  une exception non rattrapée continue de se propager, un `return` est effectué normalement.
+- Si `finally` lève lui-même une exception ou exécute un `return`, ce nouveau signal
+  **remplace** l'issue d'entrée (y compris toute exception en cours). Ce comportement
+  est déconseillé car il peut masquer des erreurs.
+
 **Comportement de `break`, `continue`, `return` à l'intérieur de `try` :**
 
 - `break` et `continue` fonctionnent normalement ; ils interrompent la boucle englobante
   et n'interagissent pas avec le mécanisme `try/catch`.
-- `return` dans un bloc `try` retourne de la fonction englobante normalement.
+- `return` dans un bloc `try` exécute d'abord le `finally` (s'il existe), puis retourne
+  de la fonction englobante.
 
 **Exception non rattrapée :**
 
@@ -4691,6 +4748,8 @@ Mots-clés réservés :
 - `throw`
 - `try`
 - `catch`
+- `finally`
+- `in`
 
 `ExecResult` est un mot-clé réservé désignant le type opaque de résultat d'exécution (voir section 6.3). Il ne peut pas être utilisé comme nom de variable, de fonction ou de paramètre.
 
@@ -5040,7 +5099,7 @@ L'analyse sémantique doit vérifier :
 - que `glyphAt` reçoit un `string` et un `int` ; tout autre type est une erreur sémantique ;
 - que `glyphLen` reçoit un `string` ; tout autre type est une erreur sémantique ;
 - que `replace` reçoit exactement trois arguments de type `string` ; tout autre type est une erreur sémantique ; `old == ""` est une erreur runtime et non sémantique ;
-- que `format` reçoit exactement deux arguments : un `string` et un `string[]` ; tout autre type est une erreur sémantique ; la correspondance entre le nombre de `{}` et le nombre d'arguments est vérifiée à l'exécution et non à la compilation ;
+- que `format` reçoit au moins un argument de type `string` (le template) ; les arguments supplémentaires peuvent être de tout type scalaire et sont acceptés sans restriction de type ; la correspondance entre le nombre de `{}` dans le template et le nombre d'arguments est vérifiée à l'exécution et non à la compilation ;
 - que `join` reçoit un `string[]` comme premier argument et un `string` comme second argument ; tout autre type est une erreur sémantique ;
 - que `split` reçoit deux arguments de type `string` ; tout autre type est une erreur sémantique ;
 - que `concat` reçoit un argument de type `string[]` ; tout autre type de tableau est une erreur sémantique ;
@@ -5187,7 +5246,7 @@ L'analyse sémantique doit vérifier, pour chaque directive `import` rencontrée
 - `throw` peut apparaître dans n'importe quel contexte de statement, y compris
   dans le corps d'une fonction `void`.
 
-#### 19.13.3 Instruction `try / catch`
+#### 19.13.3 Instruction `try / catch / finally`
 
 - Chaque type `T` dans `catch (T nom)` doit être un **type exception** ; sinon **erreur sémantique**.
 - Les clauses `catch` sont analysées dans l'ordre :
@@ -5197,7 +5256,10 @@ L'analyse sémantique doit vérifier, pour chaque directive `import` rencontrée
 - Le paramètre `nom` de chaque clause `catch` est une variable locale au bloc `catch` ;
   elle n'est pas visible dans les autres clauses ni dans le bloc `try`.
 - Les variables déclarées dans le bloc `try` ne sont pas visibles dans les blocs `catch`.
-- La présence d'au moins une clause `catch` est obligatoire (erreur syntaxique sinon).
+- La présence d'au moins une clause `catch` **ou** d'un bloc `finally` est obligatoire ;
+  un `try` sans ni l'un ni l'autre est une **erreur sémantique**.
+- Le bloc `finally` est facultatif. S'il est présent, il est validé sémantiquement comme
+  n'importe quel autre bloc de statements.
 
 ---
 
@@ -5439,7 +5501,7 @@ Catalogue des erreurs runtime et messages associés :
 | `substr` hors bornes | `substr: range out of bounds` | `start: <N>   length: <L>   String length: <M> bytes` |
 | `split` séparateur vide | `split: separator cannot be empty` | — |
 | `replace` ancien vide | `replace: old argument cannot be empty` | — |
-| `format` marqueurs/args | `format: marker count does not match argument count` | `Markers '{}' in template: <N>   Arguments provided: <M>` |
+| `format` marqueurs/args | `format: placeholder count does not match argument count` | `placeholders '{}': <N>, arguments: <M>` |
 | `repeat` n négatif | `repeat: count must be non-negative` | `Got: <N>` |
 | `countOccurrences` needle vide | `countOccurrences: needle cannot be empty` | — |
 | `padLeft` / `padRight` width négatif | `padLeft: width must be non-negative` / `padRight: width must be non-negative` | `Got: <N>` |

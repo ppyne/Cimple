@@ -1216,13 +1216,16 @@ static Value do_exec(Value *args, int nargs, int line, int col) {
     size_t cmdlen = 0;
     for (int i = 0; i < argc; i++) cmdlen += strlen(argv[i]) + 3;
     char *cmdline = (char *)cimple_malloc(cmdlen + 1);
-    cmdline[0] = '\0';
+    size_t pos = 0;
     for (int i = 0; i < argc; i++) {
-        if (i > 0) strcat(cmdline, " ");
-        strcat(cmdline, "\"");
-        strcat(cmdline, argv[i]);
-        strcat(cmdline, "\"");
+        if (i > 0) cmdline[pos++] = ' ';
+        cmdline[pos++] = '"';
+        size_t arglen = strlen(argv[i]);
+        memcpy(cmdline + pos, argv[i], arglen);
+        pos += arglen;
+        cmdline[pos++] = '"';
     }
+    cmdline[pos] = '\0';
 
     PROCESS_INFORMATION pi;
     ZeroMemory(&pi, sizeof(pi));
@@ -1514,8 +1517,7 @@ static char *format_date(int64_t epochMs, const char *fmt) {
         case 'c': /* full UTC ISO 8601 date-time */ {
             int year = tm.tm_year + 1900;
             if (year < 0 || year > 9999) {
-                strcpy(out + oi, "invalid");
-                oi += 7;
+                oi += (size_t)snprintf(out + oi, buflen - oi, "invalid");
             } else {
                 oi += (size_t)snprintf(out + oi, buflen - oi,
                                        "%04d-%02d-%02dT%02d:%02d:%02dZ",
@@ -1834,29 +1836,51 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
     }
 
     if (id == BI_FORMAT) {
-        REQUIRE(2);
+        REQUIRE(1);
         const char *tmpl = ARG_STR(0);
-        ArrayVal   *arr  = ARG_ARR(1);
+        /* Count {} placeholders */
         int ph_count = 0;
         for (const char *p = tmpl; *p; p++)
             if (p[0] == '{' && p[1] == '}') ph_count++;
-        if (ph_count != arr->count)
+        int val_count = nargs - 1;   /* args after the template */
+        if (ph_count != val_count)
             error_runtime(line, col,
-                          "format: marker count does not match argument count (Markers '{}': %d   Arguments provided: %d)",
-                          ph_count, arr->count);
+                          "format: placeholder count does not match argument count"
+                          " (placeholders '{}': %d, arguments: %d)",
+                          ph_count, val_count);
         if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) return val_void();
+        /* Convert each extra argument to a string (auto-toString) */
+        char **strs = NULL;
+        if (val_count > 0) {
+            strs = malloc((size_t)val_count * sizeof(char *));
+            if (!strs) error_runtime(line, col, "format: out of memory");
+            for (int i = 0; i < val_count; i++)
+                strs[i] = val_to_string(&args[1 + i], line, col);
+        }
+        if (g_current_interp && g_current_interp->signal == SIGNAL_THROW) {
+            if (strs) {
+                for (int i = 0; i < val_count; i++) free(strs[i]);
+                free(strs);
+            }
+            return val_void();
+        }
+        /* Build result string */
         StringBuilder sb;
         sb_init(&sb, strlen(tmpl) + 1);
         const char *p = tmpl;
         int ai = 0;
         while (*p) {
             if (p[0] == '{' && p[1] == '}') {
-                sb_append_cstr(&sb, arr->data.strings[ai++]);
+                sb_append_cstr(&sb, strs[ai++]);
                 p += 2;
             } else {
                 sb_append_mem(&sb, p, 1);
                 p++;
             }
+        }
+        if (strs) {
+            for (int i = 0; i < val_count; i++) free(strs[i]);
+            free(strs);
         }
         return val_string_own(sb_take(&sb));
     }

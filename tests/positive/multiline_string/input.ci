@@ -1,0 +1,15 @@
+// Triple-quoted strings preserve literal newlines
+void main() {
+    string poem = """Line one
+Line two
+Line three""";
+    print(poem + "\n");
+
+    // Escape sequences still work inside triple-quoted strings
+    string tabbed = """col1\tcol2""";
+    print(tabbed + "\n");
+
+    // len counts bytes/chars correctly
+    string s = """abc""";
+    print(toString(len(s)) + "\n");
+}

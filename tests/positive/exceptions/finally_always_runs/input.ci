@@ -1,0 +1,11 @@
+// finally runs after normal (non-exceptional) try completion
+void main() {
+    try {
+        print("try\n");
+    } catch (RuntimeException e) {
+        print("catch\n");
+    } finally {
+        print("finally\n");
+    }
+    print("after\n");
+}

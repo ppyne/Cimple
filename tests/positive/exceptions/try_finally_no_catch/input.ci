@@ -1,0 +1,9 @@
+// try/finally with no catch clause — cleanup always guaranteed
+void main() {
+    try {
+        print("work\n");
+    } finally {
+        print("cleanup\n");
+    }
+    print("done\n");
+}

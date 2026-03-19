@@ -131,6 +131,7 @@ typedef enum {
     NODE_WHILE,          /* while (cond) stmt                           */
     NODE_FOR,            /* for (init; cond; update) stmt               */
     NODE_FOR_INIT,       /* int i = expr  (for-loop init)               */
+    NODE_FOR_IN,         /* for (T x in expr) / for (K k, V v in expr)  */
     NODE_RETURN,         /* return [expr]                               */
     NODE_BREAK,          /* break                                       */
     NODE_CONTINUE,       /* continue                                    */
@@ -318,6 +319,18 @@ struct AstNode {
             AstNode *init_expr;
         } for_init;
 
+        /* NODE_FOR_IN */
+        struct {
+            CimpleType  key_type;        /* element type (array) or key type (map) */
+            char       *key_name;        /* loop variable name */
+            char       *key_struct_name; /* NULL unless key_type == TYPE_STRUCT    */
+            CimpleType  val_type;        /* TYPE_UNKNOWN = key-only / array form   */
+            char       *val_name;        /* NULL for array / key-only map form     */
+            char       *val_struct_name; /* NULL unless val_type == TYPE_STRUCT    */
+            AstNode    *iterable;        /* expression being iterated              */
+            AstNode    *body;
+        } for_in;
+
         /* NODE_RETURN */
         struct { AstNode *value; /* NULL for void return */ } ret;
 
@@ -344,7 +357,8 @@ struct AstNode {
         /* NODE_TRY_CATCH */
         struct {
             AstNode *try_block;
-            NodeList clauses;     /* NODE_CATCH_CLAUSE */
+            NodeList clauses;        /* NODE_CATCH_CLAUSE */
+            AstNode *finally_block;  /* NULL if no finally clause */
         } try_catch;
 
         /* NODE_CATCH_CLAUSE */

@@ -1,0 +1,21 @@
+// format() accepts variadic arguments of any type — no string[] needed
+void main() {
+    string name = "Alice";
+    int    age  = 30;
+    float  score = 9.5;
+    bool   active = true;
+
+    // String arguments
+    print(format("Hello, {}!\n", name));
+
+    // Mixed types — auto-toString
+    print(format("Name: {}, Age: {}, Score: {}, Active: {}\n",
+                 name, age, score, active));
+
+    // Zero placeholders
+    print(format("no placeholders\n"));
+
+    // Byte value
+    byte b = 65;
+    print(format("byte={}\n", b));
+}

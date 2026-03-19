@@ -12,6 +12,11 @@ This repository contains the reference implementation: a lexer, parser, semantic
 - Statically typed: `int`, `float`, `bool`, `string`, `void`
 - Dynamic homogeneous arrays: `int[]`, `float[]`, `bool[]`, `string[]`
 - Opaque `ExecResult` type for external command execution
+- Exceptions: `try / catch / finally` with full signal propagation
+- `for (T x in arr)` and `for (K k, V v in map)` iteration
+- Triple-quoted multi-line strings `"""..."""`
+- Variadic `format()` — `format("Name: {}, age: {}", name, age)`
+- Shebang support — make `.ci` files directly executable
 - Minimal standard library (I/O, strings, maths, file, time, environment)
 - Predefined constants: `INT_MAX`, `M_PI`, `FLOAT_EPSILON`, …
 - Portable: macOS, Linux, Windows, WebAssembly (Emscripten)
@@ -47,14 +52,22 @@ cmake --build .
 ### Run
 
 ```sh
-./cimple run examples/hello.ci
-./cimple run examples/fibonacci.ci 15
-./cimple check myprogram.ci
+# Implicit run (shortest form)
+./cimple examples/hello.ci
+./cimple examples/fibonacci.ci 15
+
+# Explicit subcommands
+./cimple run  examples/hello.ci
+./cimple check myprogram.ci          # also: -c / --check
+
+# As a script (add #!/usr/bin/env cimple on the first line)
+chmod +x examples/hello.ci
+./examples/hello.ci
 ```
 
 ## Documentation
 
-- [Language Manual](MANUAL.md) — complete reference: types, operators, control flow, all 68 standard-library functions, scoping rules, error diagnostics, and worked examples.
+- [Language Manual](MANUAL.md) — complete reference: types, operators, control flow, standard-library functions, scoping rules, error diagnostics, and worked examples.
 - [Language Specification](SPECIFICATION.md) — formal specification (in french).
 
 ## Language overview
@@ -95,7 +108,7 @@ void main(string[] args) {
 Prints :
 
 ```text
-$ build/cimple run ./test.ci world
+$ build/cimple ./test.ci world
 4
 1
 3
@@ -154,7 +167,7 @@ cd tools/ && ./fetch_lemon.sh
 mkdir build-wasm && cd build-wasm
 cmake .. -DCMAKE_TOOLCHAIN_FILE=../toolchain-emscripten.cmake
 emmake cmake --build .
-node cimple.js run ../examples/hello.ci
+node cimple.js ../examples/hello.ci
 ```
 
 ## License

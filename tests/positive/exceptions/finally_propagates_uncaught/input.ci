@@ -1,0 +1,17 @@
+// finally runs even when exception is not caught — the exception propagates
+void inner() {
+    try {
+        assert(false, "inner boom");
+    } finally {
+        print("inner finally\n");
+    }
+}
+
+void main() {
+    try {
+        inner();
+    } catch (RuntimeException e) {
+        print("outer caught: " + e.message + "\n");
+    }
+    print("done\n");
+}

@@ -39,10 +39,27 @@ run_test() {
         stdin_file="$dir/stdin"
     fi
 
-    if actual_stdout=$(cd "$tmp_run_dir" && "$CIMPLE" run "$src" "$@" < "$stdin_file" 2>"$TMP_ERR"); then
-        actual_exit=0
+    # Determine sub-command: default is "run".
+    # A "cmd" file in the test directory overrides it.
+    # An empty "cmd" file means direct invocation (no sub-command at all).
+    cimple_subcmd="run"
+    if [ -f "$dir/cmd" ]; then
+        cimple_subcmd=$(head -1 "$dir/cmd" | tr -d '\r\n')
+    fi
+
+    if [ -n "$cimple_subcmd" ]; then
+        if actual_stdout=$(cd "$tmp_run_dir" && "$CIMPLE" "$cimple_subcmd" "$src" "$@" < "$stdin_file" 2>"$TMP_ERR"); then
+            actual_exit=0
+        else
+            actual_exit=$?
+        fi
     else
-        actual_exit=$?
+        # Direct invocation: cimple <file> [args]
+        if actual_stdout=$(cd "$tmp_run_dir" && "$CIMPLE" "$src" "$@" < "$stdin_file" 2>"$TMP_ERR"); then
+            actual_exit=0
+        else
+            actual_exit=$?
+        fi
     fi
     actual_stderr=$(cat "$TMP_ERR" 2>/dev/null || true)
     rm -f "$TMP_ERR"
