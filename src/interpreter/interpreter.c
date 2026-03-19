@@ -301,24 +301,32 @@ static AstNode *find_union_decl(Interp *ip, const char *name) {
     return NULL;
 }
 
+/* Base type of a built-in exception, NULL if not a built-in exception. */
+static const char *builtin_exception_base(const char *name) {
+    if (strcmp(name, "RuntimeException") == 0 ||
+        strcmp(name, "IoException")      == 0 ||
+        strcmp(name, "RegExpException")  == 0)
+        return "Exception";
+    return NULL;
+}
+
 int interp_struct_is_subtype(Interp *ip, const char *actual, const char *expected) {
     if (!actual || !expected) return 0;
     if (strcmp(actual, expected) == 0) return 1;
-    if (strcmp(expected, "Exception") == 0 &&
-        (strcmp(actual, "RuntimeException") == 0 ||
-         strcmp(actual, "IoException") == 0 ||
-         strcmp(actual, "RegExpException") == 0))
-        return 1;
-    if ((strcmp(actual, "RuntimeException") == 0 ||
-         strcmp(actual, "IoException") == 0 ||
-         strcmp(actual, "RegExpException") == 0) &&
-        strcmp(expected, "Exception") != 0)
-        return 0;
-    for (AstNode *decl = find_struct_decl(ip, actual);
-         decl && decl->u.struct_decl.base_name;
-         decl = find_struct_decl(ip, decl->u.struct_decl.base_name)) {
-        if (strcmp(decl->u.struct_decl.base_name, expected) == 0) return 1;
+
+    /* Walk user-defined inheritance chain first */
+    const char *cur = actual;
+    for (;;) {
+        AstNode *decl = find_struct_decl(ip, cur);
+        if (!decl || !decl->u.struct_decl.base_name) break;
+        cur = decl->u.struct_decl.base_name;
+        if (strcmp(cur, expected) == 0) return 1;
     }
+
+    /* If we landed on a built-in exception, continue through its hierarchy */
+    const char *base = builtin_exception_base(cur);
+    if (base && strcmp(base, expected) == 0) return 1;
+
     return 0;
 }
 
@@ -539,8 +547,15 @@ static Value create_union_instance(Interp *ip, const char *name) {
 }
 
 static Value clone_struct_instance(Interp *ip, const char *name, Scope *scope, int line, int col) {
-    if (strcmp(name, "TerminalSize") == 0 || strcmp(name, "KeyEvent") == 0) {
-        Value out = val_struct(name, builtin_exception_field_count(name));
+    /* Built-in types with known field layouts — no AST decl needed */
+    if (strcmp(name, "Exception")        == 0 ||
+        strcmp(name, "RuntimeException") == 0 ||
+        strcmp(name, "IoException")      == 0 ||
+        strcmp(name, "RegExpException")  == 0 ||
+        strcmp(name, "TerminalSize")     == 0 ||
+        strcmp(name, "KeyEvent")         == 0) {
+        int fc = builtin_exception_field_count(name);
+        Value out = val_struct(name, fc);
         fill_builtin_exception_defaults(out.u.st, name);
         return out;
     }

@@ -2428,150 +2428,107 @@ void main() {
 
 ### 8.16 Exceptions
 
-Cimple provides structured exception handling with `throw`, `try`, and `catch`.
-Exceptions are ordinary structures that inherit from the built-in `Exception` type.
+Cimple provides structured exception handling with `throw`, `try`, `catch`, and
+`finally`.  Exceptions are structures that inherit (directly or indirectly) from the
+built-in `Exception` type.
 
-#### Built-in exception types
+#### Built-in exception hierarchy
 
-Four types are available without import:
-
-```c
-structure Exception {
-    string message;
-}
-
-structure RuntimeException : Exception { }   // index out of bounds, division by zero, …
-structure IoException      : Exception { string path; }   // file operations
-structure RegExpException  : Exception { }   // regex syntax / range errors
+```
+Exception                          — root  (field: message string)
+├── RuntimeException : Exception   — runtime errors (overflow, bad index, …)
+├── IoException      : Exception   — I/O errors (fields: path string, message string)
+└── RegExpException  : Exception   — regex errors (field: message string)
 ```
 
-#### Defining your own exceptions
-
-Inherit from `Exception` (or another user-defined exception type):
-
-```c
-structure ParseError : Exception {
-    int    line;
-    string token;
-}
-
-structure NetworkError : Exception {
-    string url;
-    int    statusCode;
-}
-```
-
-> `Exception`, `RuntimeException`, `IoException`, and `RegExpException` are reserved
-> names. You cannot redefine them or inherit from the three built-in subtypes.
+All four types are available without any import.  They can be caught, thrown, cloned,
+and **inherited from** like any other structure.
 
 #### Throwing an exception
 
-`throw` takes any expression whose type inherits from `Exception`:
+Use `clone` to create an instance, set fields, then `throw`:
 
 ```c
-throw RuntimeException { message: "negative value not allowed" };
+RuntimeException e = clone RuntimeException;
+e.message = "value must be positive";
+throw e;
+```
 
-// or build the value first
-ParseError err;
-err.message = "unexpected token";
-err.line    = 42;
-err.token   = "}";
-throw err;
+`assert(condition, message)` is a shorthand that throws `RuntimeException` when the
+condition is false:
+
+```c
+assert(age >= 0, "invalid age: " + toString(age));
+```
+
+#### Defining your own exception types
+
+Inherit from any built-in exception type or from another user-defined exception:
+
+```c
+// directly under the root
+structure AppException : Exception {}
+
+// specialised subtypes
+structure ValidationException : AppException {}
+structure NetworkException     : AppException {
+    int statusCode = 0;
+}
+
+// under a built-in subtype
+structure DatabaseException : RuntimeException {
+    string query = "";
+}
+```
+
+Throw them the same way:
+
+```c
+ValidationException e = clone ValidationException;
+e.message = "invalid age: " + toString(age);
+throw e;
 ```
 
 #### Catching exceptions
 
+`catch` clauses are tested **top-to-bottom**.  The first clause whose declared type
+matches the thrown type — or is an **ancestor** of it — is executed.
+
 ```c
 try {
-    int[] a = [10, 20, 30];
-    int v = a[99];               // throws RuntimeException
-} catch (RuntimeException e) {
-    print("Runtime error: " + e.message + "\n");
-} catch (Exception e) {
-    print("Other error: " + e.message + "\n");
+    validate(-5);
+} catch (ValidationException e) {       // exact type
+    print("Validation: " + e.message + "\n");
+} catch (AppException e) {              // parent — catches all AppException subtypes
+    print("App error: " + e.message + "\n");
+} catch (Exception e) {                 // catch-all
+    print("Error: " + e.message + "\n");
 }
 ```
 
 **Rules:**
 
-- Clauses are tested **in order**; the first whose type matches (or is a base of) the
-  thrown type is executed.
-- A `catch (Exception e)` catches everything — place it last.
-- Putting a more general catch before a specific one is a **semantic error**
-  (the specific clause would be unreachable).
+- `catch (Exception e)` is the catch-all — it matches any thrown value; place it last.
+- Placing a more general type **before** a specific one is a **semantic error**
+  (unreachable clause).
 - Variables declared inside `try` are not visible inside `catch` blocks.
+- `e.message` (and `e.path` for `IoException`) give read/write access to the exception
+  fields inside a catch clause.
 
-#### Guaranteed cleanup with `finally`
-
-A `finally` block runs **unconditionally** after the `try`/`catch` sequence, whether
-execution left normally, via `return`, or via an uncaught exception.  Use it to release
-resources that must always be freed.
+#### Catching built-in errors
 
 ```c
-// try / catch / finally
 try {
-    string data = readFile("/var/data.txt");
-    process(data);
+    int[] a = [1, 2, 3];
+    int v = a[99];                      // throws RuntimeException
+} catch (RuntimeException e) {
+    print("Runtime: " + e.message + "\n");
+}
+
+try {
+    string s = readFile("/etc/shadow");
 } catch (IoException e) {
-    print("I/O error: " + e.message + "\n");
-} finally {
-    print("cleanup\n");   // always runs
-}
-
-// try / finally — no catch needed
-try {
-    doWork();
-} finally {
-    releaseLock();   // always runs, even if doWork() throws
-}
-```
-
-**Semantics:**
-
-- The `finally` block always executes, even if no exception occurred and even if an
-  exception was *not* caught (the exception still propagates after `finally` completes).
-- If `finally` completes normally, the original outcome is preserved:
-  a caught exception stays caught, an uncaught one keeps propagating, a `return` value
-  is returned.
-- If `finally` itself throws or returns, that **new** signal supersedes the incoming one.
-  Avoid this pattern — it is error-prone and will silence the original exception.
-- A `try` block must have at least one `catch` clause **or** a `finally` block.
-  A plain `try { }` with neither is a semantic error.
-
-#### User-defined exception with multiple catch clauses
-
-```c
-structure DbError : Exception {
-    string query;
-}
-
-function runQuery(string q) : void {
-    if (q == "") {
-        throw DbError { message: "empty query", query: q };
-    }
-    // …
-}
-
-function main() : void {
-    try {
-        runQuery("");
-    } catch (DbError e) {
-        print("DB error on query \"" + e.query + "\": " + e.message + "\n");
-    } catch (RuntimeException e) {
-        print("Runtime: " + e.message + "\n");
-    } catch (Exception e) {
-        print("Unexpected: " + e.message + "\n");
-    }
-}
-```
-
-#### Catching I/O and regex errors
-
-```c
-try {
-    string content = readFile("/etc/shadow");
-} catch (IoException e) {
-    print("Cannot read " + e.path + ": " + e.message + "\n");
+    print("I/O error on " + e.path + ": " + e.message + "\n");
 }
 
 try {
@@ -2581,13 +2538,54 @@ try {
 }
 ```
 
+#### Re-throwing
+
+```c
+try {
+    riskyOp();
+} catch (AppException e) {
+    print("logging: " + e.message + "\n");
+    throw e;          // re-throw the same exception
+}
+```
+
+#### Guaranteed cleanup with `finally`
+
+A `finally` block runs **unconditionally** after the `try`/`catch` sequence — whether
+execution left normally, via `return`, or via an uncaught exception.
+
+```c
+try {
+    string data = readFile("/var/data.txt");
+    process(data);
+} catch (IoException e) {
+    print("I/O error: " + e.message + "\n");
+} finally {
+    print("cleanup\n");       // always runs
+}
+
+// try / finally — no catch needed
+try {
+    doWork();
+} finally {
+    releaseLock();
+}
+```
+
+**Semantics:**
+
+- If `finally` completes normally, the original outcome is preserved (caught exception,
+  uncaught exception still propagating, or `return` value).
+- If `finally` itself throws or returns, that **new** signal supersedes the incoming one.
+  Avoid this pattern — it silences the original exception.
+- A `try` block must have at least one `catch` clause **or** a `finally` block.
+
 #### Uncaught exceptions
 
-If an exception propagates all the way to the top without being caught, Cimple prints
-to `stderr`:
+If an exception propagates to the top without being caught, Cimple prints to `stderr`:
 
 ```
-Runtime error: ParseError: unexpected token
+Runtime error: ValidationException: invalid age: -5
 ```
 
 and exits with code `2`.

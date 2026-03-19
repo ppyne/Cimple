@@ -1,0 +1,23 @@
+structure AppException : Exception {}
+structure ValidationException : AppException {}
+
+void validate(int age) {
+    if (age < 0) {
+        ValidationException e = clone ValidationException;
+        e.message = "invalid age: " + toString(age);
+        throw e;
+    }
+}
+
+void main() {
+    try { validate(-1); } catch (ValidationException e) {
+        print("Validation: " + e.message + "\n");
+    }
+    try { validate(-2); } catch (AppException e) {
+        print("App: " + e.message + "\n");
+    }
+    try { validate(-3); } catch (Exception e) {
+        print("Exception: " + e.message + "\n");
+    }
+    print("done\n");
+}
