@@ -46,16 +46,30 @@ run_wasm_case() {
         done < "$dir/args"
     fi
 
+    # Determine subcommand from cmd file (mirrors run_tests.sh logic).
+    # Empty cmd or shebang-style invocation → "run" (WASM has no direct mode).
+    # -c / --check → "check".  Otherwise use the value verbatim.
+    wasm_subcmd="run"
+    if [ -f "$dir/cmd" ]; then
+        raw_cmd=$(head -1 "$dir/cmd" | tr -d '\r\n')
+        case "$raw_cmd" in
+            -c|--check) wasm_subcmd="check" ;;
+            check)      wasm_subcmd="check" ;;
+            "")         wasm_subcmd="run"   ;;
+            *)          wasm_subcmd="$raw_cmd" ;;
+        esac
+    fi
+
     rm -rf "$tmp_wasm_dir"
     mkdir -p "$tmp_wasm_dir"
 
     if [ -f "$stdin_file" ]; then
-        if wasm_stdout=$(cd "$tmp_wasm_dir" && node "$WASM_DRIVER" "$CIMPLE_WASM" run "$src" "$@" < "$stdin_file" 2>"$TMP_WASM_ERR"); then
+        if wasm_stdout=$(cd "$tmp_wasm_dir" && node "$WASM_DRIVER" "$CIMPLE_WASM" "$wasm_subcmd" "$src" "$@" < "$stdin_file" 2>"$TMP_WASM_ERR"); then
             wasm_exit=0
         else
             wasm_exit=$?
         fi
-    elif wasm_stdout=$(cd "$tmp_wasm_dir" && node "$WASM_DRIVER" "$CIMPLE_WASM" run "$src" "$@" 2>"$TMP_WASM_ERR"); then
+    elif wasm_stdout=$(cd "$tmp_wasm_dir" && node "$WASM_DRIVER" "$CIMPLE_WASM" "$wasm_subcmd" "$src" "$@" 2>"$TMP_WASM_ERR"); then
         wasm_exit=0
     else
         wasm_exit=$?
