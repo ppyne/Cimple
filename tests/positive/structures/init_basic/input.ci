@@ -1,0 +1,16 @@
+structure Point {
+    float x = 0.0;
+    float y = 0.0;
+
+    void _init(float px, float py) {
+        self.x = px;
+        self.y = py;
+    }
+}
+
+void main() {
+    Point p = clone Point(3.0, 4.0);
+    print(toString(p.x) + "," + toString(p.y) + "\n");
+    Point q = clone Point;
+    print(toString(q.x) + "," + toString(q.y) + "\n");
+}

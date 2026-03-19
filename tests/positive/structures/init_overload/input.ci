@@ -1,0 +1,23 @@
+structure Vec {
+    float x = 0.0;
+    float y = 0.0;
+
+    void _init(float vx, float vy) {
+        self.x = vx;
+        self.y = vy;
+    }
+
+    void _init(float uniform) {
+        self.x = uniform;
+        self.y = uniform;
+    }
+}
+
+void main() {
+    Vec a = clone Vec(1.0, 2.0);
+    Vec b = clone Vec(5.0);
+    Vec c = clone Vec;
+    print(toString(a.x) + "," + toString(a.y) + "\n");
+    print(toString(b.x) + "," + toString(b.y) + "\n");
+    print(toString(c.x) + "," + toString(c.y) + "\n");
+}

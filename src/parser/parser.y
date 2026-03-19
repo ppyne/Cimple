@@ -1525,6 +1525,18 @@ expr(E) ::= KW_CLONE(T) IDENT(N).
     free(N.v.sval);
 }
 
+expr(E) ::= KW_CLONE(T) TYPE_IDENT(N) LPAREN arg_list(AL) RPAREN.
+{
+    E = ast_clone_with_args(N.v.sval, AL, T.line, T.col);
+    free(N.v.sval);
+}
+
+expr(E) ::= KW_CLONE(T) IDENT(N) LPAREN arg_list(AL) RPAREN.
+{
+    E = ast_clone_with_args(N.v.sval, AL, T.line, T.col);
+    free(N.v.sval);
+}
+
 /* Identifier or predefined constant */
 expr(E) ::= IDENT(N). [PLUS]
 {

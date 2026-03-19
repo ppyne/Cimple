@@ -26,6 +26,7 @@ typedef struct {
     const char *current_struct_name;
     const char *current_base_name;
     int         in_method;
+    int         in_init;  /* 1 when inside a _init method body */
 } SemCtx;
 
 /* -----------------------------------------------------------------------

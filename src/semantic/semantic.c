@@ -573,6 +573,18 @@ static StructMethodSig *struct_lookup_method(StructTable *st, StructInfo *si, co
     return NULL;
 }
 
+/* Find the _init overload with a matching argument count, walking the hierarchy. */
+static StructMethodSig *struct_lookup_init_overload(StructTable *st, StructInfo *si, int arg_count) {
+    for (StructInfo *cur = si; cur;
+         cur = cur->base_name ? struct_table_lookup(st, cur->base_name) : NULL) {
+        for (StructMethodSig *m = cur->methods; m; m = m->next) {
+            if (strcmp(m->name, "_init") == 0 && m->param_count == arg_count)
+                return m;
+        }
+    }
+    return NULL;
+}
+
 static UnionTable *union_table_new(void) {
     UnionTable *ut = ALLOC(UnionTable);
     ut->head = NULL;
@@ -905,6 +917,33 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
                            "Unknown type: '%s'", si->name);
             n->type = TYPE_UNKNOWN;
             return TYPE_UNKNOWN;
+        }
+        /* clone Foo(...) — look up and type-check _init overload */
+        if (n->u.clone_expr.has_args) {
+            int nargs = n->u.clone_expr.args.count;
+            for (int i = 0; i < nargs; i++)
+                check_expr(ctx, n->u.clone_expr.args.items[i]);
+            StructMethodSig *init_sig = struct_lookup_init_overload(ctx->structs, si, nargs);
+            if (!init_sig) {
+                char hint[128];
+                snprintf(hint, sizeof(hint),
+                         "No '_init' with %d parameter(s) found in '%s' or its bases.",
+                         nargs, si->name);
+                error_semantic_hint(n->line, n->col, hint,
+                                    "No matching '_init' overload for 'clone %s(%s)'",
+                                    si->name, nargs == 0 ? "" : "...");
+            } else {
+                for (int i = 0; i < nargs && i < init_sig->param_count; i++) {
+                    AstNode *arg = n->u.clone_expr.args.items[i];
+                    if (!types_compatible(ctx->structs,
+                                          arg->type, arg->type_name_hint,
+                                          init_sig->params[i].type,
+                                          init_sig->params[i].struct_name)) {
+                        error_type_mismatch(arg->line, arg->col, "_init call",
+                                            init_sig->params[i].type, arg->type);
+                    }
+                }
+            }
         }
         n->type = TYPE_STRUCT;
         free(n->type_name_hint);
@@ -1464,10 +1503,28 @@ static CimpleType check_expr(SemCtx *ctx, AstNode *n) {
             n->type = TYPE_UNKNOWN;
             return TYPE_UNKNOWN;
         }
+        /* Block direct _init calls; only super._init(...) inside _init is allowed */
+        if (strcmp(n->u.method_call.name, "_init") == 0) {
+            if (!n->u.method_call.is_super || !ctx->in_init) {
+                error_semantic(n->line, n->col,
+                               "'_init' cannot be called directly");
+                n->type = TYPE_VOID;
+                return TYPE_VOID;
+            }
+        }
         if (n->u.method_call.is_super && si && si->base_name) {
             si = struct_table_lookup(ctx->structs, si->base_name);
         }
-        StructMethodSig *method = struct_lookup_method(ctx->structs, si, n->u.method_call.name);
+        /* Use arity-aware lookup for _init overloads */
+        StructMethodSig *method;
+        if (strcmp(n->u.method_call.name, "_init") == 0) {
+            for (int i = 0; i < n->u.method_call.args.count; i++)
+                check_expr(ctx, n->u.method_call.args.items[i]);
+            method = struct_lookup_init_overload(ctx->structs, si,
+                                                  n->u.method_call.args.count);
+        } else {
+            method = struct_lookup_method(ctx->structs, si, n->u.method_call.name);
+        }
         if (!method) {
             error_semantic(n->line, n->col,
                            "Unknown method '%s' on structure '%s'",
@@ -2516,14 +2573,28 @@ static void validate_structs(SemCtx *ctx) {
                     method->params[j].map_val_struct_name = p->map_val_struct_name
                         ? cimple_strdup(p->map_val_struct_name) : NULL;
                 }
+                /* _init must always be void */
+                if (strcmp(method->name, "_init") == 0 && method->ret_type != TYPE_VOID) {
+                    error_semantic(m->line, m->col,
+                                   "'_init' must return void in structure '%s'", si->name);
+                }
                 method->decl = m;
                 method->next = si->methods;
                 si->methods = method;
                 for (StructMethodSig *other = si->methods->next; other; other = other->next) {
                     if (strcmp(other->name, method->name) == 0) {
-                        error_semantic(m->line, m->col,
-                                       "Duplicate method '%s' in structure '%s'",
-                                       method->name, si->name);
+                        /* _init supports overloading by arity */
+                        if (strcmp(method->name, "_init") == 0) {
+                            if (other->param_count == method->param_count) {
+                                error_semantic(m->line, m->col,
+                                               "Duplicate '_init' overload with %d parameter(s) in '%s'",
+                                               method->param_count, si->name);
+                            }
+                        } else {
+                            error_semantic(m->line, m->col,
+                                           "Duplicate method '%s' in structure '%s'",
+                                           method->name, si->name);
+                        }
                     }
                 }
                 AstNode *global = global_decl_lookup(ctx->program, method->name);
@@ -2532,7 +2603,7 @@ static void validate_structs(SemCtx *ctx) {
                                    "Method '%s' in structure '%s' conflicts with global symbol '%s'",
                                    method->name, si->name, method->name);
                 }
-                if (base) {
+                if (base && strcmp(method->name, "_init") != 0) {
                     StructMethodSig *base_method = struct_lookup_method(ctx->structs, base, method->name);
                     if (base_method && !struct_method_signature_matches(method, base_method)) {
                         error_semantic_hint(m->line, m->col,
@@ -2673,6 +2744,7 @@ static void check_struct_methods(SemCtx *ctx) {
             ctx->current_struct_name = si->name;
             ctx->current_base_name = si->base_name;
             ctx->in_method = 1;
+            ctx->in_init = (strcmp(f->u.func_decl.name, "_init") == 0) ? 1 : 0;
 
             scope_define(ctx->current, "self", TYPE_STRUCT, si->name, NULL,
                          TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL, f->line, f->col);
@@ -2697,6 +2769,7 @@ static void check_struct_methods(SemCtx *ctx) {
             ctx->current_struct_name = NULL;
             ctx->current_base_name = NULL;
             ctx->in_method = 0;
+            ctx->in_init = 0;
             pop_scope(ctx);
         }
     }
@@ -2807,6 +2880,7 @@ int semantic_check(AstNode *program) {
     ctx.current_struct_name = NULL;
     ctx.current_base_name = NULL;
     ctx.in_method = 0;
+    ctx.in_init = 0;
 
     for (int i = 0; BUILTIN_EXCEPTIONS[i].name; i++)
     {

@@ -448,7 +448,11 @@ struct AstNode {
         } method_call;
 
         /* NODE_CLONE */
-        struct { char *struct_name; } clone_expr;
+        struct {
+            char     *struct_name;
+            NodeList  args;     /* arguments for _init (when has_args == 1) */
+            int       has_args; /* 0 = bare 'clone Foo', 1 = 'clone Foo(...)' */
+        } clone_expr;
 
         /* NODE_INCR / NODE_DECR */
         struct { char *name; } incr_decr;
@@ -493,6 +497,7 @@ AstNode *ast_member(AstNode *base, const char *name, int line, int col);
 AstNode *ast_method_call(AstNode *base, const char *name, NodeList args,
                          int is_super, int line, int col);
 AstNode *ast_clone(const char *struct_name, int line, int col);
+AstNode *ast_clone_with_args(const char *struct_name, NodeList args, int line, int col);
 AstNode *ast_self(int line, int col);
 AstNode *ast_super(int line, int col);
 

@@ -1,0 +1,17 @@
+/* When a derived struct has no _init of its own, the base's _init is inherited */
+structure Base {
+    int value = 0;
+
+    void _init(int v) {
+        self.value = v;
+    }
+}
+
+structure Derived : Base {
+    string label = "default";
+}
+
+void main() {
+    Derived d = clone Derived(42);
+    print(toString(d.value) + "," + d.label + "\n");
+}

@@ -1,0 +1,12 @@
+structure Foo {
+    int x = 0;
+    int _init(int v) {
+        self.x = v;
+        return 0;
+    }
+}
+
+void main() {
+    Foo f = clone Foo(1);
+    print(toString(f.x) + "\n");
+}

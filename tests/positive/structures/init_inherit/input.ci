@@ -1,0 +1,26 @@
+structure Animal {
+    string name = "";
+    int age = 0;
+
+    void _init(string n, int a) {
+        self.name = n;
+        self.age = a;
+    }
+}
+
+structure Dog : Animal {
+    string breed = "";
+
+    void _init(string n, int a, string b) {
+        super._init(n, a);
+        self.breed = b;
+    }
+}
+
+void main() {
+    Animal x = clone Animal("Cat", 3);
+    print(x.name + "," + toString(x.age) + "\n");
+
+    Dog d = clone Dog("Rex", 5, "Labrador");
+    print(d.name + "," + toString(d.age) + "," + d.breed + "\n");
+}

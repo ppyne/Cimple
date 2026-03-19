@@ -266,6 +266,8 @@ void ast_free(AstNode *n) {
         break;
     case NODE_CLONE:
         free(n->u.clone_expr.struct_name);
+        if (n->u.clone_expr.has_args)
+            nodelist_free(&n->u.clone_expr.args);
         break;
     case NODE_INCR:
     case NODE_DECR:
@@ -384,6 +386,18 @@ AstNode *ast_method_call(AstNode *base, const char *name, NodeList args,
 AstNode *ast_clone(const char *struct_name, int line, int col) {
     AstNode *n = ast_new(NODE_CLONE, line, col);
     n->u.clone_expr.struct_name = cimple_strdup(struct_name);
+    n->u.clone_expr.has_args = 0;
+    nodelist_init(&n->u.clone_expr.args);
+    n->type = TYPE_STRUCT;
+    n->type_name_hint = cimple_strdup(struct_name);
+    return n;
+}
+
+AstNode *ast_clone_with_args(const char *struct_name, NodeList args, int line, int col) {
+    AstNode *n = ast_new(NODE_CLONE, line, col);
+    n->u.clone_expr.struct_name = cimple_strdup(struct_name);
+    n->u.clone_expr.args    = args;
+    n->u.clone_expr.has_args = 1;
     n->type = TYPE_STRUCT;
     n->type_name_hint = cimple_strdup(struct_name);
     return n;

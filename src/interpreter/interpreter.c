@@ -708,6 +708,42 @@ static const char *find_struct_method_owner(Interp *ip, const char *struct_name,
     return NULL;
 }
 
+/* Find the _init method matching the given argument count, walking the hierarchy. */
+static AstNode *find_struct_init_decl(Interp *ip, const char *struct_name, int arg_count) {
+    for (AstNode *decl = find_struct_decl(ip, struct_name);
+         decl;
+         decl = decl->u.struct_decl.base_name
+                ? find_struct_decl(ip, decl->u.struct_decl.base_name)
+                : NULL) {
+        for (int i = 0; i < decl->u.struct_decl.members.count; i++) {
+            AstNode *m = decl->u.struct_decl.members.items[i];
+            if (m->kind == NODE_FUNC_DECL &&
+                strcmp(m->u.func_decl.name, "_init") == 0 &&
+                m->u.func_decl.params.count == arg_count)
+                return m;
+        }
+    }
+    return NULL;
+}
+
+/* Returns the struct name that owns the matching _init overload. */
+static const char *find_struct_init_owner(Interp *ip, const char *struct_name, int arg_count) {
+    for (AstNode *decl = find_struct_decl(ip, struct_name);
+         decl;
+         decl = decl->u.struct_decl.base_name
+                ? find_struct_decl(ip, decl->u.struct_decl.base_name)
+                : NULL) {
+        for (int i = 0; i < decl->u.struct_decl.members.count; i++) {
+            AstNode *m = decl->u.struct_decl.members.items[i];
+            if (m->kind == NODE_FUNC_DECL &&
+                strcmp(m->u.func_decl.name, "_init") == 0 &&
+                m->u.func_decl.params.count == arg_count)
+                return decl->u.struct_decl.name;
+        }
+    }
+    return NULL;
+}
+
 /* -----------------------------------------------------------------------
  * eval_expr
  * ----------------------------------------------------------------------- */
@@ -755,8 +791,37 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
         return sym->val;
     }
 
-    case NODE_CLONE:
-        return clone_struct_instance(ip, n->u.clone_expr.struct_name, scope, n->line, n->col);
+    case NODE_CLONE: {
+        const char *sname = n->u.clone_expr.struct_name;
+        Value out = clone_struct_instance(ip, sname, scope, n->line, n->col);
+        if (interp_has_throw(ip)) return val_void();
+        if (n->u.clone_expr.has_args) {
+            int nargs = n->u.clone_expr.args.count;
+            Value arg_vals[32];
+            if (nargs > 32) nargs = 32;
+            for (int i = 0; i < nargs; i++) {
+                arg_vals[i] = eval_expr(ip, scope, n->u.clone_expr.args.items[i]);
+                if (interp_has_throw(ip)) {
+                    for (int j = 0; j < i; j++) value_free(&arg_vals[j]);
+                    value_free(&out);
+                    return val_void();
+                }
+            }
+            AstNode *init_decl = find_struct_init_decl(ip, sname, nargs);
+            if (init_decl) {
+                /* call_method mutates self in-place via shared StructVal* */
+                Value ret = call_method(ip, &out, "_init", 0, arg_vals, nargs,
+                                        n->line, n->col);
+                value_free(&ret);
+            }
+            for (int i = 0; i < nargs; i++) value_free(&arg_vals[i]);
+            if (interp_has_throw(ip)) {
+                value_free(&out);
+                return val_void();
+            }
+        }
+        return out;
+    }
 
     case NODE_ARRAY_LIT: {
         NodeList  *elems = &n->u.array_lit.elems;
@@ -1918,8 +1983,15 @@ static Value call_method(Interp *ip, Value *base, const char *method_name,
     const char *search_struct = base->u.st->struct_name;
     if (use_base_only && ip->current_method_base)
         search_struct = ip->current_method_base;
-    AstNode *method = find_struct_method_decl(ip, search_struct, method_name, 0);
-    const char *owner = find_struct_method_owner(ip, search_struct, method_name, 0);
+    AstNode *method;
+    const char *owner;
+    if (strcmp(method_name, "_init") == 0) {
+        method = find_struct_init_decl(ip, search_struct, nargs);
+        owner  = find_struct_init_owner(ip, search_struct, nargs);
+    } else {
+        method = find_struct_method_decl(ip, search_struct, method_name, 0);
+        owner  = find_struct_method_owner(ip, search_struct, method_name, 0);
+    }
     if (!method)
         error_runtime(line, col, "Unknown method '%s'", method_name);
 
