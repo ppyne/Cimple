@@ -639,14 +639,26 @@ Value array_get(ArrayVal *a, int idx, int line, int col) {
     case TYPE_STRING: return val_string(a->data.strings[idx]);
     case TYPE_BYTE:   return val_byte(a->data.bytes[idx]);
     case TYPE_STRUCT: {
+        if (!a->data.structs[idx]) {
+            error_runtime(line, col, "Null struct pointer in array at index %d", idx);
+            return val_void();
+        }
         Value v; v.type = TYPE_STRUCT; v.u.st = a->data.structs[idx];
         return value_copy(v);
     }
     case TYPE_UNION: {
+        if (!a->data.unions[idx]) {
+            error_runtime(line, col, "Null union pointer in array at index %d", idx);
+            return val_void();
+        }
         Value v; v.type = TYPE_UNION; v.u.un = a->data.unions[idx];
         return value_copy(v);
     }
     case TYPE_REGEXP_MATCH: {
+        if (!a->data.rems[idx]) {
+            error_runtime(line, col, "Null RegExpMatch pointer in array at index %d", idx);
+            return val_void();
+        }
         Value v; v.type = TYPE_REGEXP_MATCH; v.u.rem = a->data.rems[idx];
         return value_copy(v);
     }
@@ -804,6 +816,7 @@ Value value_copy(Value v) {
         case TYPE_STRUCT:
             out->struct_name = src->struct_name ? cimple_strdup(src->struct_name) : NULL;
             for (int i = 0; i < src->count; i++) {
+                if (!src->data.structs[i]) { out->data.structs[i] = NULL; continue; }
                 Value tmp; tmp.type = TYPE_STRUCT; tmp.u.st = src->data.structs[i];
                 out->data.structs[i] = value_copy(tmp).u.st;
             }
@@ -811,12 +824,14 @@ Value value_copy(Value v) {
         case TYPE_UNION:
             out->struct_name = src->struct_name ? cimple_strdup(src->struct_name) : NULL;
             for (int i = 0; i < src->count; i++) {
+                if (!src->data.unions[i]) { out->data.unions[i] = NULL; continue; }
                 Value tmp; tmp.type = TYPE_UNION; tmp.u.un = src->data.unions[i];
                 out->data.unions[i] = value_copy(tmp).u.un;
             }
             break;
         case TYPE_REGEXP_MATCH:
             for (int i = 0; i < src->count; i++) {
+                if (!src->data.rems[i]) { out->data.rems[i] = NULL; continue; }
                 Value tmp; tmp.type = TYPE_REGEXP_MATCH; tmp.u.rem = src->data.rems[i];
                 out->data.rems[i] = value_copy(tmp).u.rem;
             }
@@ -895,18 +910,21 @@ void value_free(Value *v) {
             }
             if (a->elem_type == TYPE_STRUCT) {
                 for (int i = 0; i < a->count; i++) {
+                    if (!a->data.structs[i]) continue;
                     Value tmp; tmp.type = TYPE_STRUCT; tmp.u.st = a->data.structs[i];
                     value_free(&tmp);
                 }
             }
             if (a->elem_type == TYPE_UNION) {
                 for (int i = 0; i < a->count; i++) {
+                    if (!a->data.unions[i]) continue;
                     Value tmp; tmp.type = TYPE_UNION; tmp.u.un = a->data.unions[i];
                     value_free(&tmp);
                 }
             }
             if (a->elem_type == TYPE_REGEXP_MATCH) {
                 for (int i = 0; i < a->count; i++) {
+                    if (!a->data.rems[i]) continue;
                     Value tmp; tmp.type = TYPE_REGEXP_MATCH; tmp.u.rem = a->data.rems[i];
                     value_free(&tmp);
                 }

@@ -1,0 +1,39 @@
+void main() {
+    // INT64_MAX + 1
+    try {
+        int x = 9223372036854775807;
+        int y = x + 1;
+        print("unreachable\n");
+    } catch (RuntimeException e) {
+        print("add: " + e.message + "\n");
+    }
+
+    // INT64_MIN - 1
+    try {
+        int x = -9223372036854775808;
+        int y = x - 1;
+        print("unreachable\n");
+    } catch (RuntimeException e) {
+        print("sub: " + e.message + "\n");
+    }
+
+    // INT64_MAX * 2
+    try {
+        int x = 9223372036854775807;
+        int y = x * 2;
+        print("unreachable\n");
+    } catch (RuntimeException e) {
+        print("mul: " + e.message + "\n");
+    }
+
+    // -INT64_MIN
+    try {
+        int x = -9223372036854775808;
+        int y = -x;
+        print("unreachable\n");
+    } catch (RuntimeException e) {
+        print("neg: " + e.message + "\n");
+    }
+
+    print("done\n");
+}

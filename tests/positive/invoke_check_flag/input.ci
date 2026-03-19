@@ -1,0 +1,5 @@
+// Test: cimple -c <file> and cimple --check <file> output "OK" and exit 0
+void main() {
+    int x = 42;
+    print(toString(x) + "\n");
+}

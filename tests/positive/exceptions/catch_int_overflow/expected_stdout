@@ -1,0 +1,5 @@
+add: Integer overflow
+sub: Integer overflow
+mul: Integer overflow
+neg: Integer overflow (negation of INT64_MIN)
+done

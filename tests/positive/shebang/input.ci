@@ -1,0 +1,5 @@
+#!/usr/bin/env cimple
+// Shebang line is silently ignored; the rest of the file is normal Cimple.
+void main() {
+    print("shebang ok\n");
+}

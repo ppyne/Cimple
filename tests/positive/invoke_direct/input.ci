@@ -1,0 +1,4 @@
+// Test: cimple <file> works without the 'run' sub-command
+void main() {
+    print("direct\n");
+}

@@ -62,6 +62,7 @@ static int token_starts_statement_or_decl(TokenType t) {
     case TOK_CONTINUE:
     case TOK_KW_THROW:
     case TOK_KW_TRY:
+    case TOK_KW_FINALLY:
     case TOK_IDENT:
     case TOK_KW_INT:
     case TOK_KW_FLOAT:
@@ -553,6 +554,14 @@ nonvoid_type(T) ::= map_type(M).           { T = M; }
 nonvoid_type(T) ::= map2d_type(M).         { T = M; }
 nonvoid_type(T) ::= KW_EXECRESULT.         { T = parsed_type_make(TYPE_EXEC_RESULT, NULL); }
 
+/* for_in_type: scalar or user-struct (used in for-in loop variable declarations) */
+for_in_type(T) ::= scalar_type(S).  { T = S; }
+for_in_type(T) ::= TYPE_IDENT(N).
+{
+    T = parsed_type_make(TYPE_STRUCT, N.v.sval);
+    free(N.v.sval);
+}
+
 callback_param_types(F) ::= nonvoid_type(T).
 {
     F = func_type_new(TYPE_UNKNOWN);
@@ -680,6 +689,8 @@ stmt_list(L) ::= stmt_list(LL) stmt(S).
 %type switch_case { AstNode * }
 %type catch_clause_list { NodeList }
 %type catch_clause { AstNode * }
+%type opt_finally { AstNode * }
+%type for_in_type { ParsedType }
 
 /* Variable declarations */
 stmt(S) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
@@ -918,7 +929,7 @@ stmt(S) ::= WHILE(T) LPAREN expr(C) RPAREN simple_or_block(B).
     S->u.while_stmt.body = B;
 }
 
-/* for */
+/* for — classical C-style */
 stmt(S) ::= FOR(T) LPAREN for_init(I) expr(C) SEMICOLON for_update(U) RPAREN simple_or_block(B).
 {
     S = ast_new(NODE_FOR, T.line, T.col);
@@ -926,6 +937,40 @@ stmt(S) ::= FOR(T) LPAREN for_init(I) expr(C) SEMICOLON for_update(U) RPAREN sim
     S->u.for_stmt.cond   = C;
     S->u.for_stmt.update = U;
     S->u.for_stmt.body   = B;
+}
+
+/* for-in — array element / map key iteration: for (T x in expr) { } */
+stmt(S) ::= FOR(T) LPAREN for_in_type(TK) IDENT(K) KW_IN expr(E) RPAREN simple_or_block(B).
+{
+    S = ast_new(NODE_FOR_IN, T.line, T.col);
+    S->u.for_in.key_type        = TK.type;
+    S->u.for_in.key_name        = cimple_strdup(K.v.sval);
+    S->u.for_in.key_struct_name = TK.struct_name ? cimple_strdup(TK.struct_name) : NULL;
+    S->u.for_in.val_type        = TYPE_UNKNOWN;
+    S->u.for_in.val_name        = NULL;
+    S->u.for_in.val_struct_name = NULL;
+    S->u.for_in.iterable        = E;
+    S->u.for_in.body            = B;
+    free(TK.struct_name);
+    free(K.v.sval);
+}
+
+/* for-in — map key+value iteration: for (K k, V v in expr) { } */
+stmt(S) ::= FOR(T) LPAREN for_in_type(TK) IDENT(K) COMMA for_in_type(TV) IDENT(V) KW_IN expr(E) RPAREN simple_or_block(B).
+{
+    S = ast_new(NODE_FOR_IN, T.line, T.col);
+    S->u.for_in.key_type        = TK.type;
+    S->u.for_in.key_name        = cimple_strdup(K.v.sval);
+    S->u.for_in.key_struct_name = TK.struct_name ? cimple_strdup(TK.struct_name) : NULL;
+    S->u.for_in.val_type        = TV.type;
+    S->u.for_in.val_name        = cimple_strdup(V.v.sval);
+    S->u.for_in.val_struct_name = TV.struct_name ? cimple_strdup(TV.struct_name) : NULL;
+    S->u.for_in.iterable        = E;
+    S->u.for_in.body            = B;
+    free(TK.struct_name);
+    free(TV.struct_name);
+    free(K.v.sval);
+    free(V.v.sval);
 }
 
 stmt(S) ::= SWITCH(T) LPAREN expr(E) RPAREN LBRACE switch_case_list(CS) RBRACE.
@@ -941,12 +986,26 @@ stmt(S) ::= KW_THROW(T) expr(E) SEMICOLON.
     S->u.throw_stmt.expr = E;
 }
 
-stmt(S) ::= KW_TRY(T) block(B) catch_clause_list(CS).
+/* try { } catch* finally? — at least one catch OR a finally */
+stmt(S) ::= KW_TRY(T) block(B) catch_clause_list(CS) opt_finally(F).
 {
     S = ast_new(NODE_TRY_CATCH, T.line, T.col);
-    S->u.try_catch.try_block = B;
-    S->u.try_catch.clauses = CS;
+    S->u.try_catch.try_block    = B;
+    S->u.try_catch.clauses      = CS;
+    S->u.try_catch.finally_block = F;
 }
+
+/* try { } finally { } — no catch clauses */
+stmt(S) ::= KW_TRY(T) block(B) KW_FINALLY block(F).
+{
+    S = ast_new(NODE_TRY_CATCH, T.line, T.col);
+    S->u.try_catch.try_block    = B;
+    nodelist_init(&S->u.try_catch.clauses);
+    S->u.try_catch.finally_block = F;
+}
+
+opt_finally(F) ::= KW_FINALLY block(B). { F = B; }
+opt_finally(F) ::= .                    { F = NULL; }
 
 /* return */
 stmt(S) ::= RETURN(T) SEMICOLON.

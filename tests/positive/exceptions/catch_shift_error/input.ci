@@ -1,0 +1,15 @@
+void main() {
+    try {
+        int x = 1 << 64;
+        print("unreachable\n");
+    } catch (RuntimeException e) {
+        print("caught: " + e.message + "\n");
+    }
+    try {
+        int y = 1 << -1;
+        print("unreachable\n");
+    } catch (RuntimeException e) {
+        print("caught: " + e.message + "\n");
+    }
+    print("done\n");
+}

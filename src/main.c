@@ -88,13 +88,16 @@ static void normalise_newlines(char *s) {
 static void usage(const char *prog) {
     fprintf(stderr,
             "Usage:\n"
-            "  %s run   <file.ci> [args...]\n"
-            "  %s check <file.ci>\n"
+            "  %s <file.ci> [args...]       Run the program (default)\n"
+            "  %s run <file.ci> [args...]   Run the program (explicit)\n"
+            "  %s check <file.ci>           Type-check only\n"
+            "  %s -c <file.ci>              Type-check only (short flag)\n"
+            "  %s --check <file.ci>         Type-check only (long flag)\n"
             "\n"
-            "Commands:\n"
-            "  run    Parse, analyse and execute the program.\n"
-            "  check  Parse and analyse only (no execution).\n",
-            prog, prog);
+            "A shebang line (#!/...) at the top of a .ci file is silently ignored.\n"
+            "This lets you mark scripts executable and invoke them directly:\n"
+            "  #!/usr/bin/env cimple\n",
+            prog, prog, prog, prog, prog);
 }
 
 static void strlist_push(StringList *list, const char *s) {
@@ -396,6 +399,12 @@ static void resolve_file_recursive(ResolveState *st, const char *abs_path, int d
                        "Cannot import file: '%s'", disp);
     }
     normalise_newlines(source);
+    /* Strip shebang line (#!) — replace with spaces to preserve line numbers */
+    if (source[0] == '#' && source[1] == '!') {
+        char *nl = strchr(source, '\n');
+        size_t len = nl ? (size_t)(nl - source) : strlen(source);
+        memset(source, ' ', len);
+    }
     char *body = cimple_strdup(source);
     ImportList imports = {0};
     strlist_push(&st->stack, abs_path);
@@ -458,18 +467,37 @@ static const char *map_file_for_line(const SourceMapEntry *map, int count, int l
 }
 
 int main(int argc, char **argv) {
-    if (argc < 3) {
+    if (argc < 2) {
         usage(argv[0]);
         return 1;
     }
 
-    const char *cmd = argv[1];
-    const char *filepath = argv[2];
-    int do_run = (strcmp(cmd, "run") == 0);
-    int do_check = (strcmp(cmd, "check") == 0);
+    const char *filepath;
+    int do_run, do_check;
+    int user_args_start;    /* index of first user arg (after filepath) */
 
-    if (!do_run && !do_check) {
-        fprintf(stderr, "[ERROR] unknown command '%s'\n", cmd);
+    const char *first = argv[1];
+    if (strcmp(first, "run") == 0) {
+        /* cimple run <file> [args...] */
+        if (argc < 3) { usage(argv[0]); return 1; }
+        do_run = 1; do_check = 0;
+        filepath = argv[2];
+        user_args_start = 3;
+    } else if (strcmp(first, "check") == 0 ||
+               strcmp(first, "-c")    == 0 ||
+               strcmp(first, "--check") == 0) {
+        /* cimple check <file>  |  cimple -c <file>  |  cimple --check <file> */
+        if (argc < 3) { usage(argv[0]); return 1; }
+        do_run = 0; do_check = 1;
+        filepath = argv[2];
+        user_args_start = 3;
+    } else if (first[0] != '-') {
+        /* cimple <file> [args...]  — implicit run */
+        do_run = 1; do_check = 0;
+        filepath = argv[1];
+        user_args_start = 2;
+    } else {
+        fprintf(stderr, "[ERROR] unknown option '%s'\n", first);
         usage(argv[0]);
         return 1;
     }
@@ -519,8 +547,8 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    int user_argc = argc - 3;
-    char **user_argv = argv + 3;
+    int user_argc = argc - user_args_start;
+    char **user_argv = argv + user_args_start;
     int exit_code = interp_run(program, user_argc, user_argv);
     ast_free(program);
     sourcemap_free((SourceMapList *)&(SourceMapList){ .items = resolved.map, .count = resolved.map_count });

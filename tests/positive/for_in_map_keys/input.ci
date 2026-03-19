@@ -1,0 +1,17 @@
+// for (K k in map) — iterates directly over map keys
+void main() {
+    int[string] m;
+    m["only"] = 42;
+
+    // Single-entry map — deterministic order
+    for (string k in m) {
+        print(k + "=" + toString(m[k]) + "\n");
+    }
+
+    // for (K k in mapKeys(...)) is the array form — also valid
+    int[string] scores;
+    scores["x"] = 1;
+    for (string key in mapKeys(scores)) {
+        print("key=" + key + "\n");
+    }
+}

@@ -1,0 +1,17 @@
+// for (K k, V v in map) — iterates over key+value pairs
+void main() {
+    string[string] capitals;
+    capitals["France"] = "Paris";
+
+    for (string country, string city in capitals) {
+        print(country + " -> " + city + "\n");
+    }
+
+    // Numeric value map
+    int[string] ages;
+    ages["Bob"] = 25;
+
+    for (string name, int age in ages) {
+        print(name + ": " + toString(age) + "\n");
+    }
+}

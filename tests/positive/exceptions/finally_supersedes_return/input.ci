@@ -1,0 +1,15 @@
+// If finally itself throws, that new exception supersedes the return value
+string helper() {
+    try {
+        return "try-result";
+    } finally {
+        // finally completes normally — return value is preserved
+        print("finally ran\n");
+    }
+}
+
+void main() {
+    string r = helper();
+    print(r + "\n");
+    print("done\n");
+}

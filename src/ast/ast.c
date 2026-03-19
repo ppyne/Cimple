@@ -185,6 +185,14 @@ void ast_free(AstNode *n) {
         free(n->u.for_init.name);
         ast_free(n->u.for_init.init_expr);
         break;
+    case NODE_FOR_IN:
+        free(n->u.for_in.key_name);
+        free(n->u.for_in.key_struct_name);
+        free(n->u.for_in.val_name);
+        free(n->u.for_in.val_struct_name);
+        ast_free(n->u.for_in.iterable);
+        ast_free(n->u.for_in.body);
+        break;
     case NODE_RETURN:
         ast_free(n->u.ret.value);
         break;
@@ -206,6 +214,7 @@ void ast_free(AstNode *n) {
     case NODE_TRY_CATCH:
         ast_free(n->u.try_catch.try_block);
         nodelist_free(&n->u.try_catch.clauses);
+        ast_free(n->u.try_catch.finally_block);
         break;
     case NODE_CATCH_CLAUSE:
         free(n->u.catch_clause.type_name);

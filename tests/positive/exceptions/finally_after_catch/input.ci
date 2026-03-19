@@ -1,0 +1,11 @@
+// finally runs after a catch clause handles the exception
+void main() {
+    try {
+        assert(false, "boom");
+    } catch (RuntimeException e) {
+        print("caught: " + e.message + "\n");
+    } finally {
+        print("finally\n");
+    }
+    print("after\n");
+}

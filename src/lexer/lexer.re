@@ -103,6 +103,41 @@ static char *decode_string(Lexer *l, const char *start, const char *end) {
 }
 
 /* -----------------------------------------------------------------------
+ * Multi-line string decoder  (content between opening and closing """)
+ * Newlines are preserved literally; escape sequences are still recognised.
+ * ----------------------------------------------------------------------- */
+static char *decode_multiline_string(const char *start, const char *end) {
+    /* start → first content char after opening """
+     * end   → first char of closing """           */
+    const char *p   = start;
+    char       *buf = (char *)cimple_malloc((size_t)(end - start) * 4 + 1);
+    char       *out = buf;
+    while (p < end) {
+        if (*p != '\\') {
+            *out++ = *p++;   /* literal newlines are allowed */
+            continue;
+        }
+        p++;   /* skip backslash */
+        if (p >= end) { *out++ = '\\'; break; }
+        switch (*p) {
+        case '"':  *out++ = '"';  p++; break;
+        case '\\': *out++ = '\\'; p++; break;
+        case 'n':  *out++ = '\n'; p++; break;
+        case 't':  *out++ = '\t'; p++; break;
+        case 'r':  *out++ = '\r'; p++; break;
+        case 'b':  *out++ = '\b'; p++; break;
+        case 'f':  *out++ = '\f'; p++; break;
+        default:
+            *out++ = '\\';
+            *out++ = *p++;
+            break;
+        }
+    }
+    *out = '\0';
+    return buf;
+}
+
+/* -----------------------------------------------------------------------
  * Integer literal parsing (decimal, hex, binary, octal)
  * ----------------------------------------------------------------------- */
 static int64_t parse_int_literal(Lexer *l, const char *s, size_t len) {
@@ -167,6 +202,8 @@ const char *token_type_name(TokenType t) {
     case TOK_KW_THROW:     return "'throw'";
     case TOK_KW_TRY:       return "'try'";
     case TOK_KW_CATCH:     return "'catch'";
+    case TOK_KW_FINALLY:   return "'finally'";
+    case TOK_KW_IN:        return "'in'";
     case TOK_IDENT:        return "identifier";
     case TOK_TYPE_IDENT:   return "type identifier";
     case TOK_PLUS:         return "'+'";
@@ -261,7 +298,49 @@ yybegin:
             goto yybegin;
         }
 
-        /* String literal */
+        /* Triple-quoted multi-line string literal """...""" */
+        "\"\"\"" {
+            int    open_line = l->line;
+            int    open_col  = l->tok_col;
+            const char *content_start = l->cur;   /* first char after """ */
+            for (;;) {
+                if (*l->cur == '\0')
+                    error_lexical(open_line, open_col,
+                                  "unterminated triple-quoted string literal");
+                /* Track newlines so error positions stay accurate */
+                if (*l->cur == '\n') {
+                    l->line++; l->col = 1; l->cur++;
+                    continue;
+                }
+                if (*l->cur == '\r') {
+                    l->cur++;
+                    if (*l->cur == '\n') l->cur++;
+                    l->line++; l->col = 1;
+                    continue;
+                }
+                /* Skip escape sequences — the closing """ is never escaped */
+                if (*l->cur == '\\' && l->cur[1] != '\0') {
+                    l->cur += 2; l->col += 2;
+                    continue;
+                }
+                /* Closing """ ? */
+                if (l->cur[0] == '"' && l->cur[1] == '"' && l->cur[2] == '"') {
+                    const char *content_end = l->cur;   /* first " of closing """ */
+                    l->cur += 3; l->col += 3;
+                    tok.type    = TOK_STRING_LIT;
+                    tok.line    = open_line;
+                    tok.col     = open_col;
+                    tok.start_offset = (int)(content_start - 3 - l->buf);
+                    tok.end_offset   = (int)(l->cur - l->buf);
+                    tok.v.sval  = decode_multiline_string(content_start, content_end);
+                    return tok;
+                }
+                l->col++;
+                l->cur++;
+            }
+        }
+
+        /* Single-quoted string literal "..." */
         "\""        {
             const char *start = l->tok;
             l->col++;
@@ -375,6 +454,8 @@ yybegin:
         "throw"         { tok.type = TOK_KW_THROW;      goto kw_done; }
         "try"           { tok.type = TOK_KW_TRY;        goto kw_done; }
         "catch"         { tok.type = TOK_KW_CATCH;      goto kw_done; }
+        "finally"       { tok.type = TOK_KW_FINALLY;    goto kw_done; }
+        "in"            { tok.type = TOK_KW_IN;         goto kw_done; }
 
         letter alnum*   {
             tok.type   = TOK_IDENT;

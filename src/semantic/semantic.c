@@ -115,7 +115,7 @@ static const BuiltinSig BUILTINS[] = {
     { "startsWith", TYPE_BOOL, NULL,  { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
     { "endsWith",   TYPE_BOOL, NULL,  { TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
     { "replace",    TYPE_STRING, NULL, { TYPE_STRING, TYPE_STRING, TYPE_STRING }, 3, 0, 0 },
-    { "format",     TYPE_STRING, NULL, { TYPE_STRING, TYPE_STR_ARR }, 2, 0, 0 },
+    { "format",     TYPE_STRING, NULL, { TYPE_STRING }, 1, 1, 0 }, /* variadic: template + any values */
     { "join",       TYPE_STRING, NULL, { TYPE_STR_ARR, TYPE_STRING }, 2, 0, 0 },
     { "split",      TYPE_STR_ARR, NULL,{ TYPE_STRING, TYPE_STRING }, 2, 0, 0 },
     { "concat",     TYPE_STRING, NULL, { TYPE_STR_ARR },           1, 0, 0 },
@@ -2072,9 +2072,9 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
 
     case NODE_TRY_CATCH: {
         check_stmt(ctx, n->u.try_catch.try_block);
-        if (n->u.try_catch.clauses.count == 0) {
+        if (n->u.try_catch.clauses.count == 0 && !n->u.try_catch.finally_block) {
             error_semantic(n->line, n->col,
-                           "try requires at least one catch clause");
+                           "try requires at least one catch clause or a finally block");
             break;
         }
         int has_catchall = 0;
@@ -2113,6 +2113,8 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
             ctx->current = saved;
             scope_free(catch_scope);
         }
+        if (n->u.try_catch.finally_block)
+            check_stmt(ctx, n->u.try_catch.finally_block);
         break;
     }
 
@@ -2213,6 +2215,72 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         /* body */
         ctx->in_loop++;
         check_stmt(ctx, n->u.for_stmt.body);
+        ctx->in_loop--;
+        pop_scope(ctx);
+        break;
+    }
+
+    case NODE_FOR_IN: {
+        /* Check the iterable expression */
+        CimpleType iter_t = check_expr(ctx, n->u.for_in.iterable);
+        CimpleType key_t  = n->u.for_in.key_type;
+        CimpleType val_t  = n->u.for_in.val_type;   /* TYPE_UNKNOWN = key-only */
+
+        push_scope(ctx, 0);
+
+        if (iter_t == TYPE_MAP || iter_t == TYPE_UNKNOWN) {
+            /* Map iteration: for (K k in map) or for (K k, V v in map) */
+            AstNode *iter = n->u.for_in.iterable;
+            if (iter_t == TYPE_MAP) {
+                /* Verify key type matches */
+                if (key_t != TYPE_UNKNOWN &&
+                    key_t != iter->map_key_type)
+                    error_type_mismatch(n->line, n->col,
+                                        "for-in key", iter->map_key_type, key_t);
+                /* Verify value type if two-var form */
+                if (val_t != TYPE_UNKNOWN &&
+                    !types_compatible(ctx->structs, val_t, n->u.for_in.val_struct_name,
+                                      iter->map_val_type, iter->map_val_struct_name))
+                    error_type_mismatch(n->line, n->col,
+                                        "for-in value", iter->map_val_type, val_t);
+            }
+            /* Define key variable */
+            scope_define(ctx->current,
+                         n->u.for_in.key_name, key_t,
+                         n->u.for_in.key_struct_name, NULL,
+                         TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL,
+                         n->line, n->col);
+            /* Define value variable (two-var form) */
+            if (val_t != TYPE_UNKNOWN && n->u.for_in.val_name)
+                scope_define(ctx->current,
+                             n->u.for_in.val_name, val_t,
+                             n->u.for_in.val_struct_name, NULL,
+                             TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL,
+                             n->line, n->col);
+        } else if (type_is_array(iter_t)) {
+            /* Array iteration: for (T x in arr) */
+            if (val_t != TYPE_UNKNOWN)
+                error_semantic(n->line, n->col,
+                               "for-in over array takes one loop variable, not two");
+            CimpleType elem_t = type_elem(iter_t);
+            if (key_t != TYPE_UNKNOWN && key_t != elem_t &&
+                !(key_t == TYPE_STRUCT && elem_t == TYPE_STRUCT))
+                error_type_mismatch(n->line, n->col, "for-in element", elem_t, key_t);
+            /* For struct arrays, also check the struct name */
+            const char *elem_struct = (iter_t == TYPE_STRUCT_ARR)
+                ? n->u.for_in.iterable->type_name_hint : NULL;
+            scope_define(ctx->current,
+                         n->u.for_in.key_name, elem_t,
+                         elem_struct, NULL,
+                         TYPE_UNKNOWN, TYPE_UNKNOWN, TYPE_UNKNOWN, NULL,
+                         n->line, n->col);
+        } else {
+            error_semantic(n->line, n->col,
+                           "for-in requires an array or map, got '%s'",
+                           type_name(iter_t));
+        }
+        ctx->in_loop++;
+        check_stmt(ctx, n->u.for_in.body);
         ctx->in_loop--;
         pop_scope(ctx);
         break;

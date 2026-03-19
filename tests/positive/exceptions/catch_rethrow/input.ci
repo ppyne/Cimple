@@ -1,0 +1,27 @@
+// Vérifie que re-throw depuis un catch propage correctement l'exception
+// sans fuite mémoire ni corruption.
+void main() {
+    try {
+        try {
+            int x = 9223372036854775807;
+            int y = x + 1;
+        } catch (RuntimeException e) {
+            throw e;  // re-throw — l'exception doit remonter intacte
+        }
+    } catch (RuntimeException e) {
+        print("outer: " + e.message + "\n");
+    }
+
+    // Re-throw d'une exception utilisateur avec nouveau message
+    try {
+        try {
+            assert(false, "original");
+        } catch (RuntimeException e) {
+            throw new RuntimeException("wrapped: " + e.message);
+        }
+    } catch (RuntimeException e) {
+        print(e.message + "\n");
+    }
+
+    print("done\n");
+}
