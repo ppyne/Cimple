@@ -140,6 +140,8 @@ preprocessor, and no pointers.
 
 ### Comments
 
+Cimple supports two comment styles.
+
 `//` starts a line comment; everything from `//` to the end of the line is ignored:
 
 ```c
@@ -147,7 +149,13 @@ preprocessor, and no pointers.
 int x = 42;    // inline comment
 ```
 
-There are no block comments.
+`/* ... */` is a block comment and may span multiple lines:
+
+```c
+/* This is a
+   block comment. */
+int x = 42;    /* inline block comment */
+```
 
 ### Hello, world
 
