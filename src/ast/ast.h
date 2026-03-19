@@ -315,8 +315,9 @@ struct AstNode {
 
         /* NODE_FOR_INIT */
         struct {
-            char    *name;
-            AstNode *init_expr;
+            CimpleType  decl_type;   /* declared type — must be TYPE_INT */
+            char       *name;
+            AstNode    *init_expr;
         } for_init;
 
         /* NODE_FOR_IN */

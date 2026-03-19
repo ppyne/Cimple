@@ -1,0 +1,5 @@
+void main() {
+    for (float x = 0.0; x < 3.0; x = x + 1.0) {
+        print("x\n");
+    }
+}

@@ -473,14 +473,14 @@ int main(int argc, char **argv) {
     }
 
     const char *filepath;
-    int do_run, do_check;
+    int do_check;
     int user_args_start;    /* index of first user arg (after filepath) */
 
     const char *first = argv[1];
     if (strcmp(first, "run") == 0) {
         /* cimple run <file> [args...] */
         if (argc < 3) { usage(argv[0]); return 1; }
-        do_run = 1; do_check = 0;
+        do_check = 0;
         filepath = argv[2];
         user_args_start = 3;
     } else if (strcmp(first, "check") == 0 ||
@@ -488,12 +488,12 @@ int main(int argc, char **argv) {
                strcmp(first, "--check") == 0) {
         /* cimple check <file>  |  cimple -c <file>  |  cimple --check <file> */
         if (argc < 3) { usage(argv[0]); return 1; }
-        do_run = 0; do_check = 1;
+        do_check = 1;
         filepath = argv[2];
         user_args_start = 3;
     } else if (first[0] != '-') {
         /* cimple <file> [args...]  — implicit run */
-        do_run = 1; do_check = 0;
+        do_check = 0;
         filepath = argv[1];
         user_args_start = 2;
     } else {

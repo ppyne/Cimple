@@ -2188,6 +2188,12 @@ static void check_stmt(SemCtx *ctx, AstNode *n) {
         if (n->u.for_stmt.init) {
             AstNode *init = n->u.for_stmt.init;
             if (init->kind == NODE_FOR_INIT) {
+                /* for-loop variable must be declared as 'int' */
+                if (init->u.for_init.decl_type != TYPE_INT &&
+                    init->u.for_init.decl_type != TYPE_UNKNOWN)
+                    error_semantic(init->line, init->col,
+                                   "for-loop variable '%s' must be declared as 'int'",
+                                   init->u.for_init.name);
                 Symbol *sym = scope_define(ctx->current,
                                            init->u.for_init.name,
                                            TYPE_INT, NULL, NULL,

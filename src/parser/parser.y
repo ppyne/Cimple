@@ -1332,7 +1332,8 @@ catch_clause(C) ::= KW_CATCH(T) LPAREN TYPE_IDENT(N) IDENT(V) RPAREN block(B).
 for_init(I) ::= for_var(V) ASSIGN expr(E) SEMICOLON.
 {
     I = ast_new(NODE_FOR_INIT, V.line, V.col);
-    I->u.for_init.name      = V.name;  /* already strdup'd in for_var */
+    I->u.for_init.decl_type = V.ptype.type;  /* stored for semantic validation */
+    I->u.for_init.name      = V.name;        /* already strdup'd in for_var */
     I->u.for_init.init_expr = E;
     free(V.ptype.struct_name);
     free(V.ptype.val_struct_name);
