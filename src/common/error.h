@@ -59,6 +59,7 @@ void error_translate_location(int merged_line, const char **file_out, int *line_
 /* Fatal lexical/syntax error — prints to stderr and exits(1). */
 void error_lexical(int line, int col, const char *fmt, ...);
 void error_syntax(int line, int col, const char *fmt, ...);
+void error_syntax_hint(int line, int col, const char *hint, const char *fmt, ...);
 
 /* Accumulate a semantic error (up to MAX_ACCUMULATED_ERRORS). */
 void error_semantic(int line, int col, const char *fmt, ...);

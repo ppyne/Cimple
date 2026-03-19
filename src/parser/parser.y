@@ -60,6 +60,24 @@ static ParsedType parsed_map_type_make(CimpleType key_type, CimpleType val_type,
     return pt;
 }
 
+/* Tokens that can ONLY appear inside a function body — never at top level */
+static int token_is_statement_only(TokenType t) {
+    switch (t) {
+    case TOK_FOR:
+    case TOK_IF:
+    case TOK_WHILE:
+    case TOK_RETURN:
+    case TOK_BREAK:
+    case TOK_CONTINUE:
+    case TOK_KW_THROW:
+    case TOK_KW_TRY:
+    case TOK_SWITCH:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 static int token_starts_statement_or_decl(TokenType t) {
     switch (t) {
     case TOK_RETURN:
@@ -120,9 +138,17 @@ static int token_can_end_expression(TokenType t) {
 
 %syntax_error {
     (void)yyminor;
+    /* Missing semicolon takes priority: 'stmt-token' right after an expression */
     if (token_starts_statement_or_decl(TOKEN.type) &&
         token_can_end_expression(ps->last_token_type)) {
         error_syntax(TOKEN.line, TOKEN.col, "Missing ';' after statement");
+        return;
+    }
+    /* Statement-only keyword at the top level (no enclosing function) */
+    if (token_is_statement_only(TOKEN.type) && ps->brace_depth == 0) {
+        error_syntax_hint(TOKEN.line, TOKEN.col,
+                          "Wrap your code in 'void main() { ... }' (or 'int main(...)').",
+                          "Statement outside any function");
         return;
     }
     switch (TOKEN.type) {

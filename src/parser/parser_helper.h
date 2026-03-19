@@ -19,6 +19,7 @@ typedef struct {
     TokenType last_token_type;
     int       last_token_line;
     int       last_token_col;
+    int       brace_depth; /* nesting depth of '{' — 0 means top level */
     ParseStructName *struct_names;
 } ParseState;
 

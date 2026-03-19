@@ -70,7 +70,7 @@ static void precollect_struct_names(ParseState *ps, const char *source) {
  * ----------------------------------------------------------------------- */
 AstNode *parse_program(const char *source) {
     Lexer      lex;
-    ParseState ps = { NULL, 0, TOK_EOF, 0, 0, NULL };
+    ParseState ps = { NULL, 0, TOK_EOF, 0, 0, 0, NULL };
     TokenType prev_type = TOK_EOF;
 
     precollect_struct_names(&ps, source);
@@ -87,6 +87,9 @@ AstNode *parse_program(const char *source) {
 
         if (tok.type == TOK_ERROR)
             break;
+
+        if (tok.type == TOK_LBRACE) ps.brace_depth++;
+        else if (tok.type == TOK_RBRACE && ps.brace_depth > 0) ps.brace_depth--;
 
         Parse(parser, tok.type, tok, &ps);
 

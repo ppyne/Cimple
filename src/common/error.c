@@ -102,6 +102,17 @@ void error_syntax(int line, int col, const char *fmt, ...) {
     exit(1);
 }
 
+void error_syntax_hint(int line, int col, const char *hint,
+                       const char *fmt, ...) {
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    error_print(ERR_SYNTAX, line, col, buf, hint);
+    exit(1);
+}
+
 void error_semantic(int line, int col, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
