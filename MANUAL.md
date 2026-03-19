@@ -3179,6 +3179,22 @@ void main() {
 
 These identifiers are reserved; they cannot be redeclared or assigned.
 
+### String constants
+
+| Constant | Type | Value | Description |
+|----------|------|-------|-------------|
+| `EOL` | `string` | `"\n"` (POSIX/WASM) · `"\r\n"` (Windows) | Platform line ending |
+
+Use `EOL` whenever you need to write a line ending that is portable across operating systems:
+
+```c
+void main() {
+    print("hello" + EOL + "world" + EOL);
+}
+```
+
+---
+
 ### Integer constants
 
 | Constant | Description | Typical value (64-bit) |
@@ -3283,6 +3299,7 @@ true      void      while     byte      TerminalSize  KeyEvent
 The predefined constants are also reserved (see §10):
 
 ```
+EOL
 FLOAT_DIG  FLOAT_EPSILON  FLOAT_MAX  FLOAT_MIN  FLOAT_SIZE
 INT_MAX    INT_MIN        INT_SIZE
 M_E        M_LN10         M_LN2      M_PI       M_SQRT2  M_TAU

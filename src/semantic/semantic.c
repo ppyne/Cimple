@@ -791,6 +791,8 @@ static CimpleType const_type(const char *name) {
         strcmp(name, "M_LN2")         == 0 ||
         strcmp(name, "M_LN10")        == 0)
         return TYPE_FLOAT;
+    if (strcmp(name, "EOL") == 0)
+        return TYPE_STRING;
     return TYPE_INT;
 }
 
@@ -1650,6 +1652,7 @@ static int is_reserved_constant_name(const char *name) {
         "INT_MAX","INT_MIN","INT_SIZE","FLOAT_SIZE","FLOAT_DIG",
         "FLOAT_EPSILON","FLOAT_MIN","FLOAT_MAX",
         "M_PI","M_E","M_TAU","M_SQRT2","M_LN2","M_LN10",
+        "EOL",
         "KEY_NONE","KEY_CHAR","KEY_ENTER","KEY_ESC","KEY_TAB",
         "KEY_BACKSPACE","KEY_DELETE","KEY_UP","KEY_DOWN","KEY_LEFT",
         "KEY_RIGHT","KEY_HOME","KEY_END","KEY_PAGE_UP","KEY_PAGE_DOWN",

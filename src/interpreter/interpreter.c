@@ -241,6 +241,11 @@ static void union_decl_table_free(UnionDeclTable *table) {
 #include <stdint.h>
 #include <float.h>
 static Value eval_constant(const char *name) {
+#ifdef _WIN32
+    if (strcmp(name, "EOL") == 0) return val_string("\r\n");
+#else
+    if (strcmp(name, "EOL") == 0) return val_string("\n");
+#endif
     if (strcmp(name, "INT_MAX")       == 0) return val_int(INT64_MAX);
     if (strcmp(name, "INT_MIN")       == 0) return val_int(INT64_MIN);
     if (strcmp(name, "INT_SIZE")      == 0) return val_int(8);
