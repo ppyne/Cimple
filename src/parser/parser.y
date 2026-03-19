@@ -41,6 +41,14 @@ typedef struct {
     NodeList values;
 } ParsedMapLiteral;
 
+/* for_var: type + identifier, used in both for-init and for-in rules */
+typedef struct {
+    ParsedType ptype;
+    char      *name;
+    int        line;
+    int        col;
+} ForVar;
+
 static ParsedType parsed_map_type_make(CimpleType key_type, CimpleType val_type,
                                        const char *val_struct_name,
                                        CimpleType inner_key_type) {
@@ -554,12 +562,38 @@ nonvoid_type(T) ::= map_type(M).           { T = M; }
 nonvoid_type(T) ::= map2d_type(M).         { T = M; }
 nonvoid_type(T) ::= KW_EXECRESULT.         { T = parsed_type_make(TYPE_EXEC_RESULT, NULL); }
 
-/* for_in_type: scalar or user-struct (used in for-in loop variable declarations) */
-for_in_type(T) ::= scalar_type(S).  { T = S; }
-for_in_type(T) ::= TYPE_IDENT(N).
+/* for_var: type + identifier — used in both for-init and for-in rules.
+ * Combining both into one non-terminal avoids the LALR(1) shift/reduce
+ * conflict that arises when KW_INT can start both for_init and for_in_type. */
+for_var(V) ::= KW_INT(T) IDENT(N).
 {
-    T = parsed_type_make(TYPE_STRUCT, N.v.sval);
-    free(N.v.sval);
+    V.ptype = parsed_type_make(TYPE_INT, NULL);
+    V.name = cimple_strdup(N.v.sval); free(N.v.sval);
+    V.line = T.line; V.col = T.col;
+}
+for_var(V) ::= KW_FLOAT(T) IDENT(N).
+{
+    V.ptype = parsed_type_make(TYPE_FLOAT, NULL);
+    V.name = cimple_strdup(N.v.sval); free(N.v.sval);
+    V.line = T.line; V.col = T.col;
+}
+for_var(V) ::= KW_BOOL(T) IDENT(N).
+{
+    V.ptype = parsed_type_make(TYPE_BOOL, NULL);
+    V.name = cimple_strdup(N.v.sval); free(N.v.sval);
+    V.line = T.line; V.col = T.col;
+}
+for_var(V) ::= KW_STRING(T) IDENT(N).
+{
+    V.ptype = parsed_type_make(TYPE_STRING, NULL);
+    V.name = cimple_strdup(N.v.sval); free(N.v.sval);
+    V.line = T.line; V.col = T.col;
+}
+for_var(V) ::= TYPE_IDENT(T) IDENT(N).
+{
+    V.ptype = parsed_type_make(TYPE_STRUCT, T.v.sval); free(T.v.sval);
+    V.name = cimple_strdup(N.v.sval); free(N.v.sval);
+    V.line = T.line; V.col = T.col;
 }
 
 callback_param_types(F) ::= nonvoid_type(T).
@@ -690,7 +724,7 @@ stmt_list(L) ::= stmt_list(LL) stmt(S).
 %type catch_clause_list { NodeList }
 %type catch_clause { AstNode * }
 %type opt_finally { AstNode * }
-%type for_in_type { ParsedType }
+%type for_var { ForVar }
 
 /* Variable declarations */
 stmt(S) ::= nonvoid_type(T) IDENT(N) SEMICOLON.
@@ -940,37 +974,34 @@ stmt(S) ::= FOR(T) LPAREN for_init(I) expr(C) SEMICOLON for_update(U) RPAREN sim
 }
 
 /* for-in — array element / map key iteration: for (T x in expr) { } */
-stmt(S) ::= FOR(T) LPAREN for_in_type(TK) IDENT(K) KW_IN expr(E) RPAREN simple_or_block(B).
+stmt(S) ::= FOR(T) LPAREN for_var(VK) KW_IN expr(E) RPAREN simple_or_block(B).
 {
     S = ast_new(NODE_FOR_IN, T.line, T.col);
-    S->u.for_in.key_type        = TK.type;
-    S->u.for_in.key_name        = cimple_strdup(K.v.sval);
-    S->u.for_in.key_struct_name = TK.struct_name ? cimple_strdup(TK.struct_name) : NULL;
+    S->u.for_in.key_type        = VK.ptype.type;
+    S->u.for_in.key_name        = VK.name;
+    S->u.for_in.key_struct_name = VK.ptype.struct_name ? cimple_strdup(VK.ptype.struct_name) : NULL;
     S->u.for_in.val_type        = TYPE_UNKNOWN;
     S->u.for_in.val_name        = NULL;
     S->u.for_in.val_struct_name = NULL;
     S->u.for_in.iterable        = E;
     S->u.for_in.body            = B;
-    free(TK.struct_name);
-    free(K.v.sval);
+    free(VK.ptype.struct_name);
 }
 
 /* for-in — map key+value iteration: for (K k, V v in expr) { } */
-stmt(S) ::= FOR(T) LPAREN for_in_type(TK) IDENT(K) COMMA for_in_type(TV) IDENT(V) KW_IN expr(E) RPAREN simple_or_block(B).
+stmt(S) ::= FOR(T) LPAREN for_var(VK) COMMA for_var(VV) KW_IN expr(E) RPAREN simple_or_block(B).
 {
     S = ast_new(NODE_FOR_IN, T.line, T.col);
-    S->u.for_in.key_type        = TK.type;
-    S->u.for_in.key_name        = cimple_strdup(K.v.sval);
-    S->u.for_in.key_struct_name = TK.struct_name ? cimple_strdup(TK.struct_name) : NULL;
-    S->u.for_in.val_type        = TV.type;
-    S->u.for_in.val_name        = cimple_strdup(V.v.sval);
-    S->u.for_in.val_struct_name = TV.struct_name ? cimple_strdup(TV.struct_name) : NULL;
+    S->u.for_in.key_type        = VK.ptype.type;
+    S->u.for_in.key_name        = VK.name;
+    S->u.for_in.key_struct_name = VK.ptype.struct_name ? cimple_strdup(VK.ptype.struct_name) : NULL;
+    S->u.for_in.val_type        = VV.ptype.type;
+    S->u.for_in.val_name        = VV.name;
+    S->u.for_in.val_struct_name = VV.ptype.struct_name ? cimple_strdup(VV.ptype.struct_name) : NULL;
     S->u.for_in.iterable        = E;
     S->u.for_in.body            = B;
-    free(TK.struct_name);
-    free(TV.struct_name);
-    free(K.v.sval);
-    free(V.v.sval);
+    free(VK.ptype.struct_name);
+    free(VV.ptype.struct_name);
 }
 
 stmt(S) ::= SWITCH(T) LPAREN expr(E) RPAREN LBRACE switch_case_list(CS) RBRACE.
@@ -1298,12 +1329,13 @@ catch_clause(C) ::= KW_CATCH(T) LPAREN TYPE_IDENT(N) IDENT(V) RPAREN block(B).
 %type for_init  { AstNode * }
 %type for_update { AstNode * }
 
-for_init(I) ::= KW_INT IDENT(N) ASSIGN expr(E) SEMICOLON.
+for_init(I) ::= for_var(V) ASSIGN expr(E) SEMICOLON.
 {
-    I = ast_new(NODE_FOR_INIT, N.line, N.col);
-    I->u.for_init.name      = cimple_strdup(N.v.sval);
+    I = ast_new(NODE_FOR_INIT, V.line, V.col);
+    I->u.for_init.name      = V.name;  /* already strdup'd in for_var */
     I->u.for_init.init_expr = E;
-    free(N.v.sval);
+    free(V.ptype.struct_name);
+    free(V.ptype.val_struct_name);
 }
 
 for_init(I) ::= SEMICOLON.

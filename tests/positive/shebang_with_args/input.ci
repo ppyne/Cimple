@@ -2,8 +2,8 @@
 // Shebang with a custom path — still ignored.
 // Also verifies args are passed correctly when invoked directly.
 void main(string[] args) {
-    print(toString(len(args)) + "\n");
-    for (int i = 0; i < len(args); i++) {
+    print(toString(count(args)) + "\n");
+    for (int i = 0; i < count(args); i++) {
         print(args[i] + "\n");
     }
 }

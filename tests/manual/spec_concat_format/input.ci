@@ -6,6 +6,6 @@ void main() {
     string s = "le chat est un chat";
     print(replace(s, "chat", "chien") + "\n");
 
-    string msg = format("Nom: {}, Age: {}", ["Alice", toString(30)]);
+    string msg = format("Nom: {}, Age: {}", "Alice", toString(30));
     print(msg + "\n");
 }

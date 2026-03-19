@@ -1,11 +1,11 @@
-// If finally itself throws, that new exception supersedes the return value
+// finally completes normally — the return value from try is preserved
 string helper() {
     try {
         return "try-result";
     } finally {
-        // finally completes normally — return value is preserved
         print("finally ran\n");
     }
+    return "";  // unreachable; satisfies semantic checker
 }
 
 void main() {

@@ -1,6 +1,6 @@
 void main() {
-    float pinf = 1.0 / 0.0;
-    float ninf = -1.0 / 0.0;
+    float pinf = FLOAT_MAX * 2.0;
+    float ninf = -(FLOAT_MAX * 2.0);
     float nanv = sqrt(-1.0);
     print(toString(isInfinite(pinf)) + "\n");
     print(toString(isPositiveInfinity(pinf)) + "\n");

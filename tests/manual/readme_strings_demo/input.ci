@@ -15,6 +15,6 @@ void main() {
     print("Split count: " + toString(count(parts)) + "\n");
     print("Join:        " + join(parts, " | ") + "\n");
 
-    string fmt_result = format("Lang: {} v{}", ["Cimple", "1.0"]);
+    string fmt_result = format("Lang: {} v{}", "Cimple", "1.0");
     print(fmt_result + "\n");
 }
