@@ -60,22 +60,22 @@ The simplest form — just pass the filename:
 ./build/cimple hello.ci
 ```
 
-The `run` sub-command is also accepted and does the same thing:
-
-```sh
-./build/cimple run hello.ci
-```
-
 ### Type-checking without running
 
 ```sh
-./build/cimple check hello.ci    # sub-command form
-./build/cimple -c     hello.ci   # short flag
+./build/cimple -c hello.ci       # short flag
 ./build/cimple --check hello.ci  # long flag
 ```
 
-All three validate lexical, syntactic and semantic correctness and print `OK` to stdout
+All two validate lexical, syntactic and semantic correctness and print `OK` to stdout
 on success. Nothing is executed.
+
+The historical `run` and `check` sub-commands are also accepted and do the same things:
+
+```sh
+./build/cimple run hello.ci
+./build/cimple check hello.ci
+```
 
 ### Passing arguments
 
@@ -945,9 +945,7 @@ is required.
 #### Map key+value iteration
 
 ```c
-string[string] capitals;
-capitals["France"] = "Paris";
-capitals["Germany"] = "Berlin";
+string[string] capitals = ["France": "Paris", "Germany": "Berlin"];
 
 for (string country, string city in capitals) {
     print(country + " -> " + city + "\n");
