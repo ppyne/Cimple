@@ -2423,15 +2423,6 @@ static void validate_structs(SemCtx *ctx) {
             error_semantic(si->decl->line, si->decl->col,
                            "Inheritance cycle detected involving '%s'", si->name);
         }
-        if (si->base_name &&
-            (strcmp(si->base_name, "RuntimeException") == 0 ||
-             strcmp(si->base_name, "IoException") == 0 ||
-             strcmp(si->base_name, "RegExpException") == 0)) {
-            error_semantic(si->decl->line, si->decl->col,
-                           "Cannot inherit from built-in exception '%s'",
-                           si->base_name);
-        }
-
         StructInfo *base = base_info;
         NodeList *members = &si->decl->u.struct_decl.members;
         for (int i = 0; i < members->count; i++) {

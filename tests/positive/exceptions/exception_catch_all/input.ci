@@ -1,0 +1,12 @@
+structure AppException : RuntimeException {}
+
+void main() {
+    AppException e = clone AppException;
+    e.message = "from app";
+    try {
+        throw e;
+    } catch (Exception e) {
+        print("caught as Exception: " + e.message + "\n");
+    }
+    print("done\n");
+}

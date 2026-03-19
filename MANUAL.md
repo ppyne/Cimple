@@ -2447,22 +2447,24 @@ structure RegExpException  : Exception { }   // regex syntax / range errors
 
 #### Defining your own exceptions
 
-Inherit from `Exception` (or another user-defined exception type):
+Any structure that directly or indirectly inherits from `Exception` (or one of its
+built-in subtypes) can be thrown and caught.
 
 ```c
+structure AppException : RuntimeException {}
+
+structure ValidationException : AppException {
+    int field = 0;          // extra fields allowed
+}
+
 structure ParseError : Exception {
     int    line;
     string token;
 }
-
-structure NetworkError : Exception {
-    string url;
-    int    statusCode;
-}
 ```
 
 > `Exception`, `RuntimeException`, `IoException`, and `RegExpException` are reserved
-> names. You cannot redefine them or inherit from the three built-in subtypes.
+> names and cannot be redeclared. You **can** inherit from any of them.
 
 #### Throwing an exception
 
@@ -3075,7 +3077,74 @@ void main() {
 
 ---
 
-## 11. Predefined Constants
+## 11. User-defined exceptions
+
+Any structure that directly or indirectly inherits from `Exception` (or one of its
+built-in subtypes) can be thrown and caught.
+
+### Built-in exception hierarchy
+
+```
+Exception                    — root, field: message string
+├── RuntimeException         — field: message string
+├── IoException              — fields: path string, message string
+└── RegExpException          — field: message string
+```
+
+### Defining custom exceptions
+
+```c
+structure AppException : RuntimeException {}
+
+structure ValidationException : AppException {
+    int field = 0;          // extra fields allowed
+}
+```
+
+### Throwing a custom exception
+
+Use `clone` to create an instance, set fields, then `throw`:
+
+```c
+ValidationException e = clone ValidationException;
+e.message = "invalid age: " + toString(age);
+throw e;
+```
+
+### Catching by type
+
+`catch` matches the exact type **and all its subtypes**:
+
+```c
+try {
+    validate(-5);
+} catch (ValidationException e) {
+    // only ValidationException (and subtypes)
+    print("validation error: " + e.message + "\n");
+} catch (AppException e) {
+    // AppException and subtypes (except ValidationException, already caught)
+    print("app error: " + e.message + "\n");
+} catch (Exception e) {
+    // everything else
+    print("error: " + e.message + "\n");
+}
+```
+
+`catch (Exception e)` is the catch-all — it catches any thrown value.
+
+### Rules
+
+- Only types that are subtypes of `Exception` can be thrown.
+- Catch clauses are evaluated top-to-bottom; the first matching clause wins.
+- A more specific type must appear **before** a more general one (the semantic
+  checker rejects an unreachable catch clause).
+- `clone` works on all built-in exception types directly:
+  `clone RuntimeException`, `clone IoException`, `clone RegExpException`,
+  `clone Exception`.
+
+---
+
+## 12. Predefined Constants
 
 These identifiers are reserved; they cannot be redeclared or assigned.
 

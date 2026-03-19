@@ -1,0 +1,10 @@
+void main() {
+    RuntimeException e = clone RuntimeException;
+    e.message = "custom runtime error";
+    try {
+        throw e;
+    } catch (RuntimeException e) {
+        print("caught: " + e.message + "\n");
+    }
+    print("done\n");
+}
