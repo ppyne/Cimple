@@ -1,0 +1,59 @@
+{
+  "name": "cimple",
+  "displayName": "Cimple Language",
+  "description": "Syntax highlighting and auto-completion for the Cimple language",
+  "version": "0.1.0",
+  "publisher": "cimple",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "cimple",
+    "ci",
+    "language"
+  ],
+  "activationEvents": [
+    "onLanguage:cimple"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "cimple",
+        "aliases": [
+          "Cimple",
+          "cimple"
+        ],
+        "extensions": [
+          ".ci"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "cimple",
+        "scopeName": "source.cimple",
+        "path": "./syntaxes/cimple.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "cimple",
+        "path": "./snippets/cimple.json"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}

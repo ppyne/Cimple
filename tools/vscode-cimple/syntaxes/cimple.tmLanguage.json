@@ -1,0 +1,326 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Cimple",
+  "scopeName": "source.cimple",
+  "fileTypes": ["ci"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#constants" },
+    { "include": "#support_constants" },
+    { "include": "#keywords_exception" },
+    { "include": "#keywords_declaration" },
+    { "include": "#keywords_control" },
+    { "include": "#keywords_other" },
+    { "include": "#storage_types" },
+    { "include": "#support_classes" },
+    { "include": "#support_functions" },
+    { "include": "#structure_declaration" },
+    { "include": "#union_declaration" },
+    { "include": "#function_definition" },
+    { "include": "#self_super_member" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.cimple",
+          "begin": "/\\*",
+          "end": "\\*/",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.begin.cimple" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.comment.end.cimple" }
+          }
+        },
+        {
+          "name": "comment.line.double-slash.cimple",
+          "begin": "//",
+          "end": "$",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.cimple" }
+          }
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.triple.cimple",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.cimple" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.cimple" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.cimple",
+              "match": "\\\\(n|t|r|\\\\|\"|'|0|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.cimple",
+          "begin": "\"",
+          "end": "\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.cimple" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.cimple" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.cimple",
+              "match": "\\\\(n|t|r|\\\\|\"|'|0|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})"
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.cimple",
+          "match": "\\b[0-9]+\\.[0-9]+([eE][+-]?[0-9]+)?\\b"
+        },
+        {
+          "name": "constant.numeric.float.exponent.cimple",
+          "match": "\\b[0-9]+[eE][+-]?[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.hex.cimple",
+          "match": "\\b0[xX][0-9a-fA-F]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.cimple",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.cimple",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "support_constants": {
+      "patterns": [
+        {
+          "name": "support.constant.cimple",
+          "match": "\\b(EOL|INT_MAX|INT_MIN|INT_SIZE|FLOAT_SIZE|FLOAT_DIG|FLOAT_EPSILON|FLOAT_MIN|FLOAT_MAX|M_PI|M_E|M_TAU|M_SQRT2|M_LN2|M_LN10|KEY_NONE|KEY_CHAR|KEY_ENTER|KEY_ESC|KEY_TAB|KEY_BACKSPACE|KEY_DELETE|KEY_UP|KEY_DOWN|KEY_LEFT|KEY_RIGHT|KEY_HOME|KEY_END|KEY_PAGE_UP|KEY_PAGE_DOWN|KEY_RESIZE|TERM_COLOR_DEFAULT|TERM_COLOR_BLACK|TERM_COLOR_RED|TERM_COLOR_GREEN|TERM_COLOR_YELLOW|TERM_COLOR_BLUE|TERM_COLOR_MAGENTA|TERM_COLOR_CYAN|TERM_COLOR_WHITE)\\b"
+        }
+      ]
+    },
+    "keywords_control": {
+      "patterns": [
+        {
+          "name": "keyword.control.cimple",
+          "match": "\\b(if|else|while|for|return|break|continue|in)\\b"
+        }
+      ]
+    },
+    "keywords_declaration": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.cimple",
+          "match": "\\b(structure|union|import)\\b"
+        }
+      ]
+    },
+    "keywords_exception": {
+      "patterns": [
+        {
+          "name": "keyword.control.exception.cimple",
+          "match": "\\b(try|catch|finally|throw)\\b"
+        }
+      ]
+    },
+    "keywords_other": {
+      "patterns": [
+        {
+          "name": "keyword.other.cimple",
+          "match": "\\b(clone|self|super)\\b"
+        }
+      ]
+    },
+    "storage_types": {
+      "patterns": [
+        {
+          "name": "storage.type.primitive.cimple",
+          "match": "\\b(int|float|bool|string|byte|void)(?=\\s*(?:\\[\\]|\\[\\w+\\]|\\s))"
+        },
+        {
+          "name": "storage.type.primitive.cimple",
+          "match": "\\b(int|float|bool|string|byte|void)\\b"
+        }
+      ]
+    },
+    "support_classes": {
+      "patterns": [
+        {
+          "name": "support.class.cimple",
+          "match": "\\b(Exception|RuntimeException|IoException|RegExpException|ExecResult|RegExp|RegExpMatch|TerminalSize|KeyEvent)\\b"
+        }
+      ]
+    },
+    "support_functions": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.cimple",
+          "match": "\\b(print|printErr|exit|format|toString|toInt|toFloat|toBool|length|substring|charAt|upper|lower|trim|trimStart|trimEnd|startsWith|endsWith|contains|indexOf|lastIndexOf|replace|replaceAll|repeat|padLeft|padRight|split|join|byteAt|glyph|glyphCount|count|append|pop|insert|remove|concat|sort|reverse|slice|unique|sqrt|pow|abs|floor|ceil|round|trunc|log|exp|log2|log10|sin|cos|tan|asin|acos|atan|atan2|min|max|clamp|approxEqual|isFinite|isInfinite|isNaN|isPositiveInfinity|isNegativeInfinity|safeDiv|safeMod|readFile|writeFile|appendFile|fileExists|deleteFile|copyFile|moveFile|listDir|makeDir|makeDirAll|tempPath|pathJoin|pathDir|pathBase|pathExt|pathIsAbs|exec|env|envDefault|now|sleep|formatDate|parseDate|makeEpoch|epochYear|epochMonth|epochDay|epochHour|epochMinute|epochSecond|rand|randInt|assert|readBytes|writeBytes|appendBytes|regexMatch|regexTest|regexFindAll|regexReplace|regexReplaceAll|termInit|termRestore|termClear|termClearLine|termMoveTo|termSetColor|termResetColor|termBold|termDim|termUnderline|termReset|termGetSize|termReadKey|shellInputBox|isBlank|isInt|isFloat|isBool|mapKeys|mapValues|mapContains|mapRemove|mapCount|intMax|intMin|intAbs|intClamp)\\b(?=\\s*\\()"
+        }
+      ]
+    },
+    "structure_declaration": {
+      "patterns": [
+        {
+          "comment": "structure Foo : Bar { }",
+          "name": "meta.structure.declaration.cimple",
+          "match": "\\b(structure)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s*:\\s*([A-Za-z_][A-Za-z0-9_]*))?",
+          "captures": {
+            "1": { "name": "keyword.declaration.cimple" },
+            "2": { "name": "entity.name.type.cimple" },
+            "3": { "name": "entity.name.type.cimple" }
+          }
+        },
+        {
+          "comment": "union Foo { }",
+          "name": "meta.union.declaration.cimple",
+          "match": "\\b(union)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.cimple" },
+            "2": { "name": "entity.name.type.cimple" }
+          }
+        }
+      ]
+    },
+    "union_declaration": {
+      "patterns": [
+        {
+          "name": "meta.union.declaration.cimple",
+          "match": "\\b(union)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.cimple" },
+            "2": { "name": "entity.name.type.cimple" }
+          }
+        }
+      ]
+    },
+    "function_definition": {
+      "patterns": [
+        {
+          "comment": "_init constructor method",
+          "name": "meta.function.constructor.cimple",
+          "match": "(?<=^|\\n)\\s*(?:[A-Za-z_][A-Za-z0-9_]*(?:\\[\\]|\\[[^\\]]*\\])?)\\s+(_init)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.constructor.cimple" }
+          }
+        },
+        {
+          "comment": "Function/method definition: returnType name(",
+          "name": "meta.function.definition.cimple",
+          "match": "(?:^|(?<=\\{|\\}|;|\\n))\\s*(?:(void|int|float|bool|string|byte)|([A-Za-z_][A-Za-z0-9_]*))(?:\\[\\]|\\[[^\\]]*\\])?\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "storage.type.primitive.cimple" },
+            "2": { "name": "entity.name.type.return.cimple" },
+            "3": { "name": "entity.name.function.cimple" }
+          }
+        }
+      ]
+    },
+    "self_super_member": {
+      "patterns": [
+        {
+          "name": "meta.member-access.cimple",
+          "match": "\\b(self|super)\\.([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.cimple" },
+            "2": { "name": "variable.other.member.cimple" }
+          }
+        },
+        {
+          "name": "meta.member-access.cimple",
+          "match": "([A-Za-z_][A-Za-z0-9_]*)\\.([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "variable.other.cimple" },
+            "2": { "name": "variable.other.member.cimple" }
+          }
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.comparison.cimple",
+          "match": "(==|!=|<=|>=|<|>)"
+        },
+        {
+          "name": "keyword.operator.logical.cimple",
+          "match": "(&&|\\|\\||!)"
+        },
+        {
+          "name": "keyword.operator.assignment.cimple",
+          "match": "(?<![=!<>])=(?!=)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.cimple",
+          "match": "(\\+\\+|--|\\+|-|\\*|/|%)"
+        },
+        {
+          "name": "keyword.operator.ternary.cimple",
+          "match": "\\?|(?<=\\s):"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.definition.block.begin.cimple",
+          "match": "\\{"
+        },
+        {
+          "name": "punctuation.definition.block.end.cimple",
+          "match": "\\}"
+        },
+        {
+          "name": "punctuation.definition.bracket.begin.cimple",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.definition.bracket.end.cimple",
+          "match": "\\]"
+        },
+        {
+          "name": "punctuation.definition.paren.begin.cimple",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.definition.paren.end.cimple",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.terminator.statement.cimple",
+          "match": ";"
+        },
+        {
+          "name": "punctuation.separator.comma.cimple",
+          "match": ","
+        },
+        {
+          "name": "punctuation.accessor.cimple",
+          "match": "\\."
+        }
+      ]
+    }
+  }
+}
