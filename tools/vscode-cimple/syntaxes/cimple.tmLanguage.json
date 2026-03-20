@@ -177,7 +177,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.cimple",
-          "match": "\\b(print|printErr|exit|format|toString|toInt|toFloat|toBool|length|substring|charAt|upper|lower|trim|trimStart|trimEnd|startsWith|endsWith|contains|indexOf|lastIndexOf|replace|replaceAll|repeat|padLeft|padRight|split|join|byteAt|glyph|glyphCount|count|append|pop|insert|remove|concat|sort|reverse|slice|unique|sqrt|pow|abs|floor|ceil|round|trunc|log|exp|log2|log10|sin|cos|tan|asin|acos|atan|atan2|min|max|clamp|approxEqual|isFinite|isInfinite|isNaN|isPositiveInfinity|isNegativeInfinity|safeDiv|safeMod|readFile|writeFile|appendFile|fileExists|deleteFile|copyFile|moveFile|listDir|makeDir|makeDirAll|tempPath|pathJoin|pathDir|pathBase|pathExt|pathIsAbs|exec|env|envDefault|now|sleep|formatDate|parseDate|makeEpoch|epochYear|epochMonth|epochDay|epochHour|epochMinute|epochSecond|rand|randInt|assert|readBytes|writeBytes|appendBytes|regexMatch|regexTest|regexFindAll|regexReplace|regexReplaceAll|termInit|termRestore|termClear|termClearLine|termMoveTo|termSetColor|termResetColor|termBold|termDim|termUnderline|termReset|termGetSize|termReadKey|shellInputBox|isBlank|isInt|isFloat|isBool|mapKeys|mapValues|mapContains|mapRemove|mapCount|intMax|intMin|intAbs|intClamp)\\b(?=\\s*\\()"
+          "match": "\\b(abs|absInt|acos|appendFile|appendFileBytes|approxEqual|arrayGet|arrayInsert|arrayPop|arrayPush|arrayRemove|arraySet|asin|assert|atan|atan2|basename|byteAt|bytesToFloat|bytesToInt|bytesToString|byteToInt|capitalize|ceil|chmod|clamp|clampInt|concat|contains|cos|count|countOccurrences|cwd|dirname|endsWith|epochToDay|epochToHour|epochToMinute|epochToMonth|epochToSecond|epochToYear|exec|execStatus|execStderr|execStdout|exit|exp|extension|fileExists|filename|floatToBytes|floor|fmod|format|formatDate|getEnv|glyphAt|glyphLen|indexOf|input|intToByte|intToBytes|isBlank|isBoolString|isDirectory|isEven|isExecutable|isFinite|isFloatString|isInfinite|isIntString|isNaN|isNegativeInfinity|isOdd|isPositiveInfinity|isReadable|isWritable|join|lastIndexOf|len|log|log2|log10|makeDir|makeDirAll|makeEpoch|mapClear|mapHas|mapKeys|mapRemove|mapSize|mapValues|max|maxInt|min|minInt|now|padLeft|padRight|pow|print|printErr|randFloat|randInt|readFile|readFileBytes|readLines|regexCompile|regexEnd|regexFind|regexFindAll|regexFlags|regexGroups|regexOk|regexPattern|regexReplace|regexReplaceAll|regexSplit|regexStart|regexTest|remove|repeat|replace|replaceAll|round|safeDivInt|safeModInt|sin|sleep|split|sqrt|startsWith|stringToBytes|substr|tan|tempPath|termBeep|termClear|termClearLine|termDisableRawMode|termEnableRawMode|termFlush|termGetSize|termHideCursor|termIsTTY|termMoveCursor|termPollKey|termReadKey|termResetStyle|termSetStyle|termShowCursor|termWriteAt|toBool|toFloat|toInt|toLower|toString|toUpper|trim|trimLeft|trimRight|trunc|writeFile|writeFileBytes|writeLines)\\b(?=\\s*\\()"
         }
       ]
     },
@@ -221,19 +221,27 @@
         {
           "comment": "_init constructor method",
           "name": "meta.function.constructor.cimple",
-          "match": "(?<=^|\\n)\\s*(?:[A-Za-z_][A-Za-z0-9_]*(?:\\[\\]|\\[[^\\]]*\\])?)\\s+(_init)\\s*(?=\\()",
+          "match": "^\\s*void\\s+(_init)\\s*(?=\\()",
           "captures": {
             "1": { "name": "entity.name.function.constructor.cimple" }
           }
         },
         {
-          "comment": "Function/method definition: returnType name(",
+          "comment": "Function with primitive return type",
           "name": "meta.function.definition.cimple",
-          "match": "(?:^|(?<=\\{|\\}|;|\\n))\\s*(?:(void|int|float|bool|string|byte)|([A-Za-z_][A-Za-z0-9_]*))(?:\\[\\]|\\[[^\\]]*\\])?\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "match": "^\\s*(void|int|float|bool|string|byte)(?:\\[\\])?\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
           "captures": {
             "1": { "name": "storage.type.primitive.cimple" },
-            "2": { "name": "entity.name.type.return.cimple" },
-            "3": { "name": "entity.name.function.cimple" }
+            "2": { "name": "entity.name.function.cimple" }
+          }
+        },
+        {
+          "comment": "Function with user-defined struct return type (starts with uppercase)",
+          "name": "meta.function.definition.cimple",
+          "match": "^\\s*([A-Z][A-Za-z0-9_]*)(?:\\[\\])?\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.type.cimple" },
+            "2": { "name": "entity.name.function.cimple" }
           }
         }
       ]
