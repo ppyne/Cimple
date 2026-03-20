@@ -2,26 +2,64 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Cimple",
   "scopeName": "source.cimple",
-  "fileTypes": ["ci"],
+  "fileTypes": [
+    "ci"
+  ],
   "patterns": [
-    { "include": "#comments" },
-    { "include": "#strings" },
-    { "include": "#numbers" },
-    { "include": "#constants" },
-    { "include": "#support_constants" },
-    { "include": "#keywords_exception" },
-    { "include": "#keywords_declaration" },
-    { "include": "#keywords_control" },
-    { "include": "#keywords_other" },
-    { "include": "#storage_types" },
-    { "include": "#support_classes" },
-    { "include": "#support_functions" },
-    { "include": "#structure_declaration" },
-    { "include": "#union_declaration" },
-    { "include": "#function_definition" },
-    { "include": "#self_super_member" },
-    { "include": "#operators" },
-    { "include": "#punctuation" }
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#support_constants"
+    },
+    {
+      "include": "#keywords_exception"
+    },
+    {
+      "include": "#keywords_declaration"
+    },
+    {
+      "include": "#keywords_control"
+    },
+    {
+      "include": "#keywords_other"
+    },
+    {
+      "include": "#storage_types"
+    },
+    {
+      "include": "#support_classes"
+    },
+    {
+      "include": "#support_functions"
+    },
+    {
+      "include": "#structure_declaration"
+    },
+    {
+      "include": "#union_declaration"
+    },
+    {
+      "include": "#function_definition"
+    },
+    {
+      "include": "#self_super_member"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
+    }
   ],
   "repository": {
     "comments": {
@@ -31,10 +69,14 @@
           "begin": "/\\*",
           "end": "\\*/",
           "beginCaptures": {
-            "0": { "name": "punctuation.definition.comment.begin.cimple" }
+            "0": {
+              "name": "punctuation.definition.comment.begin.cimple"
+            }
           },
           "endCaptures": {
-            "0": { "name": "punctuation.definition.comment.end.cimple" }
+            "0": {
+              "name": "punctuation.definition.comment.end.cimple"
+            }
           }
         },
         {
@@ -42,7 +84,9 @@
           "begin": "//",
           "end": "$",
           "beginCaptures": {
-            "0": { "name": "punctuation.definition.comment.cimple" }
+            "0": {
+              "name": "punctuation.definition.comment.cimple"
+            }
           }
         }
       ]
@@ -54,10 +98,14 @@
           "begin": "\"\"\"",
           "end": "\"\"\"",
           "beginCaptures": {
-            "0": { "name": "punctuation.definition.string.begin.cimple" }
+            "0": {
+              "name": "punctuation.definition.string.begin.cimple"
+            }
           },
           "endCaptures": {
-            "0": { "name": "punctuation.definition.string.end.cimple" }
+            "0": {
+              "name": "punctuation.definition.string.end.cimple"
+            }
           },
           "patterns": [
             {
@@ -71,10 +119,14 @@
           "begin": "\"",
           "end": "\"",
           "beginCaptures": {
-            "0": { "name": "punctuation.definition.string.begin.cimple" }
+            "0": {
+              "name": "punctuation.definition.string.begin.cimple"
+            }
           },
           "endCaptures": {
-            "0": { "name": "punctuation.definition.string.end.cimple" }
+            "0": {
+              "name": "punctuation.definition.string.end.cimple"
+            }
           },
           "patterns": [
             {
@@ -117,7 +169,7 @@
       "patterns": [
         {
           "name": "support.constant.cimple",
-          "match": "\\b(EOL|INT_MAX|INT_MIN|INT_SIZE|FLOAT_SIZE|FLOAT_DIG|FLOAT_EPSILON|FLOAT_MIN|FLOAT_MAX|M_PI|M_E|M_TAU|M_SQRT2|M_LN2|M_LN10|KEY_NONE|KEY_CHAR|KEY_ENTER|KEY_ESC|KEY_TAB|KEY_BACKSPACE|KEY_DELETE|KEY_UP|KEY_DOWN|KEY_LEFT|KEY_RIGHT|KEY_HOME|KEY_END|KEY_PAGE_UP|KEY_PAGE_DOWN|KEY_RESIZE|TERM_COLOR_DEFAULT|TERM_COLOR_BLACK|TERM_COLOR_RED|TERM_COLOR_GREEN|TERM_COLOR_YELLOW|TERM_COLOR_BLUE|TERM_COLOR_MAGENTA|TERM_COLOR_CYAN|TERM_COLOR_WHITE)\\b"
+          "match": "\\\\b(EOL|INT_MAX|INT_MIN|INT_SIZE|FLOAT_SIZE|FLOAT_DIG|KEY_NONE|KEY_CHAR|KEY_ENTER|KEY_ESC|KEY_TAB|KEY_BACKSPACE|KEY_DELETE|KEY_UP|KEY_DOWN|KEY_LEFT|KEY_RIGHT|KEY_HOME|KEY_END|KEY_PAGE_UP|KEY_PAGE_DOWN|KEY_RESIZE|TERM_COLOR_DEFAULT|TERM_COLOR_BLACK|TERM_COLOR_RED|TERM_COLOR_GREEN|TERM_COLOR_YELLOW|TERM_COLOR_BLUE|TERM_COLOR_MAGENTA|TERM_COLOR_CYAN|TERM_COLOR_WHITE|FLOAT_EPSILON|FLOAT_MIN|FLOAT_MAX|M_PI|M_E|M_TAU|M_SQRT2|M_LN2|M_LN10)\\\\b"
         }
       ]
     },
@@ -125,7 +177,7 @@
       "patterns": [
         {
           "name": "keyword.control.cimple",
-          "match": "\\b(if|else|while|for|return|break|continue|in)\\b"
+          "match": "\\\\b(if|else|while|for|return|break|continue|in)\\\\b"
         }
       ]
     },
@@ -133,7 +185,7 @@
       "patterns": [
         {
           "name": "keyword.declaration.cimple",
-          "match": "\\b(structure|union|import)\\b"
+          "match": "\\\\b(structure|union|import)\\\\b"
         }
       ]
     },
@@ -141,7 +193,7 @@
       "patterns": [
         {
           "name": "keyword.control.exception.cimple",
-          "match": "\\b(try|catch|finally|throw)\\b"
+          "match": "\\\\b(try|catch|finally|throw)\\\\b"
         }
       ]
     },
@@ -149,7 +201,7 @@
       "patterns": [
         {
           "name": "keyword.other.cimple",
-          "match": "\\b(clone|self|super)\\b"
+          "match": "\\\\b(clone|self|super)\\\\b"
         }
       ]
     },
@@ -157,11 +209,11 @@
       "patterns": [
         {
           "name": "storage.type.primitive.cimple",
-          "match": "\\b(int|float|bool|string|byte|void)(?=\\s*(?:\\[\\]|\\[\\w+\\]|\\s))"
+          "match": "\\\\b(int|float|bool|string|byte|void)(?=\\\\s*(?:\\\\[\\\\]|\\\\[\\\\w+\\\\]|\\\\s))"
         },
         {
           "name": "storage.type.primitive.cimple",
-          "match": "\\b(int|float|bool|string|byte|void)\\b"
+          "match": "\\\\b(int|float|bool|string|byte|void)\\\\b"
         }
       ]
     },
@@ -169,7 +221,7 @@
       "patterns": [
         {
           "name": "support.class.cimple",
-          "match": "\\b(Exception|RuntimeException|IoException|RegExpException|ExecResult|RegExp|RegExpMatch|TerminalSize|KeyEvent)\\b"
+          "match": "\\\\b(Exception|RuntimeException|IoException|RegExpException|ExecResult|RegExp|RegExpMatch|TerminalSize|KeyEvent)\\\\b"
         }
       ]
     },
@@ -177,7 +229,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.cimple",
-          "match": "\\b(abs|absInt|acos|appendFile|appendFileBytes|approxEqual|arrayGet|arrayInsert|arrayPop|arrayPush|arrayRemove|arraySet|asin|assert|atan|atan2|basename|byteAt|bytesToFloat|bytesToInt|bytesToString|byteToInt|capitalize|ceil|chmod|clamp|clampInt|concat|contains|cos|count|countOccurrences|cwd|dirname|endsWith|epochToDay|epochToHour|epochToMinute|epochToMonth|epochToSecond|epochToYear|exec|execStatus|execStderr|execStdout|exit|exp|extension|fileExists|filename|floatToBytes|floor|fmod|format|formatDate|getEnv|glyphAt|glyphLen|indexOf|input|intToByte|intToBytes|isBlank|isBoolString|isDirectory|isEven|isExecutable|isFinite|isFloatString|isInfinite|isIntString|isNaN|isNegativeInfinity|isOdd|isPositiveInfinity|isReadable|isWritable|join|lastIndexOf|len|log|log2|log10|makeDir|makeDirAll|makeEpoch|mapClear|mapHas|mapKeys|mapRemove|mapSize|mapValues|max|maxInt|min|minInt|now|padLeft|padRight|pow|print|printErr|randFloat|randInt|readFile|readFileBytes|readLines|regexCompile|regexEnd|regexFind|regexFindAll|regexFlags|regexGroups|regexOk|regexPattern|regexReplace|regexReplaceAll|regexSplit|regexStart|regexTest|remove|repeat|replace|replaceAll|round|safeDivInt|safeModInt|sin|sleep|split|sqrt|startsWith|stringToBytes|substr|tan|tempPath|termBeep|termClear|termClearLine|termDisableRawMode|termEnableRawMode|termFlush|termGetSize|termHideCursor|termIsTTY|termMoveCursor|termPollKey|termReadKey|termResetStyle|termSetStyle|termShowCursor|termWriteAt|toBool|toFloat|toInt|toLower|toString|toUpper|trim|trimLeft|trimRight|trunc|writeFile|writeFileBytes|writeLines)\\b(?=\\s*\\()"
+          "match": "\\\\b(abs|absInt|assert|acos|appendFile|approxEqual|arrayGet|arrayInsert|arrayPop|arrayPush|arrayRemove|arraySet|asin|atan|atan2|basename|byteToInt|byteAt|bytesToFloat|bytesToInt|bytesToString|ceil|chmod|clamp|clampInt|concat|contains|countOccurrences|copy|cos|count|mapClear|mapHas|mapKeys|mapRemove|mapSize|mapValues|cwd|dirname|endsWith|epochToDay|epochToHour|epochToMinute|epochToMonth|epochToSecond|epochToYear|exec|exit|execStatus|execStderr|execStdout|exp|extension|fileExists|filename|floor|fmod|format|formatDate|getEnv|glyphAt|glyphLen|indexOf|input|intToByte|intToBytes|isBoolString|isDirectory|isEven|isExecutable|isFinite|isFloatString|isInfinite|isIntString|isNaN|isNegativeInfinity|isOdd|isPositiveInfinity|isBlank|isReadable|isWritable|join|lastIndexOf|len|log|log10|log2|makeEpoch|max|maxInt|min|minInt|move|now|padLeft|padRight|pow|print|printErr|readFile|readFileBytes|readLines|remove|regexCompile|regexEnd|regexFind|regexFindAll|regexFlags|regexGroups|regexOk|regexPattern|regexReplace|regexReplaceAll|regexSplit|regexStart|regexTest|replace|repeat|randFloat|randInt|round|safeDivInt|safeModInt|sin|sleep|split|sqrt|startsWith|substr|tan|tempPath|termBeep|termClear|termClearLine|termDisableRawMode|termEnableRawMode|termFlush|termGetSize|termHideCursor|termIsTTY|termMoveCursor|termPollKey|termReadKey|termResetStyle|termSetStyle|termShowCursor|termWriteAt|toLower|toBool|toUpper|stringToBytes|toFloat|toInt|toString|trim|trimLeft|trimRight|capitalize|trunc|writeFile|appendFileBytes|floatToBytes|writeFileBytes|writeLines)\\\\b(?=\\\\s*\\\\()"
         }
       ]
     },
@@ -188,9 +240,15 @@
           "name": "meta.structure.declaration.cimple",
           "match": "\\b(structure)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s*:\\s*([A-Za-z_][A-Za-z0-9_]*))?",
           "captures": {
-            "1": { "name": "keyword.declaration.cimple" },
-            "2": { "name": "entity.name.type.cimple" },
-            "3": { "name": "entity.name.type.cimple" }
+            "1": {
+              "name": "keyword.declaration.cimple"
+            },
+            "2": {
+              "name": "entity.name.type.cimple"
+            },
+            "3": {
+              "name": "entity.name.type.cimple"
+            }
           }
         },
         {
@@ -198,8 +256,12 @@
           "name": "meta.union.declaration.cimple",
           "match": "\\b(union)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
-            "1": { "name": "keyword.declaration.cimple" },
-            "2": { "name": "entity.name.type.cimple" }
+            "1": {
+              "name": "keyword.declaration.cimple"
+            },
+            "2": {
+              "name": "entity.name.type.cimple"
+            }
           }
         }
       ]
@@ -210,8 +272,12 @@
           "name": "meta.union.declaration.cimple",
           "match": "\\b(union)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
-            "1": { "name": "keyword.declaration.cimple" },
-            "2": { "name": "entity.name.type.cimple" }
+            "1": {
+              "name": "keyword.declaration.cimple"
+            },
+            "2": {
+              "name": "entity.name.type.cimple"
+            }
           }
         }
       ]
@@ -223,7 +289,9 @@
           "name": "meta.function.constructor.cimple",
           "match": "^\\s*void\\s+(_init)\\s*(?=\\()",
           "captures": {
-            "1": { "name": "entity.name.function.constructor.cimple" }
+            "1": {
+              "name": "entity.name.function.constructor.cimple"
+            }
           }
         },
         {
@@ -231,8 +299,12 @@
           "name": "meta.function.definition.cimple",
           "match": "^\\s*(void|int|float|bool|string|byte)(?:\\[\\])?\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
           "captures": {
-            "1": { "name": "storage.type.primitive.cimple" },
-            "2": { "name": "entity.name.function.cimple" }
+            "1": {
+              "name": "storage.type.primitive.cimple"
+            },
+            "2": {
+              "name": "entity.name.function.cimple"
+            }
           }
         },
         {
@@ -240,8 +312,12 @@
           "name": "meta.function.definition.cimple",
           "match": "^\\s*([A-Z][A-Za-z0-9_]*)(?:\\[\\])?\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
           "captures": {
-            "1": { "name": "entity.name.type.cimple" },
-            "2": { "name": "entity.name.function.cimple" }
+            "1": {
+              "name": "entity.name.type.cimple"
+            },
+            "2": {
+              "name": "entity.name.function.cimple"
+            }
           }
         }
       ]
@@ -252,16 +328,24 @@
           "name": "meta.member-access.cimple",
           "match": "\\b(self|super)\\.([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
-            "1": { "name": "keyword.other.cimple" },
-            "2": { "name": "variable.other.member.cimple" }
+            "1": {
+              "name": "keyword.other.cimple"
+            },
+            "2": {
+              "name": "variable.other.member.cimple"
+            }
           }
         },
         {
           "name": "meta.member-access.cimple",
           "match": "([A-Za-z_][A-Za-z0-9_]*)\\.([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
-            "1": { "name": "variable.other.cimple" },
-            "2": { "name": "variable.other.member.cimple" }
+            "1": {
+              "name": "variable.other.cimple"
+            },
+            "2": {
+              "name": "variable.other.member.cimple"
+            }
           }
         }
       ]

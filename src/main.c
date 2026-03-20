@@ -11,6 +11,7 @@
 #include "parser/parser_helper.h"
 #include "semantic/semantic.h"
 #include "interpreter/interpreter.h"
+#include "interpreter/builtins.h"
 #include "lexer/lexer.h"
 
 typedef struct {
@@ -93,11 +94,116 @@ static void usage(const char *prog) {
             "  %s check <file.ci>           Type-check only\n"
             "  %s -c <file.ci>              Type-check only (short flag)\n"
             "  %s --check <file.ci>         Type-check only (long flag)\n"
+            "  %s dump-language             Print language definition as JSON\n"
             "\n"
             "A shebang line (#!/...) at the top of a .ci file is silently ignored.\n"
             "This lets you mark scripts executable and invoke them directly:\n"
             "  #!/usr/bin/env cimple\n",
-            prog, prog, prog, prog, prog);
+            prog, prog, prog, prog, prog, prog);
+}
+
+/* -----------------------------------------------------------------------
+ * dump_language_json — emit a complete machine-readable description of
+ * the Cimple language: keywords, types, constants, builtin functions and
+ * builtin struct types.  Consumers (e.g. the VS Code extension) call
+ *   cimple dump-language
+ * to obtain an always-accurate view of the language for tooling purposes.
+ * ----------------------------------------------------------------------- */
+static void dump_language_json(void) {
+    FILE *out = stdout;
+
+    /* ---- helpers ---- */
+#define J_ARR(label) fprintf(out, "  \"%s\": [", label)
+#define J_STR(s)     fprintf(out, "\"%s\"", s)
+#define J_SEP        fprintf(out, ",")
+#define J_END_ARR    fprintf(out, "]")
+#define J_NL         fprintf(out, "\n")
+
+    fprintf(out, "{\n");
+
+    /* version */
+    fprintf(out, "  \"version\": \"1.0\",\n");
+
+    /* ---- keywords ---- */
+    fprintf(out, "  \"keywords\": {\n");
+
+    J_ARR("control");
+    const char *kw_ctrl[] = {"if","else","while","for","return","break","continue","in", NULL};
+    for (int i = 0; kw_ctrl[i]; i++) { if (i) J_SEP; J_STR(kw_ctrl[i]); }
+    J_END_ARR; fprintf(out, ",\n");
+
+    J_ARR("declaration");
+    const char *kw_decl[] = {"structure","union","import", NULL};
+    for (int i = 0; kw_decl[i]; i++) { if (i) J_SEP; J_STR(kw_decl[i]); }
+    J_END_ARR; fprintf(out, ",\n");
+
+    J_ARR("exception");
+    const char *kw_exc[] = {"try","catch","finally","throw", NULL};
+    for (int i = 0; kw_exc[i]; i++) { if (i) J_SEP; J_STR(kw_exc[i]); }
+    J_END_ARR; fprintf(out, ",\n");
+
+    J_ARR("other");
+    const char *kw_oth[] = {"clone","self","super", NULL};
+    for (int i = 0; kw_oth[i]; i++) { if (i) J_SEP; J_STR(kw_oth[i]); }
+    J_END_ARR; fprintf(out, "\n");
+
+    fprintf(out, "  },\n");
+
+    /* ---- primitive types ---- */
+    J_ARR("types");
+    const char *types[] = {"int","float","bool","string","byte","void", NULL};
+    for (int i = 0; types[i]; i++) { if (i) J_SEP; J_STR(types[i]); }
+    J_END_ARR; fprintf(out, ",\n");
+
+    /* ---- builtin struct types ---- */
+    J_ARR("builtin_structs");
+    const char *bstructs[] = {
+        "Exception","RuntimeException","IoException","RegExpException",
+        "ExecResult","RegExp","RegExpMatch","TerminalSize","KeyEvent", NULL
+    };
+    for (int i = 0; bstructs[i]; i++) { if (i) J_SEP; J_STR(bstructs[i]); }
+    J_END_ARR; fprintf(out, ",\n");
+
+    /* ---- predefined constants ---- */
+    fprintf(out, "  \"constants\": {\n");
+
+    J_ARR("string");
+    J_STR("EOL");
+    J_END_ARR; fprintf(out, ",\n");
+
+    J_ARR("int");
+    const char *c_int[] = {
+        "INT_MAX","INT_MIN","INT_SIZE","FLOAT_SIZE","FLOAT_DIG",
+        "KEY_NONE","KEY_CHAR","KEY_ENTER","KEY_ESC","KEY_TAB",
+        "KEY_BACKSPACE","KEY_DELETE","KEY_UP","KEY_DOWN","KEY_LEFT",
+        "KEY_RIGHT","KEY_HOME","KEY_END","KEY_PAGE_UP","KEY_PAGE_DOWN","KEY_RESIZE",
+        "TERM_COLOR_DEFAULT","TERM_COLOR_BLACK","TERM_COLOR_RED","TERM_COLOR_GREEN",
+        "TERM_COLOR_YELLOW","TERM_COLOR_BLUE","TERM_COLOR_MAGENTA",
+        "TERM_COLOR_CYAN","TERM_COLOR_WHITE", NULL
+    };
+    for (int i = 0; c_int[i]; i++) { if (i) J_SEP; J_STR(c_int[i]); }
+    J_END_ARR; fprintf(out, ",\n");
+
+    J_ARR("float");
+    const char *c_flt[] = {
+        "FLOAT_EPSILON","FLOAT_MIN","FLOAT_MAX",
+        "M_PI","M_E","M_TAU","M_SQRT2","M_LN2","M_LN10", NULL
+    };
+    for (int i = 0; c_flt[i]; i++) { if (i) J_SEP; J_STR(c_flt[i]); }
+    J_END_ARR; fprintf(out, "\n");
+
+    fprintf(out, "  },\n\n");
+
+    /* ---- builtin functions (authoritative list from builtins.c) ---- */
+    fprintf(out, "  \"functions\": ");
+    builtin_dump_names_json(out);
+    fprintf(out, "\n}\n");
+
+#undef J_ARR
+#undef J_STR
+#undef J_SEP
+#undef J_END_ARR
+#undef J_NL
 }
 
 static void strlist_push(StringList *list, const char *s) {
@@ -477,7 +583,10 @@ int main(int argc, char **argv) {
     int user_args_start;    /* index of first user arg (after filepath) */
 
     const char *first = argv[1];
-    if (strcmp(first, "run") == 0) {
+    if (strcmp(first, "dump-language") == 0) {
+        dump_language_json();
+        return 0;
+    } else if (strcmp(first, "run") == 0) {
         /* cimple run <file> [args...] */
         if (argc < 3) { usage(argv[0]); return 1; }
         do_check = 0;

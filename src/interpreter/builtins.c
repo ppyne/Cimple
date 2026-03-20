@@ -2886,3 +2886,15 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
 
     return not_a_builtin();
 }
+
+/* -----------------------------------------------------------------------
+ * dump_language_json — write a JSON description of all language elements
+ * ----------------------------------------------------------------------- */
+void builtin_dump_names_json(FILE *out) {
+    size_t n = sizeof(BUILTIN_NAME_TABLE) / sizeof(BUILTIN_NAME_TABLE[0]);
+    fprintf(out, "[");
+    for (size_t i = 0; i < n; i++) {
+        fprintf(out, "%s\"%s\"", i ? "," : "", BUILTIN_NAME_TABLE[i].name);
+    }
+    fprintf(out, "]");
+}
