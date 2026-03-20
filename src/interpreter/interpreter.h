@@ -13,7 +13,8 @@ typedef enum {
     SIGNAL_RETURN   = 1,
     SIGNAL_BREAK    = 2,
     SIGNAL_CONTINUE = 3,
-    SIGNAL_THROW    = 4
+    SIGNAL_THROW    = 4,
+    SIGNAL_EXIT     = 5   /* exit(code) — unwinds everything, finally still runs */
 } Signal;
 
 typedef struct FuncDeclEntry {
@@ -63,6 +64,7 @@ typedef struct {
     /* Current execution state */
     Signal      signal;
     Value       ret_val;    /* value set by SIGNAL_RETURN */
+    int         exit_code;  /* value set by SIGNAL_EXIT  */
     Value       throw_val;
     char       *throw_type_name;
     int         throw_line;

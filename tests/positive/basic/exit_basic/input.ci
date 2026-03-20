@@ -1,0 +1,5 @@
+void main() {
+    print("before\n");
+    exit(0);
+    print("never\n");
+}

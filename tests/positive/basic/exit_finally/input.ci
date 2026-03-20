@@ -1,0 +1,9 @@
+void main() {
+    try {
+        exit(3);
+    } catch (Exception e) {
+        print("catch\n");
+    } finally {
+        print("finally\n");
+    }
+}

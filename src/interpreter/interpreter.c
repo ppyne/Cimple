@@ -1448,7 +1448,7 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
             exec_stmt(ip, scope, n->u.while_stmt.body);
             if (ip->signal == SIGNAL_BREAK) { ip->signal = SIGNAL_NONE; break; }
             if (ip->signal == SIGNAL_CONTINUE) { ip->signal = SIGNAL_NONE; continue; }
-            if (ip->signal == SIGNAL_RETURN || ip->signal == SIGNAL_THROW) break;
+            if (ip->signal != SIGNAL_NONE) break;
         }
         break;
     }
@@ -1608,7 +1608,7 @@ static void exec_stmt(Interp *ip, Scope *scope, AstNode *n) {
             exec_stmt(ip, for_scope, n->u.for_stmt.body);
             if (ip->signal == SIGNAL_BREAK)    { ip->signal = SIGNAL_NONE; break; }
             if (ip->signal == SIGNAL_CONTINUE) { ip->signal = SIGNAL_NONE; }
-            if (ip->signal == SIGNAL_RETURN || ip->signal == SIGNAL_THROW)   break;
+            if (ip->signal != SIGNAL_NONE)     break;
 
             /* Update */
             if (n->u.for_stmt.update)
@@ -1966,6 +1966,13 @@ static Value call_user_func(Interp *ip, AstNode *f, Value *args, int nargs,
     }
 
     scope_free(fn_scope);
+    if (result_sig == SIGNAL_EXIT) {
+        value_free(&ret);
+        value_free(&thrown);
+        free(thrown_type);
+        ip->signal = SIGNAL_EXIT;  /* re-propagate — exit_code already set */
+        return val_void();
+    }
     if (result_sig == SIGNAL_THROW) {
         value_free(&ret);
         interp_throw(ip, thrown_type ? thrown_type : "Exception", thrown);
@@ -2057,6 +2064,13 @@ static Value call_method(Interp *ip, Value *base, const char *method_name,
     ip->current_method_base = saved_method_base;
     self_sym->val = val_void();
     scope_free(fn_scope);
+    if (result_sig == SIGNAL_EXIT) {
+        value_free(&ret);
+        value_free(&thrown);
+        free(thrown_type);
+        ip->signal = SIGNAL_EXIT;  /* re-propagate — exit_code already set */
+        return val_void();
+    }
     if (result_sig == SIGNAL_THROW) {
         value_free(&ret);
         interp_throw(ip, thrown_type ? thrown_type : "Exception", thrown);
@@ -2144,7 +2158,9 @@ int interp_run(AstNode *program, int argc, char **argv) {
     Value ret = call_user_func(&ip, main_fn, args, nargs, 0, 0);
 
     int exit_code = 0;
-    if (ip.signal == SIGNAL_THROW) {
+    if (ip.signal == SIGNAL_EXIT) {
+        exit_code = ip.exit_code;
+    } else if (ip.signal == SIGNAL_THROW) {
         const char *tname = ip.throw_type_name ? ip.throw_type_name : "Exception";
         const char *msg = "";
         if (ip.throw_line > 0) {
@@ -2161,7 +2177,7 @@ int interp_run(AstNode *program, int argc, char **argv) {
         }
         fprintf(stderr, "Runtime error: %s: %s\n", tname, msg);
         exit_code = 2;
-    } else if (main_fn->u.func_decl.ret_type == TYPE_INT) {
+    } else if (ip.signal == SIGNAL_NONE && main_fn->u.func_decl.ret_type == TYPE_INT) {
         exit_code = (int)ret.u.i;
     }
 

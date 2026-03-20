@@ -319,7 +319,8 @@ typedef enum {
     BI_ASSERT,
     BI_RAND_INT,
     BI_RAND_FLOAT,
-    BI_SLEEP
+    BI_SLEEP,
+    BI_EXIT
 } BuiltinId;
 
 typedef struct {
@@ -375,6 +376,7 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"epochToSecond", BI_EPOCH_TO_SECOND},
     {"epochToYear", BI_EPOCH_TO_YEAR},
     {"exec", BI_EXEC},
+    {"exit", BI_EXIT},
     {"execStatus", BI_EXEC_STATUS},
     {"execStderr", BI_EXEC_STDERR},
     {"execStdout", BI_EXEC_STDOUT},
@@ -2860,6 +2862,16 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
 #else
         usleep((useconds_t)(ms * 1000));
 #endif
+        return val_void();
+    }
+
+    if (id == BI_EXIT) {
+        REQUIRE(1);
+        int code = (int)ARG_INT(0);
+        if (g_current_interp) {
+            g_current_interp->exit_code = code;
+            g_current_interp->signal    = SIGNAL_EXIT;
+        }
         return val_void();
     }
 

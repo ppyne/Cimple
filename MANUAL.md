@@ -2230,6 +2230,30 @@ void main(string[] args) {
 
 ### 8.14 Utility
 
+#### `exit`
+
+```c
+void exit(int code)
+```
+
+Terminates the program immediately with the given exit code.
+Unlike a `return` from `main`, `exit` unwinds the call stack cleanly from anywhere —
+including nested functions and loops. `finally` blocks **do** execute; `catch` blocks do **not**.
+
+```c
+void checkVersion(int v) {
+    if (v < 2) {
+        print("unsupported version\n");
+        exit(1);
+    }
+}
+
+void main() {
+    checkVersion(1);        // prints message then exits with code 1
+    print("never\n");       // not reached
+}
+```
+
 #### `assert`
 
 ```c
