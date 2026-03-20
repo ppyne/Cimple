@@ -169,7 +169,7 @@
       "patterns": [
         {
           "name": "support.constant.cimple",
-          "match": "\\\\b(EOL|INT_MAX|INT_MIN|INT_SIZE|FLOAT_SIZE|FLOAT_DIG|KEY_NONE|KEY_CHAR|KEY_ENTER|KEY_ESC|KEY_TAB|KEY_BACKSPACE|KEY_DELETE|KEY_UP|KEY_DOWN|KEY_LEFT|KEY_RIGHT|KEY_HOME|KEY_END|KEY_PAGE_UP|KEY_PAGE_DOWN|KEY_RESIZE|TERM_COLOR_DEFAULT|TERM_COLOR_BLACK|TERM_COLOR_RED|TERM_COLOR_GREEN|TERM_COLOR_YELLOW|TERM_COLOR_BLUE|TERM_COLOR_MAGENTA|TERM_COLOR_CYAN|TERM_COLOR_WHITE|FLOAT_EPSILON|FLOAT_MIN|FLOAT_MAX|M_PI|M_E|M_TAU|M_SQRT2|M_LN2|M_LN10)\\\\b"
+          "match": "\\b(EOL|INT_MAX|INT_MIN|INT_SIZE|FLOAT_SIZE|FLOAT_DIG|KEY_NONE|KEY_CHAR|KEY_ENTER|KEY_ESC|KEY_TAB|KEY_BACKSPACE|KEY_DELETE|KEY_UP|KEY_DOWN|KEY_LEFT|KEY_RIGHT|KEY_HOME|KEY_END|KEY_PAGE_UP|KEY_PAGE_DOWN|KEY_RESIZE|TERM_COLOR_DEFAULT|TERM_COLOR_BLACK|TERM_COLOR_RED|TERM_COLOR_GREEN|TERM_COLOR_YELLOW|TERM_COLOR_BLUE|TERM_COLOR_MAGENTA|TERM_COLOR_CYAN|TERM_COLOR_WHITE|FLOAT_EPSILON|FLOAT_MIN|FLOAT_MAX|M_PI|M_E|M_TAU|M_SQRT2|M_LN2|M_LN10)\\b"
         }
       ]
     },
@@ -177,7 +177,7 @@
       "patterns": [
         {
           "name": "keyword.control.cimple",
-          "match": "\\\\b(if|else|while|for|return|break|continue|in)\\\\b"
+          "match": "\\b(if|else|while|for|return|break|continue|in)\\b"
         }
       ]
     },
@@ -185,7 +185,7 @@
       "patterns": [
         {
           "name": "keyword.declaration.cimple",
-          "match": "\\\\b(structure|union|import)\\\\b"
+          "match": "\\b(structure|union|import)\\b"
         }
       ]
     },
@@ -193,7 +193,7 @@
       "patterns": [
         {
           "name": "keyword.control.exception.cimple",
-          "match": "\\\\b(try|catch|finally|throw)\\\\b"
+          "match": "\\b(try|catch|finally|throw)\\b"
         }
       ]
     },
@@ -201,7 +201,7 @@
       "patterns": [
         {
           "name": "keyword.other.cimple",
-          "match": "\\\\b(clone|self|super)\\\\b"
+          "match": "\\b(clone|self|super)\\b"
         }
       ]
     },
@@ -209,11 +209,11 @@
       "patterns": [
         {
           "name": "storage.type.primitive.cimple",
-          "match": "\\\\b(int|float|bool|string|byte|void)(?=\\\\s*(?:\\\\[\\\\]|\\\\[\\\\w+\\\\]|\\\\s))"
+          "match": "\\b(int|float|bool|string|byte|void)(?=\\s*(?:\\[\\]|\\[\\w+\\]|\\s))"
         },
         {
           "name": "storage.type.primitive.cimple",
-          "match": "\\\\b(int|float|bool|string|byte|void)\\\\b"
+          "match": "\\b(int|float|bool|string|byte|void)\\b"
         }
       ]
     },
@@ -221,7 +221,7 @@
       "patterns": [
         {
           "name": "support.class.cimple",
-          "match": "\\\\b(Exception|RuntimeException|IoException|RegExpException|ExecResult|RegExp|RegExpMatch|TerminalSize|KeyEvent)\\\\b"
+          "match": "\\b(Exception|RuntimeException|IoException|RegExpException|ExecResult|RegExp|RegExpMatch|TerminalSize|KeyEvent)\\b"
         }
       ]
     },
@@ -229,7 +229,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.cimple",
-          "match": "\\\\b(abs|absInt|assert|acos|appendFile|approxEqual|arrayGet|arrayInsert|arrayPop|arrayPush|arrayRemove|arraySet|asin|atan|atan2|basename|byteToInt|byteAt|bytesToFloat|bytesToInt|bytesToString|ceil|chmod|clamp|clampInt|concat|contains|countOccurrences|copy|cos|count|mapClear|mapHas|mapKeys|mapRemove|mapSize|mapValues|cwd|dirname|endsWith|epochToDay|epochToHour|epochToMinute|epochToMonth|epochToSecond|epochToYear|exec|exit|execStatus|execStderr|execStdout|exp|extension|fileExists|filename|floor|fmod|format|formatDate|getEnv|glyphAt|glyphLen|indexOf|input|intToByte|intToBytes|isBoolString|isDirectory|isEven|isExecutable|isFinite|isFloatString|isInfinite|isIntString|isNaN|isNegativeInfinity|isOdd|isPositiveInfinity|isBlank|isReadable|isWritable|join|lastIndexOf|len|log|log10|log2|makeEpoch|max|maxInt|min|minInt|move|now|padLeft|padRight|pow|print|printErr|readFile|readFileBytes|readLines|remove|regexCompile|regexEnd|regexFind|regexFindAll|regexFlags|regexGroups|regexOk|regexPattern|regexReplace|regexReplaceAll|regexSplit|regexStart|regexTest|replace|repeat|randFloat|randInt|round|safeDivInt|safeModInt|sin|sleep|split|sqrt|startsWith|substr|tan|tempPath|termBeep|termClear|termClearLine|termDisableRawMode|termEnableRawMode|termFlush|termGetSize|termHideCursor|termIsTTY|termMoveCursor|termPollKey|termReadKey|termResetStyle|termSetStyle|termShowCursor|termWriteAt|toLower|toBool|toUpper|stringToBytes|toFloat|toInt|toString|trim|trimLeft|trimRight|capitalize|trunc|writeFile|appendFileBytes|floatToBytes|writeFileBytes|writeLines)\\\\b(?=\\\\s*\\\\()"
+          "match": "\\b(abs|absInt|assert|acos|appendFile|approxEqual|arrayGet|arrayInsert|arrayPop|arrayPush|arrayRemove|arraySet|asin|atan|atan2|basename|byteToInt|byteAt|bytesToFloat|bytesToInt|bytesToString|ceil|chmod|clamp|clampInt|concat|contains|countOccurrences|copy|cos|count|mapClear|mapHas|mapKeys|mapRemove|mapSize|mapValues|cwd|dirname|endsWith|epochToDay|epochToHour|epochToMinute|epochToMonth|epochToSecond|epochToYear|exec|exit|execStatus|execStderr|execStdout|exp|extension|fileExists|filename|floor|fmod|format|formatDate|getEnv|glyphAt|glyphLen|indexOf|input|intToByte|intToBytes|isBoolString|isDirectory|isEven|isExecutable|isFinite|isFloatString|isInfinite|isIntString|isNaN|isNegativeInfinity|isOdd|isPositiveInfinity|isBlank|isReadable|isWritable|join|lastIndexOf|len|log|log10|log2|makeEpoch|max|maxInt|min|minInt|move|now|padLeft|padRight|pow|print|printErr|readFile|readFileBytes|readLines|remove|regexCompile|regexEnd|regexFind|regexFindAll|regexFlags|regexGroups|regexOk|regexPattern|regexReplace|regexReplaceAll|regexSplit|regexStart|regexTest|replace|repeat|randFloat|randInt|round|safeDivInt|safeModInt|sin|sleep|split|sqrt|startsWith|substr|tan|tempPath|termBeep|termClear|termClearLine|termDisableRawMode|termEnableRawMode|termFlush|termGetSize|termHideCursor|termIsTTY|termMoveCursor|termPollKey|termReadKey|termResetStyle|termSetStyle|termShowCursor|termWriteAt|toLower|toBool|toUpper|stringToBytes|toFloat|toInt|toString|trim|trimLeft|trimRight|capitalize|trunc|writeFile|appendFileBytes|floatToBytes|writeFileBytes|writeLines)\\b(?=\\s*\\()"
         }
       ]
     },

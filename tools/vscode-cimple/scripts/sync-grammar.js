@@ -56,30 +56,30 @@ function syncGrammar(lang) {
 
     /* keywords_control */
     repo.keywords_control.patterns[0].match =
-        `\\\\b(${alt(lang.keywords.control)})\\\\b`;
+        `\\b(${alt(lang.keywords.control)})\\b`;
 
     /* keywords_declaration */
     repo.keywords_declaration.patterns[0].match =
-        `\\\\b(${alt(lang.keywords.declaration)})\\\\b`;
+        `\\b(${alt(lang.keywords.declaration)})\\b`;
 
     /* keywords_exception */
     repo.keywords_exception.patterns[0].match =
-        `\\\\b(${alt(lang.keywords.exception)})\\\\b`;
+        `\\b(${alt(lang.keywords.exception)})\\b`;
 
     /* keywords_other */
     repo.keywords_other.patterns[0].match =
-        `\\\\b(${alt(lang.keywords.other)})\\\\b`;
+        `\\b(${alt(lang.keywords.other)})\\b`;
 
     /* storage_types */
     const typeAlt = alt(lang.types);
     repo.storage_types.patterns[0].match =
-        `\\\\b(${typeAlt})(?=\\\\s*(?:\\\\[\\\\]|\\\\[\\\\w+\\\\]|\\\\s))`;
+        `\\b(${typeAlt})(?=\\s*(?:\\[\\]|\\[\\w+\\]|\\s))`;
     repo.storage_types.patterns[1].match =
-        `\\\\b(${typeAlt})\\\\b`;
+        `\\b(${typeAlt})\\b`;
 
     /* support_classes (builtin structs) */
     repo.support_classes.patterns[0].match =
-        `\\\\b(${alt(lang.builtin_structs)})\\\\b`;
+        `\\b(${alt(lang.builtin_structs)})\\b`;
 
     /* support_constants (all constants flattened) */
     const allConsts = [
@@ -88,11 +88,11 @@ function syncGrammar(lang) {
         ...lang.constants.float
     ];
     repo.support_constants.patterns[0].match =
-        `\\\\b(${alt(allConsts)})\\\\b`;
+        `\\b(${alt(allConsts)})\\b`;
 
     /* support_functions */
     repo.support_functions.patterns[0].match =
-        `\\\\b(${alt(lang.functions)})\\\\b(?=\\\\s*\\\\()`;
+        `\\b(${alt(lang.functions)})\\b(?=\\s*\\()`;
 
     fs.writeFileSync(grammarPath, JSON.stringify(grammar, null, 2) + '\n', 'utf8');
     console.log(`✓  Grammar synced from ${lang.functions.length} functions, ` +
