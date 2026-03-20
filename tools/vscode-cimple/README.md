@@ -41,6 +41,7 @@ Depuis la racine du dépôt, allez dans le dossier de l'extension et installez l
 
 ```sh
 cd tools/vscode-cimple
+# si besoin: rm -rf node_modules out
 npm install
 npm run compile
 ```
