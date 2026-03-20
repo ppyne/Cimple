@@ -45,7 +45,17 @@
         "language": "cimple",
         "path": "./snippets/cimple.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Cimple",
+      "properties": {
+        "cimple.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the cimple executable. Leave empty to auto-detect from build/ or PATH."
+        }
+      }
+    }
   },
   "scripts": {
     "compile": "tsc -p ./",
@@ -55,5 +65,11 @@
     "@types/vscode": "^1.85.0",
     "@types/node": "^20.0.0",
     "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11",
+    "vscode-uri": "^3.0.8"
   }
 }
