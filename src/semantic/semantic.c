@@ -87,6 +87,7 @@ static const BuiltinSig BUILTINS[] = {
     /* I/O */
     { "exit",       TYPE_VOID,   NULL, { TYPE_INT },             1, 0, 0 },
     { "print",      TYPE_VOID,   NULL, { TYPE_STRING },          1, 0, 0 },
+    { "printErr",   TYPE_VOID,   NULL, { TYPE_STRING },          1, 0, 0 },
     { "input",      TYPE_STRING, NULL, { TYPE_UNKNOWN },          0, 0, 0 },
     { "termIsTTY",  TYPE_BOOL,   NULL, { TYPE_UNKNOWN },          0, 0, 0 },
     { "termGetSize", TYPE_STRUCT, "TerminalSize", { TYPE_UNKNOWN }, 0, 0, 0 },

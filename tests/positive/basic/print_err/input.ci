@@ -1,0 +1,4 @@
+void main() {
+    print("out\n");
+    printErr("err\n");
+}

@@ -158,6 +158,7 @@ static Value not_a_builtin(void) {
 typedef enum {
     BI_NONE = 0,
     BI_PRINT,
+    BI_PRINT_ERR,
     BI_INPUT,
     BI_TERM_IS_TTY,
     BI_TERM_GET_SIZE,
@@ -426,7 +427,8 @@ static const BuiltinNameEntry BUILTIN_NAME_TABLE[] = {
     {"padLeft", BI_PAD_LEFT},
     {"padRight", BI_PAD_RIGHT},
     {"pow", BI_POW},
-    {"print", BI_PRINT},
+    {"print",    BI_PRINT},
+    {"printErr", BI_PRINT_ERR},
     {"readFile", BI_READ_FILE},
     {"readFileBytes", BI_READ_FILE_BYTES},
     {"readLines", BI_READ_LINES},
@@ -1585,6 +1587,13 @@ Value builtin_call(const char *name, Value *args, int nargs, int line, int col) 
         REQUIRE(1);
         fputs(args[0].u.s, stdout);
         fflush(stdout);
+        return val_void();
+    }
+
+    if (id == BI_PRINT_ERR) {
+        REQUIRE(1);
+        fputs(args[0].u.s, stderr);
+        fflush(stderr);
         return val_void();
     }
 

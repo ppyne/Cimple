@@ -1165,6 +1165,18 @@ Writes `value` to standard output. Only accepts `string`; use `toString` for oth
 print("x = " + toString(42) + "\n");
 ```
 
+#### `printErr`
+
+```c
+void printErr(string value)
+```
+
+Writes `value` to standard error (`stderr`). Same rules as `print` — only accepts `string`.
+
+```c
+printErr("error: file not found\n");
+```
+
 #### `input`
 
 ```c
