@@ -2477,10 +2477,23 @@ built-in `Exception` type.
 #### Built-in exception hierarchy
 
 ```
-Exception                          — root  (field: message string)
-├── RuntimeException : Exception   — runtime errors (overflow, bad index, …)
-├── IoException      : Exception   — I/O errors (fields: path string, message string)
-└── RegExpException  : Exception   — regex errors (field: message string)
+Exception          — root
+  string message
+  _init(string message)
+
+├── RuntimeException : Exception
+│     string message  (inherited)
+│     _init(string message)
+│
+├── IoException : Exception
+│     string path
+│     string message  (inherited)
+│     _init(string message)
+│     _init(string path, string message)
+│
+└── RegExpException : Exception
+      string message  (inherited)
+      _init(string message)
 ```
 
 All four types are available without any import.  They can be caught, thrown, cloned,
@@ -2488,11 +2501,19 @@ and **inherited from** like any other structure.
 
 #### Throwing an exception
 
-Use `clone` to create an instance, set fields, then `throw`:
+All four built-in exception types expose a `_init(string message)` overload
+(`IoException` also has `_init(string path, string message)`), so the shortest
+form is:
 
 ```c
-RuntimeException e = clone RuntimeException;
-e.message = "value must be positive";
+throw clone RuntimeException("value must be positive");
+throw clone IoException("/etc/cfg", "permission denied");
+```
+
+You can also create the instance first if you need to set extra fields:
+
+```c
+RuntimeException e = clone RuntimeException("value must be positive");
 throw e;
 ```
 
@@ -2505,30 +2526,39 @@ assert(age >= 0, "invalid age: " + toString(age));
 
 #### Defining your own exception types
 
-Inherit from any built-in exception type or from another user-defined exception:
+Inherit from any built-in exception type or from another user-defined exception.
+Use `_init` to accept constructor arguments and `super._init` to forward the
+message up the hierarchy:
 
 ```c
-// directly under the root
-structure AppException : Exception {}
-
-// specialised subtypes
-structure ValidationException : AppException {}
-structure NetworkException     : AppException {
-    int statusCode = 0;
+structure AppException : Exception {
+    void _init(string message) {
+        super._init(message);
+    }
 }
 
-// under a built-in subtype
+structure ValidationException : AppException {
+    string field;
+    void _init(string field, string message) {
+        self.field = field;
+        super._init(message);
+    }
+}
+
 structure DatabaseException : RuntimeException {
     string query = "";
+    void _init(string query, string message) {
+        self.query = query;
+        super._init(message);
+    }
 }
 ```
 
 Throw them the same way:
 
 ```c
-ValidationException e = clone ValidationException;
-e.message = "invalid age: " + toString(age);
-throw e;
+throw clone ValidationException("email", "invalid format");
+throw clone DatabaseException("SELECT *", "timeout");
 ```
 
 #### Catching exceptions

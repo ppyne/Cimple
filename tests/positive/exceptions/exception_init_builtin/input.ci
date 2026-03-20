@@ -1,0 +1,8 @@
+void main() {
+    Exception e = clone Exception("Bad situation.");
+    print(e.message + "\n");
+    RuntimeException re = clone RuntimeException("Overflow.");
+    print(re.message + "\n");
+    IoException io = clone IoException("/tmp/x", "Not found.");
+    print(io.path + ":" + io.message + "\n");
+}

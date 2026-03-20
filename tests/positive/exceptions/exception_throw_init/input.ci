@@ -1,0 +1,7 @@
+void main() {
+    try {
+        throw clone RuntimeException("boom");
+    } catch (RuntimeException re) {
+        print(re.message + "\n");
+    }
+}

@@ -1,0 +1,16 @@
+structure AppException : RuntimeException {
+    string code;
+    void _init(string code, string message) {
+        self.code = code;
+        super._init(message);
+    }
+}
+void main() {
+    AppException e = clone AppException("E404", "Not found.");
+    print(e.code + ":" + e.message + "\n");
+    try {
+        throw clone AppException("E500", "Server error.");
+    } catch (Exception ex) {
+        print("caught:" + ex.message + "\n");
+    }
+}

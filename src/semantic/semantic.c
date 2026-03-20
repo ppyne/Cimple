@@ -544,6 +544,31 @@ static StructInfo *struct_table_define(StructTable *st, const char *name,
     return si;
 }
 
+/* Register a built-in _init(string message) overload on an exception struct. */
+static void struct_add_builtin_init(StructInfo *si, const char **param_names,
+                                    int nparams) {
+    if (!si || nparams <= 0) return;
+    StructMethodSig *m = ALLOC(StructMethodSig);
+    m->name           = cimple_strdup("_init");
+    m->ret_type       = TYPE_VOID;
+    m->ret_struct_name = NULL;
+    m->param_count    = nparams;
+    m->params         = ALLOC_N(FuncParam, nparams);
+    m->decl           = NULL;
+    for (int i = 0; i < nparams; i++) {
+        m->params[i].name             = cimple_strdup(param_names[i]);
+        m->params[i].type             = TYPE_STRING;
+        m->params[i].struct_name      = NULL;
+        m->params[i].func_type        = NULL;
+        m->params[i].map_key_type     = TYPE_UNKNOWN;
+        m->params[i].map_inner_key_type = TYPE_UNKNOWN;
+        m->params[i].map_val_type     = TYPE_UNKNOWN;
+        m->params[i].map_val_struct_name = NULL;
+    }
+    m->next      = si->methods;
+    si->methods  = m;
+}
+
 static void struct_add_builtin_field(StructInfo *si, const char *name, CimpleType type) {
     if (!si || !name) return;
     StructFieldSig *field = ALLOC(StructFieldSig);
@@ -2891,16 +2916,29 @@ int semantic_check(AstNode *program) {
     {
         StructInfo *si = struct_table_define(ctx.structs, BUILTIN_EXCEPTIONS[i].name,
                                              BUILTIN_EXCEPTIONS[i].base, NULL);
-        if (si && strcmp(BUILTIN_EXCEPTIONS[i].name, "Exception") == 0)
+        if (si && strcmp(BUILTIN_EXCEPTIONS[i].name, "Exception") == 0) {
             struct_add_builtin_field(si, "message", TYPE_STRING);
-        if (si && strcmp(BUILTIN_EXCEPTIONS[i].name, "RuntimeException") == 0)
+            const char *p1[] = {"message"};
+            struct_add_builtin_init(si, p1, 1);
+        }
+        if (si && strcmp(BUILTIN_EXCEPTIONS[i].name, "RuntimeException") == 0) {
             struct_add_builtin_field(si, "message", TYPE_STRING);
+            const char *p1[] = {"message"};
+            struct_add_builtin_init(si, p1, 1);
+        }
         if (si && strcmp(BUILTIN_EXCEPTIONS[i].name, "IoException") == 0) {
             struct_add_builtin_field(si, "path", TYPE_STRING);
             struct_add_builtin_field(si, "message", TYPE_STRING);
+            const char *p1[] = {"message"};
+            struct_add_builtin_init(si, p1, 1);
+            const char *p2[] = {"path", "message"};
+            struct_add_builtin_init(si, p2, 2);
         }
-        if (si && strcmp(BUILTIN_EXCEPTIONS[i].name, "RegExpException") == 0)
+        if (si && strcmp(BUILTIN_EXCEPTIONS[i].name, "RegExpException") == 0) {
             struct_add_builtin_field(si, "message", TYPE_STRING);
+            const char *p1[] = {"message"};
+            struct_add_builtin_init(si, p1, 1);
+        }
     }
 
     for (int i = 0; BUILTIN_RUNTIME_STRUCTS[i]; i++) {

@@ -58,6 +58,26 @@ static StructDeclTable *struct_decl_table_build(AstNode *program);
 static void struct_decl_table_free(StructDeclTable *table);
 static Value clone_struct_instance(Interp *ip, const char *name, Scope *scope, int line, int col);
 static StructFieldVal *struct_field_lookup(StructVal *st, const char *name);
+
+/* Apply built-in _init semantics for exception types.
+ * _init(string message)          — sets message field
+ * _init(string path, string message) — IoException only, sets path+message */
+static void apply_builtin_exception_init(StructVal *st, const char *sname,
+                                         Value *args, int nargs) {
+    if (!st || nargs < 1) return;
+    if (nargs == 1 && args[0].type == TYPE_STRING) {
+        StructFieldVal *mf = struct_field_lookup(st, "message");
+        if (mf) { value_free(&mf->value); mf->value = value_copy(args[0]); }
+    } else if (nargs == 2 &&
+               args[0].type == TYPE_STRING && args[1].type == TYPE_STRING &&
+               strcmp(sname, "IoException") == 0) {
+        StructFieldVal *pf = struct_field_lookup(st, "path");
+        StructFieldVal *mf = struct_field_lookup(st, "message");
+        if (pf) { value_free(&pf->value); pf->value = value_copy(args[0]); }
+        if (mf) { value_free(&mf->value); mf->value = value_copy(args[1]); }
+    }
+}
+static StructFieldVal *struct_field_lookup(StructVal *st, const char *name);
 static AstNode *find_struct_method_decl(Interp *ip, const char *struct_name,
                                         const char *method_name, int use_base_only);
 static const char *find_struct_method_owner(Interp *ip, const char *struct_name,
@@ -818,6 +838,10 @@ static Value eval_expr(Interp *ip, Scope *scope, AstNode *n) {
                 Value ret = call_method(ip, &out, "_init", 0, arg_vals, nargs,
                                         n->line, n->col);
                 value_free(&ret);
+            } else if (builtin_exception_base(sname) != NULL ||
+                       strcmp(sname, "Exception") == 0) {
+                /* Built-in exception type: apply _init field assignment directly */
+                apply_builtin_exception_init(out.u.st, sname, arg_vals, nargs);
             }
             for (int i = 0; i < nargs; i++) value_free(&arg_vals[i]);
             if (interp_has_throw(ip)) {
@@ -2003,6 +2027,15 @@ static Value call_method(Interp *ip, Value *base, const char *method_name,
     } else {
         method = find_struct_method_decl(ip, search_struct, method_name, 0);
         owner  = find_struct_method_owner(ip, search_struct, method_name, 0);
+    }
+    if (!method && strcmp(method_name, "_init") == 0 &&
+        (builtin_exception_base(search_struct) != NULL ||
+         strcmp(search_struct, "Exception") == 0)) {
+        /* super._init(...) targeting a built-in exception type */
+        Symbol *self_sym2 = scope_lookup(NULL, "self");
+        /* find self in the caller's scope via base->u.st */
+        apply_builtin_exception_init(base->u.st, search_struct, args, nargs);
+        return val_void();
     }
     if (!method)
         error_runtime(line, col, "Unknown method '%s'", method_name);
