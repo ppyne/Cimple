@@ -4,6 +4,7 @@
   "description": "Syntax highlighting and auto-completion for the Cimple language",
   "version": "0.1.0",
   "publisher": "cimple",
+  "icon": "logo_cimple.png",
   "engines": {
     "vscode": "^1.85.0"
   },
